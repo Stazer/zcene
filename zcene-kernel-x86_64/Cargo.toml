@@ -1,0 +1,23 @@
+[package]
+name = "zcene-kernel-x86_64"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+bootloader-x86_64-common = { version = "*" }
+bootloader_api = { version = "*" }
+linked_list_allocator = "*"
+pic8259 = "*"
+spin = "*"
+x2apic = "*"
+x86 = "*"
+log = "*"
+x86_64 = "*"
+pc-keyboard = "*"
+zcene-core = { path = "../zcene-core" }
+zcene-kernel = { path = "../zcene-kernel" }
+zcene-future-runtime = { path = "../zcene-future-runtime" }
+ztd = { git = "https://github.com/Stazer/ztd.git" }
+
+[build-dependencies]
+glob = "*"

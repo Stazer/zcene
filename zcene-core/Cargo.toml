@@ -1,0 +1,8 @@
+[package]
+name = "zcene-core"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+ztd = { git = "https://github.com/Stazer/ztd.git" }
+futures = { version = "0.3", default-features = false }

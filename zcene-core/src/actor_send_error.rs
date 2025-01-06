@@ -1,0 +1,10 @@
+use ztd::{Display, Error};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Display, Error)]
+pub enum ActorSendError {
+    Unknown,
+    Closed,
+    Full,
+}

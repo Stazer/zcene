@@ -1,0 +1,60 @@
+[config]
+default_to_workspace = false
+
+[env]
+CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_DEBUG=true
+
+[tasks.test-kernel]
+args = [
+    "test",
+    "--package", "zcene-kernel",
+]
+command = "cargo"
+
+[tasks.build-kernel-x86_64]
+args = [
+    "build",
+    "--package", "zcene-kernel-x86_64",
+    "--release",
+    "--target", "zcene-kernel-x86_64/x86_64.json",
+    "-Z", "build-std=core,alloc,compiler_builtins",
+    "-Z", "build-std-features=compiler-builtins-mem",
+]
+command = "cargo"
+
+[tasks.build-kernel-x86_64-uefi]
+args = [
+    "build",
+    "--package", "zcene-kernel-x86_64-uefi",
+    "--release",
+    "--target", "zcene-kernel-x86_64/x86_64.json",
+    "-Z", "build-std=core,alloc,compiler_builtins",
+    "-Z", "build-std-features=compiler-builtins-mem",
+]
+command = "cargo"
+dependencies = [
+    "build-kernel-x86_64",
+]
+
+[tasks.run-kernel-x86_64]
+args = [
+    "-cpu", "qemu64,+x2apic",
+    "-drive", "format=raw,unit=1,file=target/x86_64/release/zcene-kernel-x86_64-uefi.elf",
+    "-drive", "if=pflash,format=raw,unit=0,file=QEMU_UEFI_CODE-x86_64.fd",
+    "-nic", "none",
+    "-m", "1024",
+    "-smp", "2",
+]
+command = "qemu-system-x86_64"
+dependencies = [
+    "build-kernel-x86_64-uefi",
+]
+
+[tasks.clean]
+command = "cargo"
+args = ["clean"]
+
+[tasks.format]
+args = ["fmt"]
+command = "cargo"
+workspace = true

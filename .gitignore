@@ -1,0 +1,4 @@
+target/
+Cargo.lock
+QEMU_UEFI_CODE-x86_64.fd
+QEMU_UEFI_VARS-x86_64.fd
