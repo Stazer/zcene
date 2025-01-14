@@ -16,7 +16,6 @@ x86_64 = "*"
 pc-keyboard = "*"
 zcene-core = { path = "../zcene-core" }
 zcene-kernel = { path = "../zcene-kernel" }
-zcene-future-runtime = { path = "../zcene-future-runtime" }
 ztd = { git = "https://github.com/Stazer/ztd.git" }
 
 [build-dependencies]

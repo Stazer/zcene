@@ -3,7 +3,8 @@ use core::fmt::Write;
 use x86::apic::x2apic::X2APIC;
 use x86::apic::ApicControl;
 use x86_64::structures::idt::InterruptStackFrame;
-use zcene_core::{ActorMessageSender, FutureExt};
+use zcene_core::actor::{ActorMessageSender};
+use zcene_core::future::FutureExt;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -18,6 +19,7 @@ pub extern "x86-interrupt" fn timer_interrupt_entry_point(_stack_frame: Interrup
         .timer_actor()
         .send(TimerActorMessage::Tick)
         .complete();
+
     X2APIC::new().eoi();
 }
 

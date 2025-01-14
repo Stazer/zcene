@@ -28,6 +28,8 @@ use x86_64::VirtAddr;
 use zcene_kernel::common::linker_value;
 use zcene_kernel::common::memory::{MemoryAddress, PhysicalMemoryAddressPerspective};
 use zcene_kernel::memory::frame::{FrameManager, FrameManagerAllocationError};
+use zcene_core::actor::ActorAddressExt;
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -158,10 +160,9 @@ where
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 use alloc::vec::Vec;
-
-pub struct TimerNotificationMessage;
-use zcene_core::{ActorMailbox, ActorMessageSender};
+use zcene_core::actor::{ActorMailbox, ActorMessageSender};
 use ztd::Constructor;
+use zcene_core::actor::ActorContextMessageProvider;
 
 #[derive(Default, Constructor)]
 pub struct TimerActor {
@@ -174,8 +175,6 @@ pub enum TimerActorMessage {
     Tick,
     Subscribe(ActorMailbox<(), KernelActorHandler>),
 }
-
-use zcene_core::ActorContextMessageProvider;
 
 impl<H> Actor<H> for TimerActor
 where
@@ -209,50 +208,20 @@ where
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use zcene_core::{Actor, ActorCreateError, ActorFuture, ActorHandleError, ActorHandler};
-use zcene_future_runtime::{
+use zcene_core::actor::{Actor, ActorCreateError, ActorFuture, ActorHandleError, ActorHandler};
+use zcene_core::future::{
     FutureRuntime, FutureRuntimeActorHandler, FutureRuntimeConcurrentQueue,
-    FutureRuntimeContinueWaker, FutureRuntimeHandler, FutureRuntimeNoOperationYielder,
+    FutureRuntimeContinueWaker, FutureRuntimeNoOperationYielder,
 };
 
-pub type KernelFutureRuntime = FutureRuntime<FutureRuntimeKernelHandler>;
-
-#[derive(Default)]
-pub struct FutureRuntimeKernelHandler {
-    allocator: Global,
-    queue: FutureRuntimeConcurrentQueue<Self>,
-    yielder: FutureRuntimeNoOperationYielder,
-    waker: FutureRuntimeContinueWaker,
-}
-
-impl FutureRuntimeHandler for FutureRuntimeKernelHandler {
-    type Allocator = Global;
-    type Queue = FutureRuntimeConcurrentQueue<Self>;
-    type Yielder = FutureRuntimeNoOperationYielder;
-    type Waker = FutureRuntimeContinueWaker;
-
-    fn allocator(&self) -> &Self::Allocator {
-        &self.allocator
-    }
-
-    fn queue(&self) -> &Self::Queue {
-        &self.queue
-    }
-
-    fn yielder(&self) -> &Self::Yielder {
-        &self.yielder
-    }
-
-    fn waker(&self) -> &Self::Waker {
-        &self.waker
-    }
-}
+pub type KernelFutureRuntime = FutureRuntime<FutureRuntimeHandler>;
 
 use alloc::alloc::Global;
 
-use zcene_core::{ActorAddressReference, ActorSystem, ActorSystemReference};
+use zcene_core::actor::{ActorAddressReference, ActorSystem, ActorSystemReference};
+use crate::common::future::FutureRuntimeHandler;
 
-pub type KernelActorHandler = FutureRuntimeActorHandler<FutureRuntimeKernelHandler>;
+pub type KernelActorHandler = FutureRuntimeActorHandler<FutureRuntimeHandler>;
 pub type KernelActorSystemReference = ActorSystemReference<KernelActorHandler>;
 pub type KernelActorAddress<A> = <KernelActorHandler as ActorHandler>::Address<A>;
 pub type KernelActorAddressReference<A> = ActorAddressReference<A, KernelActorHandler>;
@@ -295,7 +264,7 @@ impl Kernel {
 
         self.actor_system = Some(
             ActorSystem::try_new(FutureRuntimeActorHandler::new(
-                FutureRuntime::new(FutureRuntimeKernelHandler::default()).unwrap(),
+                FutureRuntime::new(FutureRuntimeHandler::default()).unwrap(),
             ))
             .unwrap(),
         );
@@ -304,18 +273,14 @@ impl Kernel {
 
         self.timer_actor = Some(timer_actor.clone());
 
-        use zcene_core::FutureExt;
+        timer_actor.mailbox();
 
-        timer_actor
+        use zcene_core::future::FutureExt;
+
+        /*timer_actor
             .send(TimerActorMessage::Subscribe(
-                ActorMailbox::try_new_from_address(
-                    self.actor_system()
-                        .spawn(ApplicationActor::default())
-                        .unwrap(),
-                )
-                .unwrap(),
             ))
-            .complete();
+            .complete();*/
 
         self.boot_application_processors(local_apic);
 
