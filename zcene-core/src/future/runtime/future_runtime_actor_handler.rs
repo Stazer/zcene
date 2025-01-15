@@ -1,5 +1,5 @@
 use crate::actor::{
-    Actor, ActorAddressReference, ActorContextMessageProvider, ActorEnterError, ActorHandler,
+    Actor, ActorAddressReference, ActorEnterError, ActorHandler,
     ActorMessage, ActorSpawnError,
 };
 use crate::future::runtime::{

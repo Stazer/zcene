@@ -173,7 +173,7 @@ pub struct TimerActor {
 #[derive(Clone)]
 pub enum TimerActorMessage {
     Tick,
-    Subscribe(ActorMailbox<(), KernelActorHandler>),
+    Subscription(ActorMailbox<(), KernelActorHandler>),
 }
 
 impl<H> Actor<H> for TimerActor
@@ -196,7 +196,7 @@ where
                         subscription.send(()).await;
                     }
                 }
-                Self::Message::Subscribe(mailbox) => {
+                Self::Message::Subscription(mailbox) => {
                     self.subscriptions.push(mailbox.clone());
                 }
             }

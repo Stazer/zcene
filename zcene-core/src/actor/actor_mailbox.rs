@@ -1,10 +1,8 @@
 use crate::actor::{
-    Actor, ActorAddressReference, ActorFuture, ActorHandler, ActorMailboxMessageSender,
+    ActorFuture, ActorHandler, ActorMailboxMessageSender,
     ActorMessage, ActorMessageSender, ActorSendError,
 };
 use alloc::sync::Arc;
-use core::alloc::AllocError;
-use core::marker::PhantomData;
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

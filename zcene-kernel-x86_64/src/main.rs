@@ -18,4 +18,3 @@ mod logger;
 mod panic_handler;
 pub mod common;
 mod smp;
-mod common;
