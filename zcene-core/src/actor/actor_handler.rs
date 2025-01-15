@@ -5,7 +5,7 @@ pub use crate::actor::{
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait ActorHandler: Sized + ActorCommonBounds {
+pub trait ActorHandler: ActorCommonBounds + Sized {
     type Allocator: ActorAllocator;
 
     type Address<A>: ActorAddress<A, Self>

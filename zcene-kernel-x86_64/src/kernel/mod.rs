@@ -30,7 +30,6 @@ use zcene_kernel::common::memory::{MemoryAddress, PhysicalMemoryAddressPerspecti
 use zcene_kernel::memory::frame::{FrameManager, FrameManagerAllocationError};
 use zcene_core::actor::ActorAddressExt;
 
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const FRAME_SIZE: usize = 4096;
@@ -209,7 +208,7 @@ where
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 use zcene_core::actor::{Actor, ActorCreateError, ActorFuture, ActorHandleError, ActorHandler};
-use zcene_core::future::{
+use zcene_core::future::runtime::{
     FutureRuntime, FutureRuntimeActorHandler, FutureRuntimeConcurrentQueue,
     FutureRuntimeContinueWaker, FutureRuntimeNoOperationYielder,
 };
@@ -272,8 +271,6 @@ impl Kernel {
         let timer_actor = self.actor_system().spawn(TimerActor::default()).unwrap();
 
         self.timer_actor = Some(timer_actor.clone());
-
-        timer_actor.mailbox();
 
         use zcene_core::future::FutureExt;
 

@@ -1,4 +1,4 @@
-use zcene_core::future as future;
+use zcene_core::future::runtime;
 use alloc::alloc::Global;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -12,15 +12,15 @@ pub struct FutureRuntimeTaskData {
 pub struct FutureRuntimeHandler {
     allocator: Global,
     queue: FutureRuntimeQueue,
-    yielder: future::FutureRuntimeNoOperationYielder,
-    waker: future::FutureRuntimeContinueWaker,
+    yielder: runtime::FutureRuntimeNoOperationYielder,
+    waker: runtime::FutureRuntimeContinueWaker,
 }
 
-impl future::FutureRuntimeHandler for FutureRuntimeHandler {
+impl runtime::FutureRuntimeHandler for FutureRuntimeHandler {
     type Allocator = Global;
     type Queue = FutureRuntimeQueue;
-    type Yielder = future::FutureRuntimeNoOperationYielder;
-    type Waker = future::FutureRuntimeContinueWaker;
+    type Yielder = runtime::FutureRuntimeNoOperationYielder;
+    type Waker = runtime::FutureRuntimeContinueWaker;
     type Data = FutureRuntimeTaskData;
 
     fn allocator(&self) -> &Self::Allocator {
@@ -41,17 +41,17 @@ impl future::FutureRuntimeHandler for FutureRuntimeHandler {
 }
 
 #[derive(Default)]
-pub struct FutureRuntimeQueue(future::FutureRuntimeConcurrentQueue<FutureRuntimeHandler>);
+pub struct FutureRuntimeQueue(runtime::FutureRuntimeConcurrentQueue<FutureRuntimeHandler>);
 
-impl future::FutureRuntimeQueue<FutureRuntimeHandler> for FutureRuntimeQueue {
+impl runtime::FutureRuntimeQueue<FutureRuntimeHandler> for FutureRuntimeQueue {
     fn enqueue(
         &self,
-        future: future::FutureRuntimeTaskReference<FutureRuntimeHandler>,
-    ) -> Result<(), future::FutureRuntimeTaskReference<FutureRuntimeHandler>> {
+        future: runtime::FutureRuntimeTaskReference<FutureRuntimeHandler>,
+    ) -> Result<(), runtime::FutureRuntimeTaskReference<FutureRuntimeHandler>> {
         self.0.enqueue(future)
     }
 
-    fn dequeue(&self) -> Option<future::FutureRuntimeTaskReference<FutureRuntimeHandler>> {
+    fn dequeue(&self) -> Option<runtime::FutureRuntimeTaskReference<FutureRuntimeHandler>> {
         self.0.dequeue()
     }
 }
