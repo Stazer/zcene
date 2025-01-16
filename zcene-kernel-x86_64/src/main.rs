@@ -10,11 +10,11 @@ extern crate alloc;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+pub mod common;
 mod entry_point;
 mod future;
 mod global_allocator;
 mod kernel;
 mod logger;
 mod panic_handler;
-pub mod common;
 mod smp;

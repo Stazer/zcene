@@ -1,6 +1,6 @@
 use crate::future::runtime::{
     FutureRuntimeAllocator, FutureRuntimeCommonBounds, FutureRuntimeQueue, FutureRuntimeWaker,
-    FutureRuntimeYielder
+    FutureRuntimeYielder,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

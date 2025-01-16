@@ -3,7 +3,7 @@ use core::fmt::Write;
 use x86::apic::x2apic::X2APIC;
 use x86::apic::ApicControl;
 use x86_64::structures::idt::InterruptStackFrame;
-use zcene_core::actor::{ActorMessageSender};
+use zcene_core::actor::ActorMessageSender;
 use zcene_core::future::FutureExt;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -14,13 +14,30 @@ pub extern "x86-interrupt" fn unhandled_interrupt_entry_point(_stack_frame: Inte
     loop {}
 }
 
-pub extern "x86-interrupt" fn timer_interrupt_entry_point(_stack_frame: InterruptStackFrame) {
+fn handle(stack_frame: InterruptStackFrame) -> ! {
     Kernel::get()
         .timer_actor()
         .send(TimerActorMessage::Tick)
         .complete();
 
-    X2APIC::new().eoi();
+    /*Kernel::get()
+        .actor_system()
+        .handler()
+        .reschedule(stack_frame);*/
+
+    //X2APIC::new().eoi();
+
+    //x86_64::instructions::interrupts::enable();
+
+    /*Kernel::get()
+        .actor_system()
+        .enter().unwrap();*/
+
+    loop {}
+}
+
+pub extern "x86-interrupt" fn timer_interrupt_entry_point(stack_frame: InterruptStackFrame) {
+    handle(stack_frame);
 }
 
 use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};

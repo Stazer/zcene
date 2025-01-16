@@ -4,7 +4,7 @@ use crate::future::runtime::{
 use alloc::sync::Arc;
 use futures::task::ArcWake;
 use spin::Mutex;
-use ztd::{Method, Constructor};
+use ztd::{Constructor, Method};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

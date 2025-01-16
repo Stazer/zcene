@@ -1,11 +1,10 @@
 use crate::actor::{
-    Actor, ActorAddressReference, ActorEnterError, ActorHandler,
-    ActorMessage, ActorSpawnError,
+    Actor, ActorAddressReference, ActorEnterError, ActorHandler, ActorMessage, ActorMessageChannel,
+    ActorMessageChannelAddress, ActorSpawnError,
 };
 use crate::future::runtime::{
-    FutureRuntimeActorAddress, FutureRuntimeHandler, FutureRuntimeReference, FutureRuntimeActorHandleContext,
+    FutureRuntimeActorHandleContext, FutureRuntimeHandler, FutureRuntimeReference,
 };
-use async_channel::unbounded;
 use core::marker::PhantomData;
 use ztd::Constructor;
 
@@ -24,7 +23,7 @@ where
     H: FutureRuntimeHandler,
 {
     type Address<A>
-        = FutureRuntimeActorAddress<A, Self>
+        = ActorMessageChannelAddress<A, Self>
     where
         A: Actor<Self>;
 
@@ -45,7 +44,7 @@ where
     where
         A: Actor<Self>,
     {
-        let (sender, receiver) = unbounded::<A::Message>();
+        let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
 
         let reference = ActorAddressReference::<A, Self>::try_new_in(
             Self::Address::new(sender, PhantomData),
@@ -56,12 +55,14 @@ where
             actor.create(()).await;
 
             loop {
-                let message = match receiver.recv().await {
-                    Ok(message) => message,
-                    Err(_) => break,
+                let message = match receiver.receive().await {
+                    Some(message) => message,
+                    None => break,
                 };
 
-                actor.handle(Self::HandleContext::<A::Message>::new(message)).await;
+                actor
+                    .handle(Self::HandleContext::<A::Message>::new(message))
+                    .await;
             }
 
             actor.destroy(()).await;

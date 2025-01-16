@@ -28,7 +28,6 @@ use x86_64::VirtAddr;
 use zcene_kernel::common::linker_value;
 use zcene_kernel::common::memory::{MemoryAddress, PhysicalMemoryAddressPerspective};
 use zcene_kernel::memory::frame::{FrameManager, FrameManagerAllocationError};
-use zcene_core::actor::ActorAddressExt;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -133,8 +132,10 @@ where
     }
 }
 
-#[derive(Default)]
-pub struct ApplicationActor {}
+#[derive(Constructor, Default)]
+pub struct ApplicationActor {
+    number: usize,
+}
 
 impl<H> Actor<H> for ApplicationActor
 where
@@ -147,9 +148,19 @@ where
         _context: H::HandleContext<Self::Message>,
     ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
         async {
-            Kernel::get()
-                .logger()
-                .writer(|w| write!(w, "Hello World\n",));
+            loop {
+                let cpu_id = CpuId::new();
+                let feature_info = cpu_id.get_feature_info().unwrap();
+
+                Kernel::get()
+                    .logger()
+                    .writer(|w| write!(w, "Hello World from {} CPU {:?}\n", self.number, feature_info.initial_local_apic_id()));
+
+                for i in 0..100000000 {
+                    core::hint::black_box(());
+                    x86_64::instructions::nop();
+                }
+            }
 
             Ok(())
         }
@@ -159,9 +170,9 @@ where
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 use alloc::vec::Vec;
+use zcene_core::actor::ActorContextMessageProvider;
 use zcene_core::actor::{ActorMailbox, ActorMessageSender};
 use ztd::Constructor;
-use zcene_core::actor::ActorContextMessageProvider;
 
 #[derive(Default, Constructor)]
 pub struct TimerActor {
@@ -209,18 +220,17 @@ where
 
 use zcene_core::actor::{Actor, ActorCreateError, ActorFuture, ActorHandleError, ActorHandler};
 use zcene_core::future::runtime::{
-    FutureRuntime, FutureRuntimeActorHandler, FutureRuntimeConcurrentQueue,
-    FutureRuntimeContinueWaker, FutureRuntimeNoOperationYielder,
+    FutureRuntime, FutureRuntimeActorHandler,
 };
 
 pub type KernelFutureRuntime = FutureRuntime<FutureRuntimeHandler>;
 
 use alloc::alloc::Global;
 
-use zcene_core::actor::{ActorAddressReference, ActorSystem, ActorSystemReference};
 use crate::common::future::FutureRuntimeHandler;
+use zcene_core::actor::{ActorAddressReference, ActorSystem, ActorSystemReference};
 
-pub type KernelActorHandler = FutureRuntimeActorHandler<FutureRuntimeHandler>;
+pub type KernelActorHandler = crate::common::actor::ActorHandler<FutureRuntimeHandler>;
 pub type KernelActorSystemReference = ActorSystemReference<KernelActorHandler>;
 pub type KernelActorAddress<A> = <KernelActorHandler as ActorHandler>::Address<A>;
 pub type KernelActorAddressReference<A> = ActorAddressReference<A, KernelActorHandler>;
@@ -262,7 +272,7 @@ impl Kernel {
         self.initialize_heap()?;
 
         self.actor_system = Some(
-            ActorSystem::try_new(FutureRuntimeActorHandler::new(
+            ActorSystem::try_new(crate::common::actor::ActorHandler::new(
                 FutureRuntime::new(FutureRuntimeHandler::default()).unwrap(),
             ))
             .unwrap(),
@@ -272,12 +282,38 @@ impl Kernel {
 
         self.timer_actor = Some(timer_actor.clone());
 
+        use zcene_core::actor::ActorAddressExt;
+
+        timer_actor.send(
+            TimerActorMessage::Subscription(
+                self.actor_system().spawn(ApplicationActor::new(0)).unwrap().mailbox().unwrap()
+            )
+        ).complete();
+
+        timer_actor.send(
+            TimerActorMessage::Subscription(
+                self.actor_system().spawn(ApplicationActor::new(1)).unwrap().mailbox().unwrap()
+            )
+        ).complete();
+
+        timer_actor.send(
+            TimerActorMessage::Subscription(
+                self.actor_system().spawn(ApplicationActor::new(2)).unwrap().mailbox().unwrap()
+            )
+        ).complete();
+
+        timer_actor.send(
+            TimerActorMessage::Subscription(
+                self.actor_system().spawn(ApplicationActor::new(3)).unwrap().mailbox().unwrap()
+            )
+        ).complete();
+
         use zcene_core::future::FutureExt;
 
         /*timer_actor
-            .send(TimerActorMessage::Subscribe(
-            ))
-            .complete();*/
+        .send(TimerActorMessage::Subscribe(
+        ))
+        .complete();*/
 
         self.boot_application_processors(local_apic);
 
@@ -377,7 +413,7 @@ impl Kernel {
             let mut flags = entry.flags();
 
             if flags.contains(PageTableFlags::PRESENT) {
-                flags.insert(PageTableFlags::WRITABLE);
+                flags.insert(PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
                 entry.set_flags(flags);
             }
         }

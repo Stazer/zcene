@@ -1,4 +1,6 @@
-use crate::actor::{Actor, ActorCommonBounds, ActorAddress, ActorHandler, ActorMailbox, ActorMessage};
+use crate::actor::{
+    Actor, ActorAddress, ActorCommonBounds, ActorHandler, ActorMailbox, ActorMessage,
+};
 use alloc::sync::Arc;
 use core::alloc::AllocError;
 use core::marker::PhantomData;
@@ -10,7 +12,10 @@ where
     A: Actor<H>,
     H: ActorHandler,
 {
-    fn mailbox_with_mapping<F, M>(self: &Arc<Self, H::Allocator>, mapping: F) -> Result<ActorMailbox<M, H>, AllocError>
+    fn mailbox_with_mapping<F, M>(
+        self: &Arc<Self, H::Allocator>,
+        mapping: F,
+    ) -> Result<ActorMailbox<M, H>, AllocError>
     where
         F: Fn(M) -> A::Message + ActorCommonBounds,
         M: ActorMessage;
@@ -26,7 +31,10 @@ where
     H: ActorHandler<Address<A> = T>,
     T: ActorAddress<A, H> + ActorCommonBounds,
 {
-    fn mailbox_with_mapping<F, M>(self: &Arc<Self, H::Allocator>, mapping: F) -> Result<ActorMailbox<M, H>, AllocError>
+    fn mailbox_with_mapping<F, M>(
+        self: &Arc<Self, H::Allocator>,
+        mapping: F,
+    ) -> Result<ActorMailbox<M, H>, AllocError>
     where
         F: Fn(M) -> A::Message + ActorCommonBounds,
         M: ActorMessage,

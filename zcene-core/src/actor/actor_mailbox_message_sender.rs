@@ -16,11 +16,7 @@ where
 }
 
 impl<A, M, H, F> ActorMailboxMessageSender<M, H>
-    for (
-        ActorAddressReference<A, H>,
-        PhantomData<(M, A)>,
-        F,
-    )
+    for (ActorAddressReference<A, H>, PhantomData<(M, A)>, F)
 where
     A: Actor<H>,
     H: ActorHandler,

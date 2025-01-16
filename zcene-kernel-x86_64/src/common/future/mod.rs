@@ -1,27 +1,22 @@
-use zcene_core::future::runtime;
 use alloc::alloc::Global;
+use zcene_core::future::runtime;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Default)]
-pub struct FutureRuntimeTaskData {
-
-}
-
-#[derive(Default)]
 pub struct FutureRuntimeHandler {
     allocator: Global,
-    queue: FutureRuntimeQueue,
+    queue: runtime::FutureRuntimeConcurrentQueue<Self>,
     yielder: runtime::FutureRuntimeNoOperationYielder,
     waker: runtime::FutureRuntimeContinueWaker,
 }
 
 impl runtime::FutureRuntimeHandler for FutureRuntimeHandler {
     type Allocator = Global;
-    type Queue = FutureRuntimeQueue;
+    type Queue = runtime::FutureRuntimeConcurrentQueue<Self>;
     type Yielder = runtime::FutureRuntimeNoOperationYielder;
     type Waker = runtime::FutureRuntimeContinueWaker;
-    type Data = FutureRuntimeTaskData;
+    type Data = ();
 
     fn allocator(&self) -> &Self::Allocator {
         &self.allocator
@@ -40,18 +35,4 @@ impl runtime::FutureRuntimeHandler for FutureRuntimeHandler {
     }
 }
 
-#[derive(Default)]
-pub struct FutureRuntimeQueue(runtime::FutureRuntimeConcurrentQueue<FutureRuntimeHandler>);
-
-impl runtime::FutureRuntimeQueue<FutureRuntimeHandler> for FutureRuntimeQueue {
-    fn enqueue(
-        &self,
-        future: runtime::FutureRuntimeTaskReference<FutureRuntimeHandler>,
-    ) -> Result<(), runtime::FutureRuntimeTaskReference<FutureRuntimeHandler>> {
-        self.0.enqueue(future)
-    }
-
-    fn dequeue(&self) -> Option<runtime::FutureRuntimeTaskReference<FutureRuntimeHandler>> {
-        self.0.dequeue()
-    }
-}
+pub type FutureRuntimeReference = runtime::FutureRuntimeReference<FutureRuntimeHandler>;

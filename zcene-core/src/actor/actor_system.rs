@@ -2,9 +2,13 @@ use crate::actor::{
     Actor, ActorAddressReference, ActorEnterError, ActorHandler, ActorSpawnError,
     ActorSystemCreateError, ActorSystemReference,
 };
+use ztd::{Constructor, Method};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Constructor, Method)]
+#[Constructor(visibility = pub(self))]
+#[Method(accessors)]
 pub struct ActorSystem<H>
 where
     H: ActorHandler,
@@ -19,7 +23,7 @@ where
     pub fn try_new(handler: H) -> Result<ActorSystemReference<H>, ActorSystemCreateError> {
         let allocator = handler.allocator().clone();
 
-        ActorSystemReference::try_new_in(Self { handler }, allocator)
+        ActorSystemReference::try_new_in(Self::new(handler), allocator)
             .map_err(ActorSystemCreateError::from)
     }
 

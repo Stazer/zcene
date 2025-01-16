@@ -1,6 +1,6 @@
 use crate::actor::{
-    ActorFuture, ActorHandler, ActorMailboxMessageSender,
-    ActorMessage, ActorMessageSender, ActorSendError,
+    ActorFuture, ActorHandler, ActorMailboxMessageSender, ActorMessage, ActorMessageSender,
+    ActorSendError,
 };
 use alloc::sync::Arc;
 use ztd::Constructor;
