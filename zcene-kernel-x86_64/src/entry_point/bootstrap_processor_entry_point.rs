@@ -10,7 +10,6 @@ pub fn bootstrap_processor_entry_point(boot_info: &'static mut BootInfo) -> ! {
 
     if let Err(error) = kernel.initialize(boot_info) {
         let _ = kernel.logger().writer(|w| write!(w, "Error: {:?}", error));
-
         loop {}
     }
 

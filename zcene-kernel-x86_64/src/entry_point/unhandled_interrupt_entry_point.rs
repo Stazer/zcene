@@ -14,30 +14,18 @@ pub extern "x86-interrupt" fn unhandled_interrupt_entry_point(_stack_frame: Inte
     loop {}
 }
 
-fn handle(stack_frame: InterruptStackFrame) -> ! {
+#[no_mangle]
+pub extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
+    X2APIC::new().eoi();
+
     Kernel::get()
         .timer_actor()
         .send(TimerActorMessage::Tick)
         .complete();
-
-    /*Kernel::get()
-        .actor_system()
-        .handler()
-        .reschedule(stack_frame);*/
-
-    //X2APIC::new().eoi();
-
-    //x86_64::instructions::interrupts::enable();
-
-    /*Kernel::get()
-        .actor_system()
-        .enter().unwrap();*/
-
-    loop {}
 }
 
-pub extern "x86-interrupt" fn timer_interrupt_entry_point(stack_frame: InterruptStackFrame) {
-    handle(stack_frame);
+extern "C" {
+    pub fn timer_interrupt_entry_point();
 }
 
 use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};

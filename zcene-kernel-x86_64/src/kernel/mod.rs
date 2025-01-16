@@ -6,7 +6,7 @@ pub use interrupt_descriptor_table::*;
 
 use crate::entry_point::{
     double_fault_entry_point, keyboard_interrupt_entry_point, page_fault_entry_point,
-    timer_interrupt_entry_point, unhandled_interrupt_entry_point,
+    timer_interrupt_entry_point, unhandled_interrupt_entry_point, timer_interrupt_handler,
 };
 use crate::global_allocator::GLOBAL_ALLOCATOR;
 use crate::logger::Logger;
@@ -154,7 +154,7 @@ where
 
                 Kernel::get()
                     .logger()
-                    .writer(|w| write!(w, "Hello World from {} CPU {:?}\n", self.number, feature_info.initial_local_apic_id()));
+                    .writer(|w| write!(w, "Hello World from {} with CPU {:?}\n", self.number, feature_info.initial_local_apic_id()));
 
                 for i in 0..100000000 {
                     core::hint::black_box(());
@@ -274,6 +274,7 @@ impl Kernel {
         self.actor_system = Some(
             ActorSystem::try_new(crate::common::actor::ActorHandler::new(
                 FutureRuntime::new(FutureRuntimeHandler::default()).unwrap(),
+                crate::common::actor::Shared::default().into(),
             ))
             .unwrap(),
         );
@@ -503,7 +504,8 @@ impl Kernel {
                 .set_handler_fn(page_fault_entry_point);
 
             interrupt_descriptor_table[TIMER_INTERRUPT_ID]
-                .set_handler_fn(timer_interrupt_entry_point);
+                .set_handler_addr(VirtAddr::new((timer_interrupt_entry_point as usize).try_into().unwrap()));
+                //.set_handler_fn(timer_interrupt_handler);
             interrupt_descriptor_table[KEYBOARD_INTERRUPT_ID]
                 .set_handler_fn(keyboard_interrupt_entry_point);
 

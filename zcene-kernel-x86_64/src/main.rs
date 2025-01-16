@@ -1,6 +1,7 @@
 #![feature(allocator_api)]
 #![feature(sync_unsafe_cell)]
 #![feature(abi_x86_interrupt)]
+#![feature(naked_functions)]
 #![no_std]
 #![no_main]
 

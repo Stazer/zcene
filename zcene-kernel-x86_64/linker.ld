@@ -22,6 +22,11 @@ SECTIONS {
         *(.text.*)
     }
 
+    .isr : ALIGN(0x1000) {
+        *(.isr)
+        *(.isr.*)
+    }
+
     .data  : ALIGN(0x1000) {
         *(.data)
         *(.data.*)
