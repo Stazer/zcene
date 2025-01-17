@@ -3,8 +3,9 @@
 section .text
 
 extern timer_interrupt_handler
+extern timer_interrupt_handler2
 
-%macro save_basic_context 0
+%macro save_basic_registers_context 0
     push rax
     push rbx
     push rcx
@@ -16,13 +17,17 @@ extern timer_interrupt_handler
     push r9
     push r10
     push r11
-
-    pushfq
+    push r12
+    push r13
+    push r14
+    push r15
 %endmacro
 
-%macro restore_basic_context 0
-    popfq
-
+%macro restore_basic_registers_context 0
+    pop r15
+    pop r14
+    pop r13
+    pop r12
     pop r11
     pop r10
     pop r9
@@ -37,7 +42,28 @@ extern timer_interrupt_handler
 %endmacro
 
 global timer_interrupt_entry_point
+global after_preemption
 timer_interrupt_entry_point:
-    jmp timer_interrupt_handler
+    save_basic_registers_context
+
+    sub rsp, 8
+    call timer_interrupt_handler
+after_preemption:
+    add rsp, 8
+
+    restore_basic_registers_context
 
     iretq
+
+
+global restore_existing_context
+restore_existing_context:
+    restore_basic_registers_context
+    iretq
+
+global start_execution
+start_execution:
+    add rsp, 16
+    jmp [rbx]
+    ; 0x4bf0
+  ; mov rsp, rax

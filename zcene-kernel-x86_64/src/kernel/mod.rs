@@ -86,51 +86,6 @@ impl From<FrameManagerAllocationError> for InitializeKernelError {
     }
 }
 
-pub struct PrintCpuIdActor;
-
-impl PrintCpuIdActor {
-    async fn print(&self) {
-        let cpu_id = CpuId::new();
-        let feature_info = cpu_id.get_feature_info().unwrap();
-
-        Kernel::get().logger().writer(|w| {
-            write!(
-                w,
-                "Hello World from {}!!!!!!!\n",
-                feature_info.initial_local_apic_id()
-            )
-        });
-    }
-}
-
-impl<H> Actor<H> for PrintCpuIdActor
-where
-    H: ActorHandler,
-{
-    type Message = ();
-
-    fn create(
-        &mut self,
-        _context: H::CreateContext,
-    ) -> impl ActorFuture<'_, Result<(), ActorCreateError>> {
-        async {
-            self.print().await;
-
-            Ok(())
-        }
-    }
-
-    fn handle(
-        &mut self,
-        _context: H::HandleContext<Self::Message>,
-    ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
-        async {
-            self.print().await;
-
-            Ok(())
-        }
-    }
-}
 
 #[derive(Constructor, Default)]
 pub struct ApplicationActor {
@@ -492,16 +447,35 @@ impl Kernel {
         unsafe {
             let interrupt_descriptor_table = &mut *INTERRUPT_DESCRIPTOR_TABLE.get();
 
+            use crate::entry_point::*;
+
+            interrupt_descriptor_table.divide_error.set_handler_fn(divide_by_zero_interrupt_entry_point);
+            interrupt_descriptor_table.debug.set_handler_fn(debug_interrupt_entry_point);
+            interrupt_descriptor_table.non_maskable_interrupt.set_handler_fn(non_maskable_interrupt_entry_point);
+            interrupt_descriptor_table.breakpoint.set_handler_fn(breakpoint_interrupt_entry_point);
+            interrupt_descriptor_table.overflow.set_handler_fn(overflow_interrupt_entry_point);
+            interrupt_descriptor_table.bound_range_exceeded.set_handler_fn(bound_range_exceeded_interrupt_entry_point);
+            interrupt_descriptor_table.invalid_opcode.set_handler_fn(invalid_opcode_interrupt_entry_point);
+            interrupt_descriptor_table.device_not_available.set_handler_fn(device_not_available_interrupt_entry_point);
+            interrupt_descriptor_table.double_fault.set_handler_fn(double_fault_entry_point);
+            interrupt_descriptor_table.invalid_tss.set_handler_fn(invalid_tss_entry_point);
+            interrupt_descriptor_table.segment_not_present.set_handler_fn(segment_not_present_entry_point);
+            interrupt_descriptor_table.stack_segment_fault.set_handler_fn(stack_segment_fault_entry_point);
+            interrupt_descriptor_table.general_protection_fault.set_handler_fn(general_protection_fault_entry_point);
+            interrupt_descriptor_table.page_fault.set_handler_fn(page_fault_entry_point);
+            interrupt_descriptor_table.x87_floating_point.set_handler_fn(unhandled_interrupt_entry_point);
+            interrupt_descriptor_table.alignment_check.set_handler_fn(alignment_check_entry_point);
+            interrupt_descriptor_table.machine_check.set_handler_fn(machine_check_interrupt_entry_point);
+            interrupt_descriptor_table.simd_floating_point.set_handler_fn(unhandled_interrupt_entry_point);
+            interrupt_descriptor_table.virtualization.set_handler_fn(virtualization_entry_point);
+            interrupt_descriptor_table.cp_protection_exception.set_handler_fn(cp_protection_entry_point);
+            interrupt_descriptor_table.hv_injection_exception.set_handler_fn(hv_injection_interrupt_entry_point);
+            interrupt_descriptor_table.vmm_communication_exception.set_handler_fn(vmm_entry_point);
+            interrupt_descriptor_table.security_exception.set_handler_fn(security_exception_entry_point);
+
             for i in EXTERNAL_INTERRUPTS_START..u8::MAX {
                 interrupt_descriptor_table[i].set_handler_fn(unhandled_interrupt_entry_point);
             }
-
-            interrupt_descriptor_table
-                .double_fault
-                .set_handler_fn(double_fault_entry_point);
-            interrupt_descriptor_table
-                .page_fault
-                .set_handler_fn(page_fault_entry_point);
 
             interrupt_descriptor_table[TIMER_INTERRUPT_ID]
                 .set_handler_addr(VirtAddr::new((timer_interrupt_entry_point as usize).try_into().unwrap()));

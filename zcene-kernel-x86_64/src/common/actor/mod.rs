@@ -20,10 +20,15 @@ use core::sync::atomic::AtomicUsize;
 use alloc::collections::{BTreeSet, BTreeMap, VecDeque};
 use alloc::vec::Vec;
 
+struct Context {
+    sp: u64,
+    ip: u64,
+}
+
 #[derive(Default)]
 pub struct Handle {
     identifier: ActorIdentifier,
-    stack_frame: spin::Mutex<Option<InterruptStackFrameValue>>,
+    context: spin::Mutex<Option<Context>>,
 }
 
 impl PartialEq for Handle {
@@ -110,7 +115,7 @@ where
         self.future_runtime.spawn(async move {
             let handle = Arc::new(Handle {
                 identifier,
-                stack_frame: spin::Mutex::default(),
+                context: spin::Mutex::default(),
             });
 
             shared.all.lock().insert(handle.clone());
@@ -165,13 +170,20 @@ impl<H> ActorHandler<H>
 where
     H: FutureRuntimeHandler,
 {
-    pub fn reschedule(&self, old_stack_frame: InterruptStackFrameValue) -> Option<InterruptStackFrameValue> {
+    pub fn reschedule(&self, ip: u64, sp: u64) -> Option<(u64, u64)> {
+
+
         let id = crate::common::x86::initial_local_apic_id()?;
+
+        use core::ops::Deref;
 
         let mut threads = self.shared.threads.lock();
 
         let from_handle = threads.get_mut(&id)?;
-        *from_handle.stack_frame.lock() = Some(old_stack_frame);
+        *from_handle.context.lock() = Some(Context {
+            ip,
+            sp,
+        });
 
         let mut next = self.shared.next.lock();
         if next.is_empty() {
@@ -179,37 +191,20 @@ where
         }
 
         let next_handle = next.pop()?;
+        let context = next_handle.context.lock();
 
-        //Kernel::get().logger().writer(|w| write!(w, "next {}\n", next_handle.identifier));
-
-        let new_stack_frame = next_handle.stack_frame.lock().take();
-
-        match new_stack_frame {
-            Some(new_stack_frame) => {
-                Kernel::get().logger().writer(|w| write!(w, "restore {}\n", next_handle.identifier));
-
-                Some(new_stack_frame)
-            },
+        match context.deref() {
+            Some(context) => {
+                Some((context.sp, context.ip))
+            }
             None => {
-                Some(
-                    InterruptStackFrameValue::new(
-                        x86_64::addr::VirtAddr::new((hello as usize).try_into().unwrap()),
-                        old_stack_frame.code_segment,
-                        old_stack_frame.cpu_flags,
-                        old_stack_frame.stack_pointer,
-                        old_stack_frame.stack_segment,
-                    )
-                )
+                None
             }
         }
     }
 }
 
 fn hello() -> ! {
-    use x86::apic::x2apic::X2APIC;
-    use x86::apic::ApicControl;
-
-    //Kernel::get().logger().writer(|w| write!(w, "hello2\n"));
     Kernel::get().actor_system().enter();
 
     loop {}
