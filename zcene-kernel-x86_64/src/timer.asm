@@ -45,25 +45,8 @@ global timer_interrupt_entry_point
 global after_preemption
 timer_interrupt_entry_point:
     save_basic_registers_context
-
-    sub rsp, 8
+    mov rdi, rsp
     call timer_interrupt_handler
 after_preemption:
-    add rsp, 8
-
-    restore_basic_registers_context
-
-    iretq
-
-
-global restore_existing_context
-restore_existing_context:
     restore_basic_registers_context
     iretq
-
-global start_execution
-start_execution:
-    add rsp, 16
-    jmp [rbx]
-    ; 0x4bf0
-  ; mov rsp, rax

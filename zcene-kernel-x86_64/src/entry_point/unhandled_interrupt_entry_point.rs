@@ -164,9 +164,7 @@ pub extern "x86-interrupt" fn machine_check_interrupt_entry_point(_stack_frame: 
 }
 
 #[no_mangle]
-pub extern "C" fn timer_interrupt_handler() {
-    let sp = x86::bits64::registers::rsp();
-
+pub extern "C" fn timer_interrupt_handler(sp: u64) {
     X2APIC::new().eoi();
 
     Kernel::get()
@@ -177,28 +175,18 @@ pub extern "C" fn timer_interrupt_handler() {
     let context = Kernel::get()
         .actor_system()
         .handler()
-        .reschedule(after_preemption as _, sp);
+        .reschedule(sp, after_preemption as _);
 
-    match context {
-        Some((sp, ip)) => {
-            Kernel::get().logger().writer(|w| write!(w, "restoring {:X} {:X}...\n", sp, ip));
-
-            /*unsafe {
-
-                core::arch::asm!(
-                    "mov rsp, {sp}",
-                    "add rsp, 16",
-                    "jmp [{ip}]",
-                    sp = in(reg) sp,
-                    ip = in(reg) ip,
-                    options(noreturn)
-                )
-
-            }*/
-        }
-        None => {
-
-        }
+    if let Some((sp, ip)) = context {
+        unsafe {
+            core::arch::asm!(
+                "mov rsp, {sp}",
+                "jmp {ip}",
+                sp = in(reg) sp,
+                ip = in(reg) ip,
+                options(noreturn)
+            )
+        };
     }
 }
 

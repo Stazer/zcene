@@ -103,18 +103,16 @@ where
         _context: H::HandleContext<Self::Message>,
     ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
         async {
-            loop {
-                let cpu_id = CpuId::new();
-                let feature_info = cpu_id.get_feature_info().unwrap();
+            let cpu_id = CpuId::new();
+            let feature_info = cpu_id.get_feature_info().unwrap();
 
-                Kernel::get()
-                    .logger()
-                    .writer(|w| write!(w, "Hello World from {} with CPU {:?}\n", self.number, feature_info.initial_local_apic_id()));
+            Kernel::get()
+                .logger()
+                .writer(|w| write!(w, "Hello World from {} with CPU {:?}\n", self.number, feature_info.initial_local_apic_id()));
 
-                for i in 0..100000000 {
-                    core::hint::black_box(());
-                    x86_64::instructions::nop();
-                }
+            for i in 0..100000000 {
+                core::hint::black_box(());
+                x86_64::instructions::nop();
             }
 
             Ok(())
@@ -258,11 +256,11 @@ impl Kernel {
             )
         ).complete();
 
-        timer_actor.send(
+        /*timer_actor.send(
             TimerActorMessage::Subscription(
                 self.actor_system().spawn(ApplicationActor::new(3)).unwrap().mailbox().unwrap()
             )
-        ).complete();
+        ).complete();*/
 
         use zcene_core::future::FutureExt;
 
