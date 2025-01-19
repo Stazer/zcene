@@ -165,18 +165,20 @@ pub extern "x86-interrupt" fn machine_check_interrupt_entry_point(_stack_frame: 
 
 #[no_mangle]
 pub extern "C" fn timer_interrupt_handler(sp: u64) {
-    X2APIC::new().eoi();
+    let context = x86_64::instructions::interrupts::without_interrupts(move || {
+        X2APIC::new().eoi();
 
-    Kernel::get()
-        .timer_actor()
-        .send(TimerActorMessage::Tick)
-        .complete();
+        Kernel::get()
+            .timer_actor()
+            .send(TimerActorMessage::Tick)
+            .complete()
+            .unwrap();
 
-    let context = Kernel::get()
-        .actor_system()
-        .handler()
-        .reschedule(sp, after_preemption as _);
-
+        Kernel::get()
+            .actor_system()
+            .handler()
+            .reschedule(sp, after_preemption as _)
+    });
     if let Some((sp, ip)) = context {
         unsafe {
             core::arch::asm!(

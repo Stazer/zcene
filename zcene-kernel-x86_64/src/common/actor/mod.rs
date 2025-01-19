@@ -11,7 +11,6 @@ use ztd::Constructor;
 use crate::kernel::Kernel;
 use core::fmt::Write;
 
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub type ActorIdentifier = usize;
@@ -28,7 +27,7 @@ struct Context {
 #[derive(Default)]
 pub struct Handle {
     identifier: ActorIdentifier,
-    context: spin::Mutex<Option<Context>>,
+    context: crate::common::Mutex<Option<Context>>,
 }
 
 impl PartialEq for Handle {
@@ -55,9 +54,9 @@ impl Ord for Handle {
 #[derive(Default)]
 pub struct Shared
 {
-    all: spin::Mutex<BTreeSet<Arc<Handle>>>,
-    next: spin::Mutex<Vec<Arc<Handle>>>,
-    threads: spin::Mutex<BTreeMap<usize, Arc<Handle>>>,
+    all: crate::common::Mutex<BTreeSet<Arc<Handle>>>,
+    next: crate::common::Mutex<Vec<Arc<Handle>>>,
+    threads: crate::common::Mutex<BTreeMap<usize, Arc<Handle>>>,
     identifier_counter: AtomicUsize,
 }
 
@@ -115,12 +114,12 @@ where
         self.future_runtime.spawn(async move {
             let handle = Arc::new(Handle {
                 identifier,
-                context: spin::Mutex::default(),
+                context: crate::common::Mutex::default(),
             });
 
             shared.all.lock().insert(handle.clone());
 
-            actor.create(()).await;
+            actor.create(()).await.unwrap();
 
             loop {
                 {
@@ -138,7 +137,8 @@ where
 
                 actor
                     .handle(Self::HandleContext::<A::Message>::new(message))
-                    .await;
+                    .await
+                    .unwrap();
 
                 {
                     let mut threads = shared.threads.lock();
@@ -148,10 +148,10 @@ where
                 }
             }
 
-            actor.destroy(()).await;
+            actor.destroy(()).await.unwrap();
 
             shared.all.lock().remove(&handle);
-        });
+        }).unwrap();
 
         Ok(reference)
     }
@@ -259,7 +259,7 @@ where
 fn hello() -> ! {
     x86_64::instructions::interrupts::enable();
 
-    Kernel::get().actor_system().enter();
+    Kernel::get().actor_system().enter().unwrap();
 
     loop {}
 }

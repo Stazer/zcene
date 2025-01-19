@@ -110,7 +110,7 @@ where
                 .logger()
                 .writer(|w| write!(w, "Hello World from {} with CPU {:?}\n", self.number, feature_info.initial_local_apic_id()));
 
-            for i in 0..100000000 {
+            for i in 0..10000000000usize {
                 core::hint::black_box(());
                 x86_64::instructions::nop();
             }
@@ -156,7 +156,7 @@ where
                     self.total_ticks += 1;
 
                     for subscription in &self.subscriptions {
-                        subscription.send(()).await;
+                        subscription.send(()).await.unwrap();
                     }
                 }
                 Self::Message::Subscription(mailbox) => {
@@ -242,19 +242,19 @@ impl Kernel {
             TimerActorMessage::Subscription(
                 self.actor_system().spawn(ApplicationActor::new(0)).unwrap().mailbox().unwrap()
             )
-        ).complete();
+        ).complete().unwrap();
 
         timer_actor.send(
             TimerActorMessage::Subscription(
                 self.actor_system().spawn(ApplicationActor::new(1)).unwrap().mailbox().unwrap()
             )
-        ).complete();
+        ).complete().unwrap();
 
         timer_actor.send(
             TimerActorMessage::Subscription(
                 self.actor_system().spawn(ApplicationActor::new(2)).unwrap().mailbox().unwrap()
             )
-        ).complete();
+        ).complete().unwrap();
 
         /*timer_actor.send(
             TimerActorMessage::Subscription(
@@ -287,7 +287,7 @@ impl Kernel {
     }
 
     pub fn run(&self) -> ! {
-        self.actor_system.as_ref().unwrap().enter();
+        self.actor_system.as_ref().unwrap().enter().unwrap();
 
         loop {}
     }
@@ -498,7 +498,7 @@ impl Kernel {
         let frame_count = 1024;
         let heap_frame_identifiers = self.frame_manager().allocate_window(frame_count)?;
 
-        let mut allocator = GLOBAL_ALLOCATOR.lock();
+        let mut allocator = GLOBAL_ALLOCATOR.inner().lock();
 
         let memory_address = self
             .frame_manager()
