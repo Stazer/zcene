@@ -19,3 +19,4 @@ mod kernel;
 mod logger;
 mod panic_handler;
 mod smp;
+pub mod driver;

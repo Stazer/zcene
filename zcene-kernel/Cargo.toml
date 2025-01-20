@@ -8,3 +8,4 @@ linked_list_allocator = "0.10"
 zcene-core = { path = "../zcene-core" }
 ztd = { git = "https://github.com/Stazer/ztd.git" }
 spin = "*"
+pc-keyboard = "*"

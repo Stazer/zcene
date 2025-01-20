@@ -71,6 +71,126 @@ where
     shared: Arc<Shared>
 }
 
+/*pub struct HandleFuture<A, H>(Arc<crate::common::Mutex<A>>, A::Message, Arc<Shared>, Arc<Handle>, PhantomData<H>)
+where
+    A: Actor<H>,
+    H: ActorHandler;
+
+use core::future::Future;
+use core::task::Poll;
+use core::pin::Pin;
+
+use zcene_core::actor::ActorHandleError;
+
+impl<A, H> Future for HandleFuture<A, H>
+where
+    A: Actor<H>,
+    H: ActorHandler,
+{
+    type Output = Result<(), ActorHandleError>;
+
+    fn poll(self: Pin<&mut Self>, context: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+        {
+            let mut threads = self.2.threads.lock();
+            threads.insert(
+                crate::common::x86::initial_local_apic_id().unwrap(),
+                handle.clone(),
+            );
+
+            Kernel::get()
+                .logger()
+                .writer(|w| write!(w, "bef: None -> {}\n", handle.identifier));
+        }
+
+        let result = {
+            let mut actor = self.0.lock();
+
+            actor
+                .lock()
+                .handle(H::HandleContext::new(self.1.clone()))
+                .poll(context)
+        }
+
+        {
+            let mut threads = self.2.threads.lock();
+            threads.remove(
+                &crate::common::x86::initial_local_apic_id().unwrap(),
+            );
+
+            Kernel::get()
+                .logger()
+                .writer(|w| write!(w, "aft: {} -> None\n", self.3.identifier));
+        }
+
+        result
+    }
+}*/
+
+//use zcene_core::actor::ActorHandler;
+use core::future::Future;
+use core::pin::{pin, Pin};
+use core::task::Poll;
+use pin_project::pin_project;
+
+#[pin_project]
+pub struct ActorHandleExecutor<'a, A, H>
+where
+    A: Actor<ActorHandler<H>>,
+    H: FutureRuntimeHandler,
+{
+    actor: &'a mut A,
+    message: A::Message,
+    shared: Arc<Shared>,
+    handle: Arc<Handle>,
+    handler: PhantomData<H>,
+}
+
+use x86_64::instructions::interrupts::without_interrupts;
+
+impl<'a, A, H> Future for ActorHandleExecutor<'a, A, H>
+where
+    A: Actor<ActorHandler<H>>,
+    H: FutureRuntimeHandler,
+{
+    type Output = Result<(), actor::ActorHandleError>;
+
+    fn poll(mut self: Pin<&mut Self>, context: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+        let handle = self.handle.clone();
+        let shared = self.shared.clone();
+
+        let message = self.message.clone();
+
+        let mut pinned = pin!(self.actor.handle(FutureRuntimeActorHandleContext::new(message)));
+
+        without_interrupts(|| {
+            let mut threads = shared.threads.lock();
+            threads.insert(
+                crate::common::x86::initial_local_apic_id().unwrap(),
+                handle.clone(),
+            );
+
+            Kernel::get()
+                .logger()
+                .writer(|w| write!(w, "bef: None -> {}\n", handle.identifier));
+        });
+
+        let result = pinned.as_mut().poll(context);
+
+        without_interrupts(|| {
+            let mut threads = shared.threads.lock();
+            threads.remove(
+                &crate::common::x86::initial_local_apic_id().unwrap(),
+            );
+
+            Kernel::get()
+                .logger()
+                .writer(|w| write!(w, "bef: {} -> None\n", handle.identifier));
+        });
+
+        result
+    }
+}
+
 impl<H> actor::ActorHandler for ActorHandler<H>
 where
     H: FutureRuntimeHandler,
@@ -111,56 +231,40 @@ where
 
         let shared = self.shared.clone();
 
+        let handle = Arc::new(Handle {
+            identifier,
+            context: crate::common::Mutex::default(),
+        });
+
         self.future_runtime.spawn(async move {
-            let handle = Arc::new(Handle {
-                identifier,
-                context: crate::common::Mutex::default(),
-            });
+            let mut actor = actor;
 
-            shared.all.lock().insert(handle.clone());
-
-            actor.create(()).await.unwrap();
-
-            loop {
-                {
-                    let mut threads = shared.threads.lock();
-                    threads.insert(
-                        crate::common::x86::initial_local_apic_id().unwrap(),
-                        handle.clone(),
-                    );
-                }
-
-                let message = match receiver.receive().await {
-                    Some(message) => message,
-                    None => {
-                        {
-                            let mut threads = shared.threads.lock();
-                            threads.remove(
-                                &crate::common::x86::initial_local_apic_id().unwrap(),
-                            );
-                        }
-
-                        break;
-                    }
-                };
-
-                actor
-                    .handle(Self::HandleContext::<A::Message>::new(message))
-                    .await
-                    .unwrap();
-
-                {
-                    let mut threads = shared.threads.lock();
-                    threads.remove(
-                        &crate::common::x86::initial_local_apic_id().unwrap(),
-                    );
-                }
+            {
+                let mut all = shared.all.lock();
+                all.insert(handle.clone());
             }
 
-            actor.destroy(()).await.unwrap();
+            loop {
+                let message = match receiver.receive().await {
+                    Some(message) => message,
+                    None => continue,
+                };
 
-            shared.all.lock().remove(&handle);
-        }).unwrap();
+                (ActorHandleExecutor {
+                    actor: &mut actor,
+                    message,
+                    shared: shared.clone(),
+                    handle: handle.clone(),
+                    handler: PhantomData::<H>,
+                }).await;
+            }
+
+            {
+                let mut all = shared.all.lock();
+                all.remove(&handle);
+            }
+
+        });
 
         Ok(reference)
     }
@@ -182,18 +286,21 @@ where
         use core::ops::Deref;
 
         let mut threads = self.shared.threads.lock();
-        {
-            let from_handle = match threads.get_mut(&id) {
-                Some(handle) => handle,
+        let from_identifier = {
+            match threads.get_mut(&id) {
+                Some(handle) => {
+                    *handle.context.lock() = Some(Context {
+                        ip,
+                        sp,
+                    });
+
+                    Some(handle.identifier)
+                },
                 None => {
-                    return None;
+                    None
                 }
-            };
-            *from_handle.context.lock() = Some(Context {
-                ip,
-                sp,
-            });
-        }
+            }
+        };
 
         threads.remove(&id);
 
@@ -202,11 +309,24 @@ where
             *next = self.shared.all.lock().iter().cloned().collect();
         }
 
-        let next_handle = next.pop()?;
+        let next_handle = match next.pop() {
+            Some(n) => {
+                n
+            }
+            None => {
+                let a = self.shared.all.lock().iter().count();
+
+                Kernel::get()
+                    .logger()
+                    .writer(|w| write!(w, "no next {}\n", a));
+
+                return None;
+            }
+        };
 
         Kernel::get()
             .logger()
-            .writer(|w| write!(w, "next is {}\n", next_handle.identifier));
+            .writer(|w| write!(w, "{:?} -> {}\n", from_identifier, next_handle.identifier));
 
         threads.insert(id, next_handle.clone());
 
@@ -236,7 +356,7 @@ where
 
         for stack_frame_identifier in kernel
             .frame_manager()
-            .allocate_window(16).unwrap()
+            .allocate_window(4).unwrap()
         {
             stack_address = kernel
                 .frame_manager()
@@ -267,6 +387,11 @@ where
 }
 
 fn hello() -> ! {
+    Kernel::get()
+        .logger()
+        .writer(|w| write!(w, "hello\n"));
+
+
     x86_64::instructions::interrupts::enable();
 
     Kernel::get().actor_system().enter().unwrap();

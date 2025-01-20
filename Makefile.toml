@@ -38,6 +38,7 @@ dependencies = [
 
 [tasks.run-kernel-x86_64]
 args = [
+    "-nographic",
     "-cpu", "qemu64,+x2apic",
     "-drive", "format=raw,unit=1,file=target/x86_64/release/zcene-kernel-x86_64-uefi.elf",
     "-drive", "if=pflash,format=raw,unit=0,file=QEMU_UEFI_CODE-x86_64.fd",

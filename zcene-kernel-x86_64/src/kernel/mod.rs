@@ -110,7 +110,7 @@ where
                 .logger()
                 .writer(|w| write!(w, "Hello World from {} with CPU {:?}\n", self.number, feature_info.initial_local_apic_id()));
 
-            for i in 0..100000000usize {
+            for i in 0..1000000000usize {
                 core::hint::black_box(());
                 x86_64::instructions::nop();
             }
@@ -240,15 +240,15 @@ impl Kernel {
 
         timer_actor.send(
             TimerActorMessage::Subscription(
-                self.actor_system().spawn(ApplicationActor::new(0)).unwrap().mailbox().unwrap()
+                self.actor_system().spawn(ApplicationActor::new(1)).unwrap().mailbox().unwrap()
             )
         ).complete().unwrap();
 
-        /*timer_actor.send(
+        timer_actor.send(
             TimerActorMessage::Subscription(
-                self.actor_system().spawn(ApplicationActor::new(1)).unwrap().mailbox().unwrap()
+                self.actor_system().spawn(ApplicationActor::new(2)).unwrap().mailbox().unwrap()
             )
-        ).complete().unwrap();*/
+        ).complete().unwrap();
 
         /*timer_actor.send(
             TimerActorMessage::Subscription(
@@ -496,7 +496,7 @@ impl Kernel {
     }
 
     fn initialize_heap(&mut self) -> Result<(), InitializeKernelError> {
-        let frame_count = 1024;
+        let frame_count = 1024 * 10;
         let heap_frame_identifiers = self.frame_manager().allocate_window(frame_count)?;
 
         let mut allocator = GLOBAL_ALLOCATOR.inner().lock();

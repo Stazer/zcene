@@ -7,6 +7,8 @@ edition = "2021"
 bootloader-x86_64-common = { version = "*" }
 bootloader_api = { version = "*" }
 linked_list_allocator = "*"
+#futures = { version = "0.3", default-features = false }
+pin-project = "1"
 pic8259 = "*"
 spin = "*"
 x2apic = "*"

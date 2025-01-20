@@ -165,9 +165,9 @@ pub extern "x86-interrupt" fn machine_check_interrupt_entry_point(_stack_frame: 
 
 #[no_mangle]
 pub unsafe extern "C" fn scheduler_part_2(sp: u64) -> u64 {
-    Kernel::get()
+    /*Kernel::get()
         .logger()
-        .writer(|w| write!(w, "\n\nsp is {:X}\n", sp));
+        .writer(|w| write!(w, "\nsp is {:X}\n", sp));*/
 
     X2APIC::new().eoi();
 
@@ -183,14 +183,14 @@ pub unsafe extern "C" fn scheduler_part_2(sp: u64) -> u64 {
         .reschedule(sp, after_preemption as _);
 
     if let Some((sp, ip)) = context {
-        Kernel::get()
+        /*Kernel::get()
             .logger()
-            .writer(|w| write!(w, "reset sp to {:X}\n", sp));
+            .writer(|w| write!(w, "reset sp to {:X}\n", sp));*/
 
         if let Some(ip) = ip {
-            Kernel::get()
+            /*Kernel::get()
                 .logger()
-                .writer(|w| write!(w, "overwrite ip\n"));
+                .writer(|w| write!(w, "overwrite ip\n"));*/
 
             ip();
         }
@@ -198,9 +198,9 @@ pub unsafe extern "C" fn scheduler_part_2(sp: u64) -> u64 {
         return sp
     }
 
-    Kernel::get()
+    /*Kernel::get()
         .logger()
-        .writer(|w| write!(w, "reuse sp\n"));
+        .writer(|w| write!(w, "reuse sp\n"));*/
 
     sp
 }
