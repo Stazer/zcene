@@ -44,9 +44,12 @@ extern timer_interrupt_handler2
 global timer_interrupt_entry_point
 global after_preemption
 timer_interrupt_entry_point:
+    ;; 4e98
     save_basic_registers_context
+    ;; 4e10
     mov rdi, rsp
-    call timer_interrupt_handler
+    ;; 4e30
+    jmp timer_interrupt_handler
 after_preemption:
     restore_basic_registers_context
     iretq

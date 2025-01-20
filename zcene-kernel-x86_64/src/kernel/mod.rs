@@ -110,7 +110,7 @@ where
                 .logger()
                 .writer(|w| write!(w, "Hello World from {} with CPU {:?}\n", self.number, feature_info.initial_local_apic_id()));
 
-            for i in 0..10000000000usize {
+            for i in 0..100000000usize {
                 core::hint::black_box(());
                 x86_64::instructions::nop();
             }
@@ -244,17 +244,17 @@ impl Kernel {
             )
         ).complete().unwrap();
 
-        timer_actor.send(
+        /*timer_actor.send(
             TimerActorMessage::Subscription(
                 self.actor_system().spawn(ApplicationActor::new(1)).unwrap().mailbox().unwrap()
             )
-        ).complete().unwrap();
+        ).complete().unwrap();*/
 
-        timer_actor.send(
+        /*timer_actor.send(
             TimerActorMessage::Subscription(
                 self.actor_system().spawn(ApplicationActor::new(2)).unwrap().mailbox().unwrap()
             )
-        ).complete().unwrap();
+        ).complete().unwrap();*/
 
         /*timer_actor.send(
             TimerActorMessage::Subscription(
@@ -271,8 +271,6 @@ impl Kernel {
 
         self.boot_application_processors(local_apic);
 
-        x86_64::instructions::interrupts::enable();
-
         self.logger().writer(|w| write!(w, "zcene\n",))?;
 
         Ok(())
@@ -287,7 +285,9 @@ impl Kernel {
     }
 
     pub fn run(&self) -> ! {
-        self.actor_system.as_ref().unwrap().enter().unwrap();
+        x86_64::instructions::interrupts::enable();
+
+        self.actor_system().enter().unwrap();
 
         loop {}
     }
@@ -476,8 +476,9 @@ impl Kernel {
             }
 
             interrupt_descriptor_table[TIMER_INTERRUPT_ID]
-                .set_handler_addr(VirtAddr::new((timer_interrupt_entry_point as usize).try_into().unwrap()));
-                //.set_handler_fn(timer_interrupt_handler);
+                //.set_handler_addr(VirtAddr::new((timer_interrupt_entry_point as usize).try_into().unwrap()));
+                .set_handler_addr(VirtAddr::new((timer_entry_point as usize).try_into().unwrap()));
+                //.set_handler_fn(timer_entry_point);
             interrupt_descriptor_table[KEYBOARD_INTERRUPT_ID]
                 .set_handler_fn(keyboard_interrupt_entry_point);
 
@@ -613,7 +614,7 @@ impl Kernel {
     }
 
     fn boot_application_processors(&mut self, mut local_apic: LocalApic) {
-        unsafe {
+       /* unsafe {
             local_apic.send_init_ipi_all();
 
             for i in 0..100000000 {
@@ -622,7 +623,7 @@ impl Kernel {
             }
 
             local_apic.send_sipi_all((crate::smp::smp_real_mode_entry as u64).try_into().unwrap());
-        }
+        }*/
     }
 }
 

@@ -132,7 +132,16 @@ where
 
                 let message = match receiver.receive().await {
                     Some(message) => message,
-                    None => break,
+                    None => {
+                        {
+                            let mut threads = shared.threads.lock();
+                            threads.remove(
+                                &crate::common::x86::initial_local_apic_id().unwrap(),
+                            );
+                        }
+
+                        break;
+                    }
                 };
 
                 actor
@@ -163,13 +172,11 @@ where
     }
 }
 
-use x86_64::structures::idt::{InterruptStackFrameValue};
-
 impl<H> ActorHandler<H>
 where
     H: FutureRuntimeHandler,
 {
-    pub fn reschedule(&self, sp: u64, ip: u64) -> Option<(u64, u64)> {
+    pub fn reschedule(&self, sp: u64, ip: u64) -> Option<(u64, Option<fn() -> !>)> {
         let id = crate::common::x86::initial_local_apic_id()?;
 
         use core::ops::Deref;
@@ -186,8 +193,6 @@ where
                 ip,
                 sp,
             });
-
-            //Kernel::get().logger().writer(|w| write!(w, "current {}\n", from_handle.identifier));
         }
 
         threads.remove(&id);
@@ -195,23 +200,24 @@ where
         let mut next = self.shared.next.lock();
         if next.is_empty() {
             *next = self.shared.all.lock().iter().cloned().collect();
-            //Kernel::get().logger().writer(|w| write!(w, "restart\n"));
         }
 
         let next_handle = next.pop()?;
+
+        Kernel::get()
+            .logger()
+            .writer(|w| write!(w, "next is {}\n", next_handle.identifier));
 
         threads.insert(id, next_handle.clone());
 
         let context = next_handle.context.lock();
 
-        //Kernel::get().logger().writer(|w| write!(w, "next {}\n", next_handle.identifier));
-
         if let Some(context) = context.deref() {
-            //Kernel::get().logger().writer(|w| write!(w, "continue\n"));
-            return Some((context.sp, context.ip));
+            Kernel::get()
+                .logger()
+                .writer(|w| write!(w, "reuse stack... {:X}\n", context.sp,));
+            return Some((context.sp, None));
         }
-
-        //Kernel::get().logger().writer(|w| write!(w, "allocating stack for {}\n", next_handle.identifier));
 
         let kernel = Kernel::get();
         let mut mapper = kernel.page_table_mapper();
@@ -224,9 +230,13 @@ where
 
         let mut stack_address = 0;
 
+        Kernel::get()
+            .logger()
+            .writer(|w| write!(w, "create new stack... {}\n", next_handle.identifier));
+
         for stack_frame_identifier in kernel
             .frame_manager()
-            .allocate_window(4).unwrap()
+            .allocate_window(16).unwrap()
         {
             stack_address = kernel
                 .frame_manager()
@@ -252,7 +262,7 @@ where
             }
         }
 
-        Some((stack_address as _, hello as _))
+        Some((stack_address as _, Some(hello as _)))
     }
 }
 

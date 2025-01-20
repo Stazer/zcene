@@ -22,9 +22,15 @@ impl GlobalAllocator {
 
 unsafe impl GlobalAlloc for GlobalAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        without_interrupts(|| {
+        let a = without_interrupts(|| {
             self.0.alloc(layout)
-        })
+        });
+
+        if a.is_null() {
+            panic!("No memory");
+        }
+
+        a
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {

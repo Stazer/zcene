@@ -92,10 +92,10 @@ pub extern "x86-interrupt" fn stack_segment_fault_entry_point(_stack_frame: Inte
     loop {}
 }
 
-pub extern "x86-interrupt" fn general_protection_fault_entry_point(_stack_frame: InterruptStackFrame, err: u64) {
+pub extern "x86-interrupt" fn general_protection_fault_entry_point(stack_frame: InterruptStackFrame, err: u64) {
     Kernel::get()
         .logger()
-        .writer(|w| write!(w, "protection fault {:#?}", err));
+        .writer(|w| write!(w, "protection fault {:?} err: {:#?}", stack_frame, err));
 
 
     loop {}
@@ -164,21 +164,161 @@ pub extern "x86-interrupt" fn machine_check_interrupt_entry_point(_stack_frame: 
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn scheduler_part_2(sp: u64) -> u64 {
+    Kernel::get()
+        .logger()
+        .writer(|w| write!(w, "\n\nsp is {:X}\n", sp));
+
+    X2APIC::new().eoi();
+
+    Kernel::get()
+        .timer_actor()
+        .send(TimerActorMessage::Tick)
+        .complete()
+        .unwrap();
+
+    let context = Kernel::get()
+        .actor_system()
+        .handler()
+        .reschedule(sp, after_preemption as _);
+
+    if let Some((sp, ip)) = context {
+        Kernel::get()
+            .logger()
+            .writer(|w| write!(w, "reset sp to {:X}\n", sp));
+
+        if let Some(ip) = ip {
+            Kernel::get()
+                .logger()
+                .writer(|w| write!(w, "overwrite ip\n"));
+
+            ip();
+        }
+
+        return sp
+    }
+
+    Kernel::get()
+        .logger()
+        .writer(|w| write!(w, "reuse sp\n"));
+
+    sp
+}
+
+#[naked]
+#[no_mangle]
+pub unsafe fn timer_entry_point() {
+    core::arch::naked_asm!(
+        "push rax",
+        "push rbx",
+        "push rcx",
+        "push rdx",
+        "push rsi",
+        "push rdi",
+        "push rbp",
+        "push r8",
+        "push r9",
+        "push r10",
+        "push r11",
+        "push r12",
+        "push r13",
+        "push r14",
+        "push r15",
+        "mov rdi, rsp",
+        "call scheduler_part_2",
+        "mov rsp, rax",
+        "pop r15",
+        "pop r14",
+        "pop r13",
+        "pop r12",
+        "pop r11",
+        "pop r10",
+        "pop r9",
+        "pop r8",
+        "pop rbp",
+        "pop rdi",
+        "pop rsi",
+        "pop rdx",
+        "pop rcx",
+        "pop rbx",
+        "pop rax",
+        "iretq",
+    );
+    //X2APIC::new().eoi();
+
+    /*Kernel::get()
+        .timer_actor()
+        .send(TimerActorMessage::Tick)
+        .complete()
+        .unwrap();*/
+
+    /*unsafe {
+        core::arch::asm!(
+            "push rax",
+            "push rbx",
+            "push rcx",
+            "push rdx",
+            "push rsi",
+            "push rdi",
+            "push rbp",
+            "push r8",
+            "push r9",
+            "push r10",
+            "push r11",
+            "push r12",
+            "push r13",
+            "push r14",
+            "push r15",
+            options(nostack),
+        );
+    }
+
+    X2APIC::new().eoi();
+
+    Kernel::get()
+        .timer_actor()
+        .send(TimerActorMessage::Tick)
+        .complete()
+        .unwrap();
+
+    unsafe {
+        core::arch::asm!(
+            "pop r15",
+            "pop r14",
+            "pop r13",
+            "pop r12",
+            "pop r11",
+            "pop r10",
+            "pop r9",
+            "pop r8",
+            "pop rbp",
+            "pop rdi",
+            "pop rsi",
+            "pop rdx",
+            "pop rcx",
+            "pop rbx",
+            "pop rax",
+            options(nostack),
+        );
+    }*/
+}
+
+#[inline(never)]
+#[no_mangle]
 pub extern "C" fn timer_interrupt_handler(sp: u64) {
-    let context = x86_64::instructions::interrupts::without_interrupts(move || {
-        X2APIC::new().eoi();
+    /*X2APIC::new().eoi();
 
-        Kernel::get()
-            .timer_actor()
-            .send(TimerActorMessage::Tick)
-            .complete()
-            .unwrap();
+    Kernel::get()
+        .timer_actor()
+        .send(TimerActorMessage::Tick)
+        .complete()
+        .unwrap();
 
-        Kernel::get()
-            .actor_system()
-            .handler()
-            .reschedule(sp, after_preemption as _)
-    });
+    let context = Kernel::get()
+        .actor_system()
+        .handler()
+        .reschedule(sp, after_preemption as _);
+
     if let Some((sp, ip)) = context {
         unsafe {
             core::arch::asm!(
@@ -190,6 +330,16 @@ pub extern "C" fn timer_interrupt_handler(sp: u64) {
             )
         };
     }
+
+    unsafe {
+        core::arch::asm!(
+            "mov rsp, {sp}",
+            "jmp {ip}",
+            sp = in(reg) sp,
+            ip = in(reg) after_preemption,
+            options(noreturn)
+        )
+    };*/
 }
 
 extern "C" {

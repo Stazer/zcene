@@ -6,12 +6,12 @@ use x86_64::structures::idt::PageFaultErrorCode;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub extern "x86-interrupt" fn page_fault_entry_point(
-    _stack_frame: InterruptStackFrame,
+    stack_frame: InterruptStackFrame,
     error_code: PageFaultErrorCode,
 ) {
     let _ = Kernel::get()
         .logger()
-        .writer(|w| write!(w, "Page Fault {:?}", error_code,));
+        .writer(|w| write!(w, "Page Fault {:?} {:?}", error_code, stack_frame));
 
     loop {}
 }

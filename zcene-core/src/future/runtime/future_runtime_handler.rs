@@ -13,6 +13,7 @@ where
     type Queue: FutureRuntimeQueue<Self>;
     type Yielder: FutureRuntimeYielder;
     type Waker: FutureRuntimeWaker<Self>;
+    type Specification: Default + FutureRuntimeCommonBounds;
     type Data: Default + FutureRuntimeCommonBounds;
 
     fn allocator(&self) -> &Self::Allocator;
