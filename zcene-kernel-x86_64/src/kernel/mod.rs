@@ -107,13 +107,11 @@ where
             let cpu_id = CpuId::new();
             let feature_info = cpu_id.get_feature_info().unwrap();
 
-            if context.message() % 100 == 0 {
-                Kernel::get()
-                    .logger()
-                    .writer(|w| write!(w, "application::handle {} {} {}\n", self.number, context.message(), feature_info.initial_local_apic_id()));
-            }
+            Kernel::get()
+                .logger()
+                .writer(|w| write!(w, "application::handle {} {} {}\n", self.number, context.message(), feature_info.initial_local_apic_id()));
 
-            for i in 0..100000000usize {
+            for i in 0..1000000000usize {
                 core::hint::black_box(());
                 x86_64::instructions::nop();
             }

@@ -11,6 +11,8 @@ use ztd::Constructor;
 use crate::kernel::Kernel;
 use core::fmt::Write;
 
+use crate::common::println;
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub type ActorIdentifier = usize;
@@ -332,7 +334,9 @@ where
 
         let current_handle = match scheduler.threads.get(&id).cloned() {
             Some(current_handle) => current_handle,
-            None => return stack_pointer,
+            None => return {
+                stack_pointer
+            },
         };
 
         scheduler.threads.remove(&id);
@@ -345,10 +349,6 @@ where
         match next_handle {
             Some(next_handle) => next_handle.stack_pointer.load(Ordering::SeqCst),
             None => {
-                Kernel::get()
-                    .logger()
-                    .writer(|w| write!(w, "create new stack\n"));
-
                 create_new_stack(Kernel::get().allocate_stack())
             }
         }
