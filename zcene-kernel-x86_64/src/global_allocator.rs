@@ -23,6 +23,21 @@ impl GlobalAllocator {
 unsafe impl GlobalAlloc for GlobalAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let a = without_interrupts(|| {
+            /*use crate::kernel::Kernel;
+            use core::fmt::Write;
+
+            Kernel::get()
+                .logger()
+                .writer(|w| write!(w, "before_alloc\n"));
+
+            let a = self.0.alloc(layout);
+
+            Kernel::get()
+                .logger()
+                .writer(|w| write!(w, "after_alloc\n"));
+
+            a*/
+
             self.0.alloc(layout)
         });
 

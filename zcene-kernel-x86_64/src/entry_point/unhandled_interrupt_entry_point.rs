@@ -26,8 +26,10 @@ pub extern "x86-interrupt" fn debug_interrupt_entry_point(_stack_frame: Interrup
     loop {}
 }
 
-pub extern "x86-interrupt" fn invalid_opcode_interrupt_entry_point(_stack_frame: InterruptStackFrame) {
-    Kernel::get().logger().write("invalid opcode");
+pub extern "x86-interrupt" fn invalid_opcode_interrupt_entry_point(stack_frame: InterruptStackFrame) {
+    Kernel::get()
+        .logger()
+        .writer(|w| write!(w, "invalid opcode {:?}\n", stack_frame));
 
     loop {}
 }
@@ -164,10 +166,15 @@ pub extern "x86-interrupt" fn machine_check_interrupt_entry_point(_stack_frame: 
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn scheduler_part_2(sp: u64) -> u64 {
+pub unsafe extern "C" fn scheduler_part_2(stack_pointer: u64) -> u64 {
+    let stack_pointer = Kernel::get()
+        .actor_system()
+        .handler()
+        .reschedule(stack_pointer);
+
     /*Kernel::get()
         .logger()
-        .writer(|w| write!(w, "\nsp is {:X}\n", sp));*/
+        .writer(|w| write!(w, "new {:X}\n", stack_pointer));*/
 
     X2APIC::new().eoi();
 
@@ -177,32 +184,7 @@ pub unsafe extern "C" fn scheduler_part_2(sp: u64) -> u64 {
         .complete()
         .unwrap();
 
-    let context = Kernel::get()
-        .actor_system()
-        .handler()
-        .reschedule(sp, after_preemption as _);
-
-    if let Some((sp, ip)) = context {
-        /*Kernel::get()
-            .logger()
-            .writer(|w| write!(w, "reset sp to {:X}\n", sp));*/
-
-        if let Some(ip) = ip {
-            /*Kernel::get()
-                .logger()
-                .writer(|w| write!(w, "overwrite ip\n"));*/
-
-            ip();
-        }
-
-        return sp
-    }
-
-    /*Kernel::get()
-        .logger()
-        .writer(|w| write!(w, "reuse sp\n"));*/
-
-    sp
+    stack_pointer
 }
 
 #[naked]
@@ -225,6 +207,7 @@ pub unsafe fn timer_entry_point() {
         "push r14",
         "push r15",
         "mov rdi, rsp",
+        "cld",
         "call scheduler_part_2",
         "mov rsp, rax",
         "pop r15",

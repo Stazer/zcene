@@ -95,22 +95,25 @@ pub struct ApplicationActor {
 impl<H> Actor<H> for ApplicationActor
 where
     H: ActorHandler,
+    H::HandleContext<usize>: ActorContextMessageProvider<usize>,
 {
-    type Message = ();
+    type Message = usize;
 
     fn handle(
         &mut self,
-        _context: H::HandleContext<Self::Message>,
+        context: H::HandleContext<Self::Message>,
     ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
-        async {
+        async move {
             let cpu_id = CpuId::new();
             let feature_info = cpu_id.get_feature_info().unwrap();
 
-            Kernel::get()
-                .logger()
-                .writer(|w| write!(w, "Hello World from {} with CPU {:?}\n", self.number, feature_info.initial_local_apic_id()));
+            if context.message() % 100 == 0 {
+                Kernel::get()
+                    .logger()
+                    .writer(|w| write!(w, "application::handle {} {} {}\n", self.number, context.message(), feature_info.initial_local_apic_id()));
+            }
 
-            for i in 0..1000000000usize {
+            for i in 0..1000000usize {
                 core::hint::black_box(());
                 x86_64::instructions::nop();
             }
@@ -129,14 +132,14 @@ use ztd::Constructor;
 
 #[derive(Default, Constructor)]
 pub struct TimerActor {
-    subscriptions: Vec<ActorMailbox<(), KernelActorHandler>>,
+    subscriptions: Vec<ActorMailbox<usize, KernelActorHandler>>,
     total_ticks: usize,
 }
 
 #[derive(Clone)]
 pub enum TimerActorMessage {
     Tick,
-    Subscription(ActorMailbox<(), KernelActorHandler>),
+    Subscription(ActorMailbox<usize, KernelActorHandler>),
 }
 
 impl<H> Actor<H> for TimerActor
@@ -151,12 +154,13 @@ where
         context: H::HandleContext<Self::Message>,
     ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
         async move {
+
             match context.message() {
                 Self::Message::Tick => {
                     self.total_ticks += 1;
 
                     for subscription in &self.subscriptions {
-                        subscription.send(()).await.unwrap();
+                        subscription.send(self.total_ticks).await.unwrap();
                     }
                 }
                 Self::Message::Subscription(mailbox) => {
@@ -264,12 +268,7 @@ impl Kernel {
 
         use zcene_core::future::FutureExt;
 
-        /*timer_actor
-        .send(TimerActorMessage::Subscribe(
-        ))
-        .complete();*/
-
-        self.boot_application_processors(local_apic);
+        //self.boot_application_processors(local_apic);
 
         self.logger().writer(|w| write!(w, "zcene\n",))?;
 
@@ -432,7 +431,7 @@ impl Kernel {
             .spurious_vector(34)
             .timer_mode(TimerMode::Periodic)
             .timer_divide(TimerDivide::Div16)
-            .timer_initial(1_250_000)
+            .timer_initial(1_000_000)
             .set_xapic_base(apic_virtual_address)
             .ipi_destination_mode(IpiDestMode::Physical)
             .build()
@@ -614,7 +613,7 @@ impl Kernel {
     }
 
     fn boot_application_processors(&mut self, mut local_apic: LocalApic) {
-       /* unsafe {
+        unsafe {
             local_apic.send_init_ipi_all();
 
             for i in 0..100000000 {
@@ -623,7 +622,50 @@ impl Kernel {
             }
 
             local_apic.send_sipi_all((crate::smp::smp_real_mode_entry as u64).try_into().unwrap());
-        }*/
+        }
+    }
+
+    pub fn allocate_stack(&self) -> u64 {
+        let stack_frame_count = 4;
+        let stack_size = stack_frame_count * FRAME_SIZE;
+
+        let mut first_address = 0;
+        let mut stack_address = 0;
+        let mut mapper = self.page_table_mapper();
+
+        for stack_frame_identifier in self
+            .frame_manager()
+            .allocate_window(4).unwrap()
+        {
+            stack_address = self
+                .frame_manager()
+                .translate_frame_identifier(stack_frame_identifier).as_usize();
+
+            let page = Page::<Size4KiB>::containing_address(VirtAddr::new(
+                (stack_address).try_into().unwrap(),
+            ));
+
+            if first_address == 0 {
+                first_address = page.start_address().as_u64() + stack_size as u64;
+            }
+
+            unsafe {
+                mapper
+                    .map_to(
+                        page,
+                        PhysFrame::from_start_address(PhysAddr::new(
+                            stack_address.try_into().unwrap(),
+                        ))
+                            .unwrap(),
+                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                        &mut EmptyFrameAllocator,
+                    )
+                    .expect("Hello World")
+                    .flush();
+            }
+        }
+
+        (first_address).try_into().unwrap()
     }
 }
 

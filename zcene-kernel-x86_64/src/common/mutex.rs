@@ -1,3 +1,6 @@
+use crate::kernel::Kernel;
+use core::fmt::Write;
+
 pub struct Mutex<T>(spin::Mutex<T>);
 
 impl<T> Default for Mutex<T>

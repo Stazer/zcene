@@ -13,6 +13,7 @@ where
 {
     fn wake(&self, handler: &H, task: FutureRuntimeTaskReference<H>) {
         while handler.queue().enqueue(task.clone()).is_err() {
+            panic!("HELLO!");
             // noop
         }
     }

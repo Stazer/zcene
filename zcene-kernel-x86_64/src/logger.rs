@@ -3,9 +3,12 @@ use bootloader_api::BootInfo;
 use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
 use core::fmt::{self, Write};
 use log::{Log, Metadata, Record};
-use spin::Mutex;
 use x86_64::instructions::interrupts::without_interrupts;
 use bootloader_x86_64_common::serial::SerialPort;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+type Mutex<T> = spin::mutex::TicketMutex<T>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -80,7 +83,9 @@ pub struct InnerLogger<'a>(&'a Logger);
 
 impl<'a> core::fmt::Write for InnerLogger<'a> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        self.0.write(s);
+        without_interrupts(|| {
+            self.0.write(s);
+        });
 
         Ok(())
     }

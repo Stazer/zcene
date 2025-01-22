@@ -51,6 +51,16 @@ dependencies = [
     "build-kernel-x86_64-uefi",
 ]
 
+[tasks.dump-kernel-x86_64]
+args = [
+    "-D", "-Mintel",
+    "target/x86_64/release/zcene-kernel-x86_64",
+]
+command = "objdump"
+dependencies = [
+    "build-kernel-x86_64-uefi",
+]
+
 [tasks.clean]
 command = "cargo"
 args = ["clean"]
