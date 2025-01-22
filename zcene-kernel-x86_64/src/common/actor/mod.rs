@@ -16,6 +16,7 @@ use core::fmt::Write;
 pub type ActorIdentifier = usize;
 
 use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::{Ordering, AtomicU64};
 use alloc::collections::{BTreeSet, BTreeMap, VecDeque};
 use alloc::vec::Vec;
 use x86_64::structures::paging::{Mapper, Page, PageTableFlags};
@@ -31,7 +32,7 @@ struct Context {
 #[derive(Default)]
 pub struct Handle {
     identifier: ActorIdentifier,
-    context: crate::common::Mutex<Option<Context>>,
+    stack_pointer: AtomicU64,
 }
 
 impl PartialEq for Handle {
@@ -56,9 +57,13 @@ impl Ord for Handle {
 }
 
 #[derive(Default)]
+pub struct SchedulerQueue {
+    all: VecDeque<Arc<Handle>>,
+}
+
+#[derive(Default)]
 pub struct Scheduler {
-    all: BTreeSet<Arc<Handle>>,
-    next: Vec<Arc<Handle>>,
+    queue: VecDeque<Arc<Handle>>,
     threads: BTreeMap<usize, Arc<Handle>>,
 }
 
@@ -188,16 +193,11 @@ where
 
         let handle = Arc::new(Handle {
             identifier,
-            context: crate::common::Mutex::default(),
+            stack_pointer: AtomicU64::default(),
         });
 
         self.future_runtime.spawn(async move {
             let mut actor = actor;
-
-            {
-                let mut scheduler = shared.scheduler.lock();
-                scheduler.all.insert(handle.clone());
-            }
 
             loop {
                 /*Kernel::get()
@@ -331,82 +331,27 @@ where
         let id = crate::common::x86::initial_local_apic_id().unwrap();
 
         let current_handle = match scheduler.threads.get(&id).cloned() {
-            Some(handle) => {
-                *handle.context.lock() = Some(Context {
-                    stack_pointer,
-                });
+            Some(current_handle) => current_handle,
+            None => return stack_pointer,
+        };
 
-                scheduler.report_handle(None);
+        scheduler.threads.remove(&id);
+        current_handle.stack_pointer.store(stack_pointer, Ordering::SeqCst);
 
-                handle
-            }
+        let next_handle = scheduler.queue.pop_front();
+
+        scheduler.queue.push_back(current_handle.clone());
+
+        match next_handle {
+            Some(next_handle) => next_handle.stack_pointer.load(Ordering::SeqCst),
             None => {
-                return stack_pointer;
+                Kernel::get()
+                    .logger()
+                    .writer(|w| write!(w, "create new stack\n"));
+
+                create_new_stack(Kernel::get().allocate_stack())
             }
-        };
-
-        stack_pointer
-
-        /*if scheduler.next.is_empty() {
-            scheduler.next = scheduler.all.iter().cloned().collect();
         }
-
-        let next_handle = scheduler.next.pop()?;
-
-        scheduler.report_handle(Some(next_handle.clone()));*/
-
-        //create_new_stack(Kernel::get().allocate_stack())
-
-        //let new_stack_pointer = create_new_stack(Kernel::get().allocate_stack());
-
-        //stack_pointer
-
-        /*let mut scheduler = self.shared.scheduler.lock();
-
-        let id = crate::common::x86::initial_local_apic_id()?;
-
-        let current_handle = {
-            match scheduler.threads.get(&id).cloned() {
-                Some(handle) => {
-                    *handle.context.lock() = Some(Context {
-                        ip,
-                        sp,
-                    });
-
-                    scheduler.report_handle(Some(handle.clone()));
-
-                    Some(handle)
-                }
-                None => {
-                    None
-                }
-            }
-        };
-
-        if scheduler.next.is_empty() {
-            scheduler.next = scheduler.all.iter().cloned().collect();
-        }
-
-        let next_handle = scheduler.next.pop()?;
-
-        scheduler.report_handle(Some(next_handle.clone()));
-
-        let context = next_handle.context.lock();
-
-        use core::ops::Deref;
-
-        if let Some(context) = context.deref() {
-            return Some((context.sp, None));
-        }
-
-        let kernel = Kernel::get();
-        let mut mapper = kernel.page_table_mapper();
-
-        /*Kernel::get()
-            .logger()
-            .writer(|w| write!(w, "create new stack {:X} for {}\n", stack_address, next_handle.identifier));*/
-
-        Some((stack_address as _, Some(hello as _)))*/
     }
 }
 

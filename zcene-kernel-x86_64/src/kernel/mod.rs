@@ -113,7 +113,7 @@ where
                     .writer(|w| write!(w, "application::handle {} {} {}\n", self.number, context.message(), feature_info.initial_local_apic_id()));
             }
 
-            for i in 0..1000000usize {
+            for i in 0..100000000usize {
                 core::hint::black_box(());
                 x86_64::instructions::nop();
             }
@@ -431,7 +431,7 @@ impl Kernel {
             .spurious_vector(34)
             .timer_mode(TimerMode::Periodic)
             .timer_divide(TimerDivide::Div16)
-            .timer_initial(1_000_000)
+            .timer_initial(500_000)
             .set_xapic_base(apic_virtual_address)
             .ipi_destination_mode(IpiDestMode::Physical)
             .build()
