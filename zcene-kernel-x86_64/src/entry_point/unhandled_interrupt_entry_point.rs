@@ -182,17 +182,15 @@ pub unsafe extern "C" fn handle_preemption(stack_pointer: u64) -> u64 {
         .handler()
         .reschedule(stack_pointer);
 
-    /*Kernel::get()
-        .logger()
-        .writer(|w| write!(w, "new {:X}\n", stack_pointer));*/
-
     stack_pointer
 }
+
+use core::arch::naked_asm;
 
 #[naked]
 #[no_mangle]
 pub unsafe fn timer_entry_point() {
-    core::arch::naked_asm!(
+    naked_asm!(
         "push rax",
         "push rbx",
         "push rcx",
@@ -229,139 +227,16 @@ pub unsafe fn timer_entry_point() {
         "pop rax",
         "iretq",
     );
-    //X2APIC::new().eoi();
-
-    /*Kernel::get()
-        .timer_actor()
-        .send(TimerActorMessage::Tick)
-        .complete()
-        .unwrap();*/
-
-    /*unsafe {
-        core::arch::asm!(
-            "push rax",
-            "push rbx",
-            "push rcx",
-            "push rdx",
-            "push rsi",
-            "push rdi",
-            "push rbp",
-            "push r8",
-            "push r9",
-            "push r10",
-            "push r11",
-            "push r12",
-            "push r13",
-            "push r14",
-            "push r15",
-            options(nostack),
-        );
-    }
-
-    X2APIC::new().eoi();
-
-    Kernel::get()
-        .timer_actor()
-        .send(TimerActorMessage::Tick)
-        .complete()
-        .unwrap();
-
-    unsafe {
-        core::arch::asm!(
-            "pop r15",
-            "pop r14",
-            "pop r13",
-            "pop r12",
-            "pop r11",
-            "pop r10",
-            "pop r9",
-            "pop r8",
-            "pop rbp",
-            "pop rdi",
-            "pop rsi",
-            "pop rdx",
-            "pop rcx",
-            "pop rbx",
-            "pop rax",
-            options(nostack),
-        );
-    }*/
 }
-
-#[inline(never)]
-#[no_mangle]
-pub extern "C" fn timer_interrupt_handler(sp: u64) {
-    /*X2APIC::new().eoi();
-
-    Kernel::get()
-        .timer_actor()
-        .send(TimerActorMessage::Tick)
-        .complete()
-        .unwrap();
-
-    let context = Kernel::get()
-        .actor_system()
-        .handler()
-        .reschedule(sp, after_preemption as _);
-
-    if let Some((sp, ip)) = context {
-        unsafe {
-            core::arch::asm!(
-                "mov rsp, {sp}",
-                "jmp {ip}",
-                sp = in(reg) sp,
-                ip = in(reg) ip,
-                options(noreturn)
-            )
-        };
-    }
-
-    unsafe {
-        core::arch::asm!(
-            "mov rsp, {sp}",
-            "jmp {ip}",
-            sp = in(reg) sp,
-            ip = in(reg) after_preemption,
-            options(noreturn)
-        )
-    };*/
-}
-
-extern "C" {
-    pub fn timer_interrupt_entry_point();
-    pub fn after_preemption() -> !;
-    pub fn start_execution(rsp: u64, rip: u64) -> !;
-}
-
-use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
-use spin::Mutex;
-use x86_64::instructions::port::Port;
-
-static KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ScancodeSet1>> = Mutex::new(Keyboard::new(
-    ScancodeSet1::new(),
-    layouts::Us104Key,
-    HandleControl::Ignore,
-));
 
 pub extern "x86-interrupt" fn keyboard_interrupt_entry_point(_stack_frame: InterruptStackFrame) {
-    let mut keyboard = KEYBOARD.lock();
-    let mut port = Port::new(0x60);
+    X2APIC::new().eoi();
+}
 
-    let scancode: u8 = unsafe { port.read() };
-    if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
-        if let Some(key) = keyboard.process_keyevent(key_event) {
-            match key {
-                DecodedKey::Unicode(character) => {
-                    Kernel::get()
-                        .logger()
-                        .writer(|w| write!(w, "{}", character,));
-                }
-                DecodedKey::RawKey(key) => {
-                    Kernel::get().logger().writer(|w| write!(w, "{:?}", key,));
-                }
-            }
-        }
-    }
+pub extern "x86-interrupt" fn timer_interrupt_entry_point(_stack_frame: InterruptStackFrame) {
+    X2APIC::new().eoi();
+}
 
+pub extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
     X2APIC::new().eoi();
 }

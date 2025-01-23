@@ -10,7 +10,6 @@ linked_list_allocator = "*"
 futures = { version = "0.3", default-features = false }
 pin-project = "1"
 pic8259 = "*"
-spin = { version = "*", features = ["ticket_mutex", "fair_mutex", "spin_mutex"] }
 x2apic = "*"
 x86 = "*"
 log = "*"

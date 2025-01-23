@@ -22,6 +22,19 @@ pub struct ActorSpecification {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+use zcene_kernel::common::memory::VirtualMemoryAddress;
+
+#[derive(Constructor, Debug)]
+pub struct ActorExecutionContext {
+    stack_pointer: VirtualMemoryAddress,
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub type ExecutionUnitIdentifier = usize;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 pub type ActorIdentifier = usize;
 
 use core::sync::atomic::AtomicUsize;
@@ -57,7 +70,7 @@ pub struct Scheduler {
 
 impl Scheduler {
     fn report_handle(&mut self, handle: Option<Arc<Handle>>) {
-        let id = crate::common::x86::initial_local_apic_id().unwrap();
+        let id = crate::architecture::initial_local_apic_id().unwrap();
 
         let current = self.threads.get(&id).cloned().map(|x| x.identifier);
 
@@ -69,9 +82,12 @@ impl Scheduler {
     }
 }
 
+
+use zcene_kernel::synchronization::Mutex;
+
 #[derive(Default)]
 pub struct Shared {
-    scheduler: spin::mutex::SpinMutex<Scheduler>,
+    scheduler: Mutex<Scheduler>,
     identifier_counter: AtomicUsize,
 }
 
@@ -265,7 +281,7 @@ where
     pub fn reschedule(&self, stack_pointer: u64) -> u64 {
         let mut scheduler = self.shared.scheduler.lock();
 
-        let id = crate::common::x86::initial_local_apic_id().unwrap();
+        let id = crate::architecture::initial_local_apic_id().unwrap();
 
         let current_handle = match scheduler.threads.get(&id).cloned() {
             Some(current_handle) => current_handle,

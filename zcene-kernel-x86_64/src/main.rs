@@ -13,10 +13,11 @@ extern crate alloc;
 
 pub mod common;
 mod entry_point;
-mod future;
+pub mod actor;
+pub mod future;
 mod global_allocator;
 mod kernel;
 mod logger;
 mod panic_handler;
-mod smp;
+pub mod architecture;
 pub mod driver;

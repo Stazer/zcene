@@ -22,35 +22,10 @@ impl GlobalAllocator {
 
 unsafe impl GlobalAlloc for GlobalAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let a = without_interrupts(|| {
-            /*use crate::kernel::Kernel;
-            use core::fmt::Write;
-
-            Kernel::get()
-                .logger()
-                .writer(|w| write!(w, "before_alloc\n"));
-
-            let a = self.0.alloc(layout);
-
-            Kernel::get()
-                .logger()
-                .writer(|w| write!(w, "after_alloc\n"));
-
-            a*/
-
-            self.0.alloc(layout)
-        });
-
-        if a.is_null() {
-            panic!("No memory");
-        }
-
-        a
+        self.0.alloc(layout)
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        without_interrupts(|| {
-            self.0.dealloc(ptr, layout)
-        })
+        self.0.dealloc(ptr, layout)
     }
 }

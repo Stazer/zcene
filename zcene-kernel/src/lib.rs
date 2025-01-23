@@ -20,3 +20,4 @@ extern crate alloc;
 pub mod actor;
 pub mod common;
 pub mod memory;
+pub mod synchronization;

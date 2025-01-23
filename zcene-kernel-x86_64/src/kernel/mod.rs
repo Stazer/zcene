@@ -122,11 +122,6 @@ where
                 feature_info.initial_local_apic_id()
             );
 
-            /*for i in 0..100000000usize {
-                core::hint::black_box(());
-                x86_64::instructions::nop();
-            }*/
-
             Ok(())
         }
     }
@@ -192,10 +187,10 @@ pub type KernelFutureRuntime = FutureRuntime<FutureRuntimeHandler>;
 
 use alloc::alloc::Global;
 
-use crate::common::future::FutureRuntimeHandler;
+use crate::future::FutureRuntimeHandler;
 use zcene_core::actor::{ActorAddressReference, ActorSystem, ActorSystemReference};
 
-pub type KernelActorHandler = crate::common::actor::ActorHandler<FutureRuntimeHandler>;
+pub type KernelActorHandler = crate::actor::ActorHandler<FutureRuntimeHandler>;
 pub type KernelActorSystemReference = ActorSystemReference<KernelActorHandler>;
 pub type KernelActorAddress<A> = <KernelActorHandler as ActorHandler>::Address<A>;
 pub type KernelActorAddressReference<A> = ActorAddressReference<A, KernelActorHandler>;
@@ -237,9 +232,9 @@ impl Kernel {
         self.initialize_heap()?;
 
         self.actor_system = Some(
-            ActorSystem::try_new(crate::common::actor::ActorHandler::new(
+            ActorSystem::try_new(crate::actor::ActorHandler::new(
                 FutureRuntime::new(FutureRuntimeHandler::default()).unwrap(),
-                crate::common::actor::Shared::default().into(),
+                crate::actor::Shared::default().into(),
             ))
             .unwrap(),
         );
@@ -439,7 +434,7 @@ impl Kernel {
             .spurious_vector(34)
             .timer_mode(TimerMode::Periodic)
             .timer_divide(TimerDivide::Div16)
-            .timer_initial(500_000)
+            .timer_initial(15_000_000)
             .set_xapic_base(apic_virtual_address)
             .ipi_destination_mode(IpiDestMode::Physical)
             .build()
@@ -535,8 +530,8 @@ impl Kernel {
             .frame_manager()
             .translate_frame_identifier(smp_frame_identifier);
 
-        use crate::smp::SMP_SECTIONS_START;
-        use crate::smp::{SMP_HEADER, SMP_SECTIONS_SIZE};
+        use crate::architecture::smp::SMP_SECTIONS_START;
+        use crate::architecture::smp::{SMP_HEADER, SMP_SECTIONS_SIZE};
         use core::slice::{from_raw_parts, from_raw_parts_mut};
 
         let smp_sections_start = unsafe { linker_value(&SMP_SECTIONS_START) };
@@ -629,7 +624,7 @@ impl Kernel {
                 x86_64::instructions::nop();
             }
 
-            local_apic.send_sipi_all((crate::smp::smp_real_mode_entry as u64).try_into().unwrap());
+            local_apic.send_sipi_all((crate::architecture::smp::smp_real_mode_entry as u64).try_into().unwrap());
         }
     }
 

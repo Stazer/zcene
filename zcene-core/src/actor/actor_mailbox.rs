@@ -3,6 +3,7 @@ use crate::actor::{
     ActorSendError,
 };
 use alloc::sync::Arc;
+use core::fmt::{self, Formatter, Debug};
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -25,6 +26,16 @@ where
         Self {
             caller: self.caller.clone(),
         }
+    }
+}
+
+impl<M, H> Debug for ActorMailbox<M, H>
+where
+    M: ActorMessage,
+    H: ActorHandler,
+{
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        formatter.debug_struct("ActorMailbox").finish()
     }
 }
 
