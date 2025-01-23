@@ -28,6 +28,8 @@ use x86_64::VirtAddr;
 use zcene_kernel::common::linker_value;
 use zcene_kernel::common::memory::{MemoryAddress, PhysicalMemoryAddressPerspective};
 use zcene_kernel::memory::frame::{FrameManager, FrameManagerAllocationError};
+use zcene_kernel::common::memory::VirtualMemoryAddress;
+use zcene_kernel::common::memory::PhysicalMemoryAddress;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -86,7 +88,6 @@ impl From<FrameManagerAllocationError> for InitializeKernelError {
     }
 }
 
-
 #[derive(Constructor, Default)]
 pub struct ApplicationActor {
     number: usize,
@@ -126,6 +127,84 @@ where
         }
     }
 }
+
+
+#[derive(Constructor, Default)]
+pub struct RootActor {
+    subscriptions: Vec<ActorMailbox<(), KernelActorHandler>, Global>,
+}
+
+#[derive(Clone)]
+pub enum RootActorMessage {
+    Subscription(ActorMailbox<(), KernelActorHandler>),
+    NoOperation,
+}
+
+impl<H> Actor<H> for RootActor
+where
+    H: ActorHandler,
+    H::HandleContext<RootActorMessage>: ActorContextMessageProvider<RootActorMessage>,
+{
+    type Message = RootActorMessage;
+
+    fn handle(
+        &mut self,
+        context: H::HandleContext<Self::Message>,
+    ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
+        async move {
+            match context.message() {
+                RootActorMessage::Subscription(subscription) => {
+                    let subscription = subscription.clone();
+
+                    subscription.send(()).await.unwrap();
+
+                    self.subscriptions.push(subscription);
+                }
+                RootActorMessage::NoOperation => {},
+            };
+
+            Ok(())
+        }
+    }
+}
+
+
+#[derive(Constructor, Default)]
+pub struct LongRunningActor {
+    number: usize,
+    times: usize,
+}
+
+impl<H> Actor<H> for LongRunningActor
+where
+    H: ActorHandler,
+{
+    type Message = ();
+
+    fn handle(
+        &mut self,
+        _context: H::HandleContext<Self::Message>,
+    ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
+        async move {
+            loop {
+                for i in 0..10 {
+                    crate::common::println!(
+                        "long running"
+                    );
+                }
+
+                for i in 0..100000000 {
+                    core::hint::black_box(());
+                    x86_64::instructions::nop();
+                }
+
+            }
+
+            Ok(())
+        }
+    }
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -195,6 +274,115 @@ pub type KernelActorSystemReference = ActorSystemReference<KernelActorHandler>;
 pub type KernelActorAddress<A> = <KernelActorHandler as ActorHandler>::Address<A>;
 pub type KernelActorAddressReference<A> = ActorAddressReference<A, KernelActorHandler>;
 
+use ztd::Method;
+
+#[derive(Debug, Method)]
+#[Method(accessors)]
+pub struct MemoryManager {
+    physical_memory_offset: u64,
+    physical_memory_size_in_bytes: u64,
+}
+
+impl MemoryManager {
+    pub fn new(
+        physical_memory_offset: u64,
+        physical_memory_size_in_bytes: u64,
+    ) -> Self {
+        Self {
+            physical_memory_offset,
+            physical_memory_size_in_bytes,
+        }
+    }
+
+    pub fn physical_memory(&self) -> &'static mut [u8] {
+        unsafe {
+            from_raw_parts_mut(
+                self.physical_memory_offset as *mut u8,
+                self.physical_memory_size_in_bytes.try_into().unwrap(),
+            )
+        }
+    }
+
+    pub fn translate_virtual_memory_address(
+        &self,
+        memory_address: VirtualMemoryAddress,
+    ) -> PhysicalMemoryAddress {
+        PhysicalMemoryAddress::new(memory_address.as_u64() - self.physical_memory_offset)
+    }
+
+    pub fn translate_physical_memory_address(
+        &self,
+        memory_address: PhysicalMemoryAddress,
+    ) -> VirtualMemoryAddress {
+        VirtualMemoryAddress::new(memory_address.as_u64() + self.physical_memory_offset)
+    }
+
+    pub fn frame_manager(&self) -> FrameManager<'static, PhysicalMemoryAddressPerspective> {
+        unsafe { FrameManager::new_initialized(FRAME_SIZE, self.physical_memory()) }
+    }
+
+    pub fn active_page_table(&self) -> &'static mut PageTable {
+        let pointer = self.translate_physical_memory_address(
+            PhysicalMemoryAddress::new(Cr3::read().0.start_address().as_u64())
+        ).as_u64();
+
+        unsafe { &mut *(pointer as *mut PageTable) }
+    }
+
+    pub fn page_table_mapper(&self) -> OffsetPageTable<'static> {
+        unsafe {
+            OffsetPageTable::new(
+                self.active_page_table(),
+                VirtAddr::new(self.physical_memory_offset as u64),
+            )
+        }
+    }
+
+    pub fn allocate_stack(&self) -> Option<VirtualMemoryAddress> {
+        todo!()
+        /*let stack_frame_count = 4;
+        let stack_size = stack_frame_count * FRAME_SIZE;
+
+        let mut first_address = 0;
+        let mut stack_address = 0;
+        let mut mapper = self.page_table_mapper();
+
+        for stack_frame_identifier in self
+            .frame_manager()
+            .allocate_window(4).unwrap()
+        {
+            stack_address = self
+                .frame_manager()
+                .translate_frame_identifier(stack_frame_identifier).as_usize();
+
+            let page = Page::<Size4KiB>::containing_address(VirtAddr::new(
+                (stack_address).try_into().unwrap(),
+            ));
+
+            if first_address == 0 {
+                first_address = page.start_address().as_u64() + stack_size as u64;
+            }
+
+            unsafe {
+                mapper
+                    .map_to(
+                        page,
+                        PhysFrame::from_start_address(PhysAddr::new(
+                            stack_address.try_into().unwrap(),
+                        ))
+                            .unwrap(),
+                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                        &mut EmptyFrameAllocator,
+                    )
+                    .expect("Hello World")
+                    .flush();
+            }
+        }
+
+        (first_address).try_into().unwrap()*/
+    }
+}
+
 pub struct Kernel {
     logger: Logger,
     cores: usize,
@@ -241,6 +429,8 @@ impl Kernel {
 
         let timer_actor = self.actor_system().spawn(TimerActor::default()).unwrap();
 
+        let long_running_actor = self.actor_system().spawn(LongRunningActor::default()).unwrap();
+
         self.timer_actor = Some(timer_actor.clone());
 
         use zcene_core::actor::ActorAddressExt;
@@ -257,17 +447,19 @@ impl Kernel {
             )
         ).complete().unwrap();
 
-        /*timer_actor.send(
-            TimerActorMessage::Subscription(
-                self.actor_system().spawn(ApplicationActor::new(2)).unwrap().mailbox().unwrap()
-            )
-        ).complete().unwrap();*/
+        let root_actor = self.actor_system().spawn(RootActor::default()).unwrap();
 
-        /*timer_actor.send(
+        timer_actor.send(
             TimerActorMessage::Subscription(
-                self.actor_system().spawn(ApplicationActor::new(3)).unwrap().mailbox().unwrap()
+                root_actor.mailbox_with_mapping(|_| RootActorMessage::NoOperation).unwrap()
             )
-        ).complete();*/
+        ).complete().unwrap();
+
+        root_actor.send(
+            RootActorMessage::Subscription(
+                long_running_actor.mailbox().unwrap()
+            )
+        ).complete().unwrap();
 
         use zcene_core::future::FutureExt;
 

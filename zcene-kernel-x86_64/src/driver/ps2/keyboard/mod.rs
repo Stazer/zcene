@@ -13,7 +13,7 @@ where
     H: ActorHandler,
 {
     Subscription(ActorMailbox<KeyboardDecodedKeyMessage, H>),
-    DecodedKey(KeyboardDecodedKeyMessage),
+    Byte(u16),
 }
 
 impl<H> Clone for KeyboardMessage<H>
@@ -23,7 +23,7 @@ where
     fn clone(&self) -> Self {
         match self {
             Self::Subscription(mailbox) => Self::Subscription(mailbox.clone()),
-            Self::DecodedKey(message) => Self::DecodedKey(message.clone()),
+            Self::Byte(byte) => Self::Byte(*byte),
         }
     }
 }
@@ -46,7 +46,7 @@ where
         async move {
             match context.message() {
                 KeyboardMessage::Subscription(mailbox) => self.subscriptions.push(mailbox.clone()),
-                KeyboardMessage::DecodedKey(key) => {
+                KeyboardMessage::Byte(byte) => {
                 }
             }
             Ok(())

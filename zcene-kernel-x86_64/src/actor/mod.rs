@@ -22,15 +22,6 @@ pub struct ActorSpecification {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use zcene_kernel::common::memory::VirtualMemoryAddress;
-
-#[derive(Constructor, Debug)]
-pub struct ActorExecutionContext {
-    stack_pointer: VirtualMemoryAddress,
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
 pub type ExecutionUnitIdentifier = usize;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -58,14 +49,47 @@ pub struct Handle {
 }
 
 #[derive(Default)]
-pub struct SchedulerQueue {
-    all: VecDeque<Arc<Handle>>,
-}
-
-#[derive(Default)]
 pub struct Scheduler {
     queue: VecDeque<Arc<Handle>>,
     threads: BTreeMap<usize, Arc<Handle>>,
+    stacks: BTreeSet<u64>,
+}
+
+use zcene_kernel::common::memory::VirtualMemoryAddress;
+
+pub type ActorExecutionContextIdentifier = usize;
+
+use ztd::Method;
+
+#[derive(Constructor, Debug)]
+pub struct ActorExecutionContext {
+    identifier: ActorExecutionContextIdentifier,
+    stack_pointer: VirtualMemoryAddress,
+}
+
+pub type ActorExecutionContextReference<H> = Arc<ActorExecutionContext, <H as zcene_core::actor::ActorHandler>::Allocator>;
+
+#[derive(Default, Debug)]
+pub struct ActorQueuePreemptionSchedulerStrategy {
+    queue: VecDeque<Arc<ActorExecutionContext>>,
+}
+
+/*impl<H> ActorPreemptionScheduler<H> for ActorQueuePreemptionSchedulerStrategy
+where
+    H: zcene_core::actor::ActorHandler,
+{
+}*/
+
+pub trait ActorPreemptionSchedulerStrategy<H>
+where
+    H: zcene_core::actor::ActorHandler,
+{
+    fn r#continue(&mut self, execution_context: ActorExecutionContextReference<H>) {
+    }
+
+    fn r#break(&mut self) {
+
+    }
 }
 
 impl Scheduler {
@@ -97,8 +121,11 @@ use alloc::sync::Arc;
 pub struct ActorHandler<H>
 where
     H: FutureRuntimeHandler,
+    //S: ActorPreemptionScheduler<Self>,
 {
     future_runtime: FutureRuntimeReference<H>,
+    //preemption_scheduler: S,
+    //scheduler: Arc<S>
     shared: Arc<Shared>
 }
 
@@ -138,12 +165,14 @@ where
         let mut pinned = pin!(self.actor.handle(FutureRuntimeActorHandleContext::new(message)));
 
         without_interrupts(|| {
+            //preemption_scheduler.r#continue(handle.clone());
             shared.scheduler.lock().report_handle(Some(handle.clone()));
         });
 
         let result = pinned.as_mut().poll(context);
 
         without_interrupts(|| {
+            //preemption_scheduler.r#break();
             shared.scheduler.lock().report_handle(None);
         });
 
@@ -202,7 +231,7 @@ where
             loop {
                 let message = match receiver.receive().await {
                     Some(message) => message,
-                    None => continue,
+                    None => break,
                 };
 
                 (ActorHandleExecutor {
@@ -213,6 +242,8 @@ where
                     handler: PhantomData::<H>,
                 }).await;
             }
+
+            println!("exit...");
         });
 
         Ok(reference)
@@ -283,24 +314,45 @@ where
 
         let id = crate::architecture::initial_local_apic_id().unwrap();
 
-        let current_handle = match scheduler.threads.get(&id).cloned() {
-            Some(current_handle) => current_handle,
-            None => return stack_pointer,
-        };
-
-        scheduler.threads.remove(&id);
-        current_handle.stack_pointer.store(stack_pointer, Ordering::SeqCst);
-
         let next_handle = scheduler.queue.pop_front();
 
-        scheduler.queue.push_back(current_handle.clone());
+        let current_handle = match scheduler.threads.get(&id).cloned() {
+            Some(current_handle) => {
+                scheduler.threads.remove(&id);
+                current_handle.stack_pointer.store(stack_pointer, Ordering::SeqCst);
+                scheduler.queue.push_back(current_handle.clone());
+
+                Some(current_handle)
+            },
+            None => {
+                scheduler.stacks.insert(stack_pointer);
+
+                None
+            },
+        };
 
         match next_handle {
-            Some(next_handle) => next_handle.stack_pointer.load(Ordering::SeqCst),
+            Some(next_handle) => {
+                scheduler.threads.insert(id, next_handle.clone());
+                next_handle.stack_pointer.load(Ordering::SeqCst)
+            },
             None => {
-                create_new_stack(Kernel::get().allocate_stack())
+                match scheduler.stacks.pop_first() {
+                    Some(stack_pointer) => {
+                        println!("reuse stack...");
+                        stack_pointer
+                    }
+                    None => {
+                        println!("create stack...");
+                        create_new_stack(Kernel::get().allocate_stack())
+                    }
+                }
             }
         }
+    }
+
+    pub fn preempt(&self, stack_pointer: VirtualMemoryAddress) -> VirtualMemoryAddress {
+        stack_pointer
     }
 }
 

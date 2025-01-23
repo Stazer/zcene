@@ -72,7 +72,6 @@ pub extern "x86-interrupt" fn invalid_tss_entry_point(_stack_frame: InterruptSta
         .logger()
         .writer(|w| write!(w, "invalid tss {:#?}", err));
 
-
     loop {}
 }
 
@@ -153,6 +152,7 @@ pub extern "x86-interrupt" fn security_exception_entry_point(_stack_frame: Inter
     loop {
     }
 }
+
 pub extern "x86-interrupt" fn divide_by_zero_interrupt_entry_point(_stack_frame: InterruptStackFrame) {
     Kernel::get().logger().write("divide by zero");
 
