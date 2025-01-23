@@ -90,6 +90,7 @@ impl From<FrameManagerAllocationError> for InitializeKernelError {
 #[derive(Constructor, Default)]
 pub struct ApplicationActor {
     number: usize,
+    times: usize,
 }
 
 impl<H> Actor<H> for ApplicationActor
@@ -104,17 +105,27 @@ where
         context: H::HandleContext<Self::Message>,
     ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
         async move {
+            self.times += 1;
+
             let cpu_id = CpuId::new();
             let feature_info = cpu_id.get_feature_info().unwrap();
 
-            Kernel::get()
-                .logger()
-                .writer(|w| write!(w, "application::handle {} {} {}\n", self.number, context.message(), feature_info.initial_local_apic_id()));
+            if self.times != *context.message() {
+                crate::common::println!("DATA RACE DETECTED!");
+            }
 
-            for i in 0..1000000000usize {
+            crate::common::println!(
+                "application #{}, times: {}, ticks: {}, CPU: {}",
+                self.number,
+                self.times,
+                context.message(),
+                feature_info.initial_local_apic_id()
+            );
+
+            /*for i in 0..100000000usize {
                 core::hint::black_box(());
                 x86_64::instructions::nop();
-            }
+            }*/
 
             Ok(())
         }
@@ -152,7 +163,6 @@ where
         context: H::HandleContext<Self::Message>,
     ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
         async move {
-
             match context.message() {
                 Self::Message::Tick => {
                     self.total_ticks += 1;
@@ -242,13 +252,13 @@ impl Kernel {
 
         timer_actor.send(
             TimerActorMessage::Subscription(
-                self.actor_system().spawn(ApplicationActor::new(1)).unwrap().mailbox().unwrap()
+                self.actor_system().spawn(ApplicationActor::new(1, 0)).unwrap().mailbox().unwrap()
             )
         ).complete().unwrap();
 
         timer_actor.send(
             TimerActorMessage::Subscription(
-                self.actor_system().spawn(ApplicationActor::new(2)).unwrap().mailbox().unwrap()
+                self.actor_system().spawn(ApplicationActor::new(2, 0)).unwrap().mailbox().unwrap()
             )
         ).complete().unwrap();
 

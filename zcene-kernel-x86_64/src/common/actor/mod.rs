@@ -15,6 +15,13 @@ use crate::common::println;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Constructor, Debug)]
+pub struct ActorSpecification {
+    preemptive: bool,
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 pub type ActorIdentifier = usize;
 
 use core::sync::atomic::AtomicUsize;
@@ -35,27 +42,6 @@ struct Context {
 pub struct Handle {
     identifier: ActorIdentifier,
     stack_pointer: AtomicU64,
-}
-
-impl PartialEq for Handle {
-    fn eq(&self, other: &Self) -> bool {
-        self.identifier.eq(&other.identifier)
-    }
-}
-
-impl Eq for Handle {
-}
-
-impl PartialOrd for Handle {
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        self.identifier.partial_cmp(&other.identifier)
-    }
-}
-
-impl Ord for Handle {
-    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        self.identifier.cmp(&other.identifier)
-    }
 }
 
 #[derive(Default)]
@@ -80,10 +66,6 @@ impl Scheduler {
         } else {
             self.threads.remove(&id);
         }
-
-       /* Kernel::get()
-            .logger()
-            .writer(|w| write!(w, "{:?} -> {:?}\n", current, handle.map(|x| x.identifier)));*/
     }
 }
 
@@ -202,18 +184,10 @@ where
             let mut actor = actor;
 
             loop {
-                /*Kernel::get()
-                    .logger()
-                    .writer(|w| write!(w, "recv...\n"));*/
-
                 let message = match receiver.receive().await {
                     Some(message) => message,
                     None => continue,
                 };
-
-                /*Kernel::get()
-                    .logger()
-                    .writer(|w| write!(w, "recv next\n"));*/
 
                 (ActorHandleExecutor {
                     actor: &mut actor,
@@ -222,10 +196,6 @@ where
                     handle: handle.clone(),
                     handler: PhantomData::<H>,
                 }).await;
-
-                /*Kernel::get()
-                    .logger()
-                    .writer(|w| write!(w, "exec finish\n"));*/
             }
         });
 
@@ -233,42 +203,7 @@ where
     }
 
     fn enter(&self) -> Result<(), ActorEnterError> {
-        use zcene_core::future::runtime::FutureRuntimeQueue;
-        use zcene_core::future::runtime::FutureRuntimeYielder;
-        use futures::task::waker_ref;
-
-        loop {
-            let task = match self.future_runtime.handler().queue().dequeue() {
-                Some(task) => task,
-                None => {
-                    self.future_runtime.handler().yielder().r#yield();
-                    continue;
-                }
-            };
-
-            let mut future_slot = task.slot().lock();
-
-            if let Some(mut future) = future_slot.take() {
-                let waker = waker_ref(&task);
-                let context = &mut core::task::Context::from_waker(&waker);
-
-                if future.as_mut().poll(context).is_pending() {
-                    *future_slot = Some(future);
-
-                    /*Kernel::get()
-                        .logger()
-                        .writer(|w| write!(w, "poll future pending\n"));*/
-                } else {
-                    /*Kernel::get()
-                        .logger()
-                        .writer(|w| write!(w, "poll future done\n"));*/
-                }
-            }
-        }
-
-        //self.shared.threads.lock();
-
-        //self.future_runtime.run();
+        self.future_runtime.run();
 
         Ok(())
     }
@@ -312,7 +247,7 @@ extern "C" fn create_new_stack(mut new_stack_pointer: u64) -> u64 {
 
             "mov rsp, rbx",
 
-            rflags = in(reg) RFlags::RESUME_FLAG.bits(),
+            rflags = in(reg) (RFlags::RESUME_FLAG | RFlags::INTERRUPT_FLAG).bits(),
             new_instruction_pointer = in(reg) VirtAddr::new(hello as _).as_u64(),
             new_stack_pointer = inout(reg) new_stack_pointer,
             code_segment = in(reg) SegmentSelector::new(1, PrivilegeLevel::Ring0).0,
@@ -334,9 +269,7 @@ where
 
         let current_handle = match scheduler.threads.get(&id).cloned() {
             Some(current_handle) => current_handle,
-            None => return {
-                stack_pointer
-            },
+            None => return stack_pointer,
         };
 
         scheduler.threads.remove(&id);

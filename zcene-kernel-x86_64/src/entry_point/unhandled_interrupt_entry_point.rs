@@ -166,7 +166,17 @@ pub extern "x86-interrupt" fn machine_check_interrupt_entry_point(_stack_frame: 
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn scheduler_part_2(stack_pointer: u64) -> u64 {
+pub unsafe extern "C" fn handle_preemption(stack_pointer: u64) -> u64 {
+    if let Err(error) = Kernel::get()
+        .timer_actor()
+        .send(TimerActorMessage::Tick)
+        .complete()
+    {
+        crate::common::println!("{}", error);
+    }
+
+    X2APIC::new().eoi();
+
     let stack_pointer = Kernel::get()
         .actor_system()
         .handler()
@@ -175,14 +185,6 @@ pub unsafe extern "C" fn scheduler_part_2(stack_pointer: u64) -> u64 {
     /*Kernel::get()
         .logger()
         .writer(|w| write!(w, "new {:X}\n", stack_pointer));*/
-
-    X2APIC::new().eoi();
-
-    Kernel::get()
-        .timer_actor()
-        .send(TimerActorMessage::Tick)
-        .complete()
-        .unwrap();
 
     stack_pointer
 }
@@ -208,7 +210,7 @@ pub unsafe fn timer_entry_point() {
         "push r15",
         "mov rdi, rsp",
         "cld",
-        "call scheduler_part_2",
+        "call handle_preemption",
         "mov rsp, rax",
         "pop r15",
         "pop r14",

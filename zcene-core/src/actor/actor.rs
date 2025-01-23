@@ -31,4 +31,8 @@ where
     ) -> impl ActorFuture<'static, Result<(), ActorDestroyError>> {
         async { Ok(()) }
     }
+
+    fn specification() -> H::Specification {
+        H::Specification::default()
+    }
 }
