@@ -189,7 +189,8 @@ where
             loop {
                 for i in 0..10 {
                     crate::common::println!(
-                        "long running"
+                        "long running {}",
+                        self.number
                     );
                 }
 
@@ -429,8 +430,6 @@ impl Kernel {
 
         let timer_actor = self.actor_system().spawn(TimerActor::default()).unwrap();
 
-        let long_running_actor = self.actor_system().spawn(LongRunningActor::default()).unwrap();
-
         self.timer_actor = Some(timer_actor.clone());
 
         use zcene_core::actor::ActorAddressExt;
@@ -457,9 +456,15 @@ impl Kernel {
 
         root_actor.send(
             RootActorMessage::Subscription(
-                long_running_actor.mailbox().unwrap()
+                self.actor_system().spawn(LongRunningActor::default()).unwrap().mailbox().unwrap()
             )
         ).complete().unwrap();
+
+        /*root_actor.send(
+            RootActorMessage::Subscription(
+                self.actor_system().spawn(LongRunningActor::new(1, 1)).unwrap().mailbox().unwrap()
+            )
+        ).complete().unwrap();*/
 
         use zcene_core::future::FutureExt;
 
