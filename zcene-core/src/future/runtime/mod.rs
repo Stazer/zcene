@@ -1,5 +1,4 @@
 mod future_runtime;
-mod future_runtime_actor_handle_context;
 mod future_runtime_actor_handler;
 mod future_runtime_allocator;
 mod future_runtime_box_future;
@@ -19,7 +18,6 @@ mod future_runtime_waker;
 mod future_runtime_yielder;
 
 pub use future_runtime::*;
-pub use future_runtime_actor_handle_context::*;
 pub use future_runtime_actor_handler::*;
 pub use future_runtime_allocator::*;
 pub use future_runtime_box_future::*;

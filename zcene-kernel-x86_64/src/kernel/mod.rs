@@ -206,7 +206,6 @@ where
                     core::hint::black_box(());
                     x86_64::instructions::nop();
                 }
-
             }
 
             Ok(())

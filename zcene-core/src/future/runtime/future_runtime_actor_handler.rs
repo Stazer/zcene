@@ -1,9 +1,10 @@
 use crate::actor::{
     Actor, ActorAddressReference, ActorEnterError, ActorHandler, ActorMessage, ActorMessageChannel,
     ActorMessageChannelAddress, ActorSpawnError,
+    ActorCommonHandleContext,
 };
 use crate::future::runtime::{
-    FutureRuntimeActorHandleContext, FutureRuntimeHandler, FutureRuntimeReference,
+    FutureRuntimeHandler, FutureRuntimeReference,
 };
 use core::marker::PhantomData;
 use ztd::Constructor;
@@ -31,7 +32,7 @@ where
 
     type CreateContext = ();
     type HandleContext<M>
-        = FutureRuntimeActorHandleContext<M>
+        = ActorCommonHandleContext<M>
     where
         M: ActorMessage;
     type DestroyContext = ();

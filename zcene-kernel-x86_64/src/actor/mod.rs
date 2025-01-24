@@ -2,16 +2,16 @@ use core::marker::PhantomData;
 use zcene_core::actor;
 use zcene_core::actor::{
     Actor, ActorAddressReference, ActorEnterError, ActorMessage, ActorMessageChannel,
-    ActorMessageChannelAddress, ActorSpawnError,
+    ActorMessageChannelAddress, ActorSpawnError, ActorCommonHandleContext,
 };
 use zcene_core::future::runtime::{
-    FutureRuntimeActorHandleContext, FutureRuntimeHandler, FutureRuntimeReference,
+    FutureRuntimeHandler, FutureRuntimeReference,
 };
 use ztd::Constructor;
 use crate::kernel::Kernel;
+use crate::common::println;
 use core::fmt::Write;
 
-use crate::common::println;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -48,7 +48,7 @@ pub struct Handle {
     stack_pointer: AtomicU64,
 }
 
-#[derive(Default)]
+#[derive(Clone)]
 pub enum Thread {
     Coorperative,
     Preemptive(Arc<Handle>),
@@ -168,7 +168,7 @@ where
         let shared = self.shared.clone();
         let message = self.message.clone();
 
-        let mut pinned = pin!(self.actor.handle(FutureRuntimeActorHandleContext::new(message)));
+        let mut pinned = pin!(self.actor.handle(ActorCommonHandleContext::new(message)));
 
         without_interrupts(|| {
             //preemption_scheduler.r#continue(handle.clone());
@@ -199,7 +199,7 @@ where
 
     type CreateContext = ();
     type HandleContext<M>
-        = FutureRuntimeActorHandleContext<M>
+        = ActorCommonHandleContext<M>
     where
         M: ActorMessage;
     type DestroyContext = ();
@@ -316,7 +316,11 @@ where
     H: FutureRuntimeHandler,
 {
     pub fn reschedule(&self, stack_pointer: u64) -> u64 {
+        println!("prev reschedule...");
+
         let mut scheduler = self.shared.scheduler.lock();
+
+        println!("after reschedule...");
 
         let id = crate::architecture::initial_local_apic_id().unwrap();
 
