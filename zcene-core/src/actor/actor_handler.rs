@@ -12,9 +12,9 @@ pub trait ActorHandler: ActorCommonBounds + Sized {
     where
         A: Actor<Self>;
 
-    type CreateContext;
-    type DestroyContext;
-    type HandleContext<M>
+    type CreateContext: ActorCommonBounds;
+    type DestroyContext: ActorCommonBounds;
+    type HandleContext<M>: ActorCommonBounds
     where
         M: ActorMessage;
 
