@@ -13,6 +13,7 @@ mod context;
 mod error;
 mod message;
 mod root_actor;
+mod inline_actor;
 
 pub use address::*;
 pub use actor::*;
@@ -29,3 +30,4 @@ pub use context::*;
 pub use error::*;
 pub use message::*;
 pub use root_actor::*;
+pub use inline_actor::*;

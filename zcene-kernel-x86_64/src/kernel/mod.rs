@@ -187,14 +187,22 @@ where
     ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
         async move {
             loop {
-                for i in 0..10 {
-                    crate::common::println!(
-                        "long running {}",
-                        self.number
-                    );
-                }
+                crate::common::println!(
+                    "long running {}",
+                    self.number
+                );
 
-                for i in 0..100000000 {
+                crate::common::println!(
+                    "long running {}",
+                    self.number
+                );
+
+                crate::common::println!(
+                    "long running {}",
+                    self.number
+                );
+
+                for i in 0..1000000000 {
                     core::hint::black_box(());
                     x86_64::instructions::nop();
                 }
@@ -457,6 +465,12 @@ impl Kernel {
         root_actor.send(
             RootActorMessage::Subscription(
                 self.actor_system().spawn(LongRunningActor::default()).unwrap().mailbox().unwrap()
+            )
+        ).complete().unwrap();
+
+        root_actor.send(
+            RootActorMessage::Subscription(
+                self.actor_system().spawn(LongRunningActor::new(1, 1)).unwrap().mailbox().unwrap()
             )
         ).complete().unwrap();
 

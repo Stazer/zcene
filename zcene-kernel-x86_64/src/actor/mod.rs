@@ -42,10 +42,16 @@ struct Context {
     stack_pointer: u64,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Handle {
     identifier: ActorIdentifier,
     stack_pointer: AtomicU64,
+}
+
+#[derive(Default)]
+pub enum Thread {
+    Coorperative,
+    Preemptive(Arc<Handle>),
 }
 
 #[derive(Default)]
@@ -338,14 +344,8 @@ where
             },
             None => {
                 match scheduler.stacks.pop_first() {
-                    Some(stack_pointer) => {
-                        println!("reuse stack...");
-                        stack_pointer
-                    }
-                    None => {
-                        println!("create stack...");
-                        create_new_stack(Kernel::get().allocate_stack())
-                    }
+                    Some(stack_pointer) => stack_pointer,
+                    None => create_new_stack(Kernel::get().allocate_stack()),
                 }
             }
         }
