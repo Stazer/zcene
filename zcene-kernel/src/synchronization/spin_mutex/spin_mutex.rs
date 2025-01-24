@@ -1,12 +1,13 @@
-use spin::Mutex;
 use crate::synchronization::SpinMutexGuard;
+use spin::Mutex;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct SpinMutex<T>(Mutex<T>);
 
 impl<T> Default for SpinMutex<T>
-where T: Default
+where
+    T: Default,
 {
     fn default() -> Self {
         Self::new(T::default())

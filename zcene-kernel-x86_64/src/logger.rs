@@ -1,10 +1,10 @@
 use bootloader_api::info::FrameBuffer;
 use bootloader_api::BootInfo;
 use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
+use bootloader_x86_64_common::serial::SerialPort;
 use core::fmt::{self, Write};
 use log::{Log, Metadata, Record};
 use x86_64::instructions::interrupts::without_interrupts;
-use bootloader_x86_64_common::serial::SerialPort;
 use zcene_kernel::synchronization::Mutex;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

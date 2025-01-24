@@ -1,11 +1,8 @@
 use crate::actor::{
-    Actor, ActorAddressReference, ActorEnterError, ActorHandler, ActorMessage, ActorMessageChannel,
-    ActorMessageChannelAddress, ActorSpawnError,
-    ActorCommonHandleContext,
+    Actor, ActorAddressReference, ActorCommonHandleContext, ActorEnterError, ActorHandler,
+    ActorMessage, ActorMessageChannel, ActorMessageChannelAddress, ActorSpawnError,
 };
-use crate::future::runtime::{
-    FutureRuntimeHandler, FutureRuntimeReference,
-};
+use crate::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
 use core::marker::PhantomData;
 use ztd::Constructor;
 

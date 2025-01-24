@@ -32,12 +32,12 @@ where
                 panic!("hello");
 
                 Err(future)
-            },
+            }
             Err(PushError::Closed(future)) => {
                 panic!("hello");
 
                 Err(future)
-            },
+            }
         }
     }
 

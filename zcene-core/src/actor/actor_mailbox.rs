@@ -3,7 +3,7 @@ use crate::actor::{
     ActorSendError,
 };
 use alloc::sync::Arc;
-use core::fmt::{self, Formatter, Debug};
+use core::fmt::{self, Debug, Formatter};
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

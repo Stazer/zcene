@@ -6,7 +6,7 @@ pub use interrupt_descriptor_table::*;
 
 use crate::entry_point::{
     double_fault_entry_point, keyboard_interrupt_entry_point, page_fault_entry_point,
-    timer_interrupt_entry_point, unhandled_interrupt_entry_point, timer_interrupt_handler,
+    timer_interrupt_entry_point, timer_interrupt_handler, unhandled_interrupt_entry_point,
 };
 use crate::global_allocator::GLOBAL_ALLOCATOR;
 use crate::logger::Logger;
@@ -26,10 +26,10 @@ use x86_64::structures::paging::{Mapper, OffsetPageTable, Page, PageTable, PageT
 use x86_64::PhysAddr;
 use x86_64::VirtAddr;
 use zcene_kernel::common::linker_value;
+use zcene_kernel::common::memory::PhysicalMemoryAddress;
+use zcene_kernel::common::memory::VirtualMemoryAddress;
 use zcene_kernel::common::memory::{MemoryAddress, PhysicalMemoryAddressPerspective};
 use zcene_kernel::memory::frame::{FrameManager, FrameManagerAllocationError};
-use zcene_kernel::common::memory::VirtualMemoryAddress;
-use zcene_kernel::common::memory::PhysicalMemoryAddress;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -111,10 +111,6 @@ where
             let cpu_id = CpuId::new();
             let feature_info = cpu_id.get_feature_info().unwrap();
 
-            if self.times != *context.message() {
-                crate::common::println!("DATA RACE DETECTED!");
-            }
-
             crate::common::println!(
                 "application #{}, times: {}, ticks: {}, CPU: {}",
                 self.number,
@@ -127,7 +123,6 @@ where
         }
     }
 }
-
 
 #[derive(Constructor, Default)]
 pub struct RootActor {
@@ -160,14 +155,13 @@ where
 
                     self.subscriptions.push(subscription);
                 }
-                RootActorMessage::NoOperation => {},
+                RootActorMessage::NoOperation => {}
             };
 
             Ok(())
         }
     }
 }
-
 
 #[derive(Constructor, Default)]
 pub struct LongRunningActor {
@@ -187,20 +181,7 @@ where
     ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
         async move {
             loop {
-                crate::common::println!(
-                    "long running {}",
-                    self.number
-                );
-
-                crate::common::println!(
-                    "long running {}",
-                    self.number
-                );
-
-                crate::common::println!(
-                    "long running {}",
-                    self.number
-                );
+                crate::common::println!("long running {}", self.number);
 
                 for i in 0..1000000000 {
                     core::hint::black_box(());
@@ -212,7 +193,6 @@ where
         }
     }
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -266,9 +246,7 @@ where
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 use zcene_core::actor::{Actor, ActorCreateError, ActorFuture, ActorHandleError, ActorHandler};
-use zcene_core::future::runtime::{
-    FutureRuntime, FutureRuntimeActorHandler,
-};
+use zcene_core::future::runtime::{FutureRuntime, FutureRuntimeActorHandler};
 
 pub type KernelFutureRuntime = FutureRuntime<FutureRuntimeHandler>;
 
@@ -292,10 +270,7 @@ pub struct MemoryManager {
 }
 
 impl MemoryManager {
-    pub fn new(
-        physical_memory_offset: u64,
-        physical_memory_size_in_bytes: u64,
-    ) -> Self {
+    pub fn new(physical_memory_offset: u64, physical_memory_size_in_bytes: u64) -> Self {
         Self {
             physical_memory_offset,
             physical_memory_size_in_bytes,
@@ -330,9 +305,11 @@ impl MemoryManager {
     }
 
     pub fn active_page_table(&self) -> &'static mut PageTable {
-        let pointer = self.translate_physical_memory_address(
-            PhysicalMemoryAddress::new(Cr3::read().0.start_address().as_u64())
-        ).as_u64();
+        let pointer = self
+            .translate_physical_memory_address(PhysicalMemoryAddress::new(
+                Cr3::read().0.start_address().as_u64(),
+            ))
+            .as_u64();
 
         unsafe { &mut *(pointer as *mut PageTable) }
     }
@@ -441,37 +418,60 @@ impl Kernel {
 
         use zcene_core::actor::ActorAddressExt;
 
-        timer_actor.send(
-            TimerActorMessage::Subscription(
-                self.actor_system().spawn(ApplicationActor::new(1, 0)).unwrap().mailbox().unwrap()
-            )
-        ).complete().unwrap();
+        timer_actor
+            .send(TimerActorMessage::Subscription(
+                self.actor_system()
+                    .spawn(ApplicationActor::new(1, 0))
+                    .unwrap()
+                    .mailbox()
+                    .unwrap(),
+            ))
+            .complete()
+            .unwrap();
 
-        timer_actor.send(
-            TimerActorMessage::Subscription(
-                self.actor_system().spawn(ApplicationActor::new(2, 0)).unwrap().mailbox().unwrap()
-            )
-        ).complete().unwrap();
+        timer_actor
+            .send(TimerActorMessage::Subscription(
+                self.actor_system()
+                    .spawn(ApplicationActor::new(2, 0))
+                    .unwrap()
+                    .mailbox()
+                    .unwrap(),
+            ))
+            .complete()
+            .unwrap();
 
         let root_actor = self.actor_system().spawn(RootActor::default()).unwrap();
 
-        timer_actor.send(
-            TimerActorMessage::Subscription(
-                root_actor.mailbox_with_mapping(|_| RootActorMessage::NoOperation).unwrap()
-            )
-        ).complete().unwrap();
+        timer_actor
+            .send(TimerActorMessage::Subscription(
+                root_actor
+                    .mailbox_with_mapping(|_| RootActorMessage::NoOperation)
+                    .unwrap(),
+            ))
+            .complete()
+            .unwrap();
 
-        root_actor.send(
-            RootActorMessage::Subscription(
-                self.actor_system().spawn(LongRunningActor::default()).unwrap().mailbox().unwrap()
-            )
-        ).complete().unwrap();
+        root_actor
+            .send(RootActorMessage::Subscription(
+                self.actor_system()
+                    .spawn(LongRunningActor::default())
+                    .unwrap()
+                    .mailbox()
+                    .unwrap(),
+            ))
+            .complete()
+            .unwrap();
 
-        root_actor.send(
-            RootActorMessage::Subscription(
-                self.actor_system().spawn(LongRunningActor::new(1, 1)).unwrap().mailbox().unwrap()
-            )
-        ).complete().unwrap();
+        root_actor
+            .send(RootActorMessage::Subscription(
+                self.actor_system()
+                    .spawn(LongRunningActor::new(1, 1))
+                    .unwrap()
+                    .mailbox()
+                    .unwrap(),
+            ))
+            .complete()
+            .unwrap();
 
         /*root_actor.send(
             RootActorMessage::Subscription(
@@ -659,29 +659,75 @@ impl Kernel {
 
             use crate::entry_point::*;
 
-            interrupt_descriptor_table.divide_error.set_handler_fn(divide_by_zero_interrupt_entry_point);
-            interrupt_descriptor_table.debug.set_handler_fn(debug_interrupt_entry_point);
-            interrupt_descriptor_table.non_maskable_interrupt.set_handler_fn(non_maskable_interrupt_entry_point);
-            interrupt_descriptor_table.breakpoint.set_handler_fn(breakpoint_interrupt_entry_point);
-            interrupt_descriptor_table.overflow.set_handler_fn(overflow_interrupt_entry_point);
-            interrupt_descriptor_table.bound_range_exceeded.set_handler_fn(bound_range_exceeded_interrupt_entry_point);
-            interrupt_descriptor_table.invalid_opcode.set_handler_fn(invalid_opcode_interrupt_entry_point);
-            interrupt_descriptor_table.device_not_available.set_handler_fn(device_not_available_interrupt_entry_point);
-            interrupt_descriptor_table.double_fault.set_handler_fn(double_fault_entry_point);
-            interrupt_descriptor_table.invalid_tss.set_handler_fn(invalid_tss_entry_point);
-            interrupt_descriptor_table.segment_not_present.set_handler_fn(segment_not_present_entry_point);
-            interrupt_descriptor_table.stack_segment_fault.set_handler_fn(stack_segment_fault_entry_point);
-            interrupt_descriptor_table.general_protection_fault.set_handler_fn(general_protection_fault_entry_point);
-            interrupt_descriptor_table.page_fault.set_handler_fn(page_fault_entry_point);
-            interrupt_descriptor_table.x87_floating_point.set_handler_fn(unhandled_interrupt_entry_point);
-            interrupt_descriptor_table.alignment_check.set_handler_fn(alignment_check_entry_point);
-            interrupt_descriptor_table.machine_check.set_handler_fn(machine_check_interrupt_entry_point);
-            interrupt_descriptor_table.simd_floating_point.set_handler_fn(unhandled_interrupt_entry_point);
-            interrupt_descriptor_table.virtualization.set_handler_fn(virtualization_entry_point);
-            interrupt_descriptor_table.cp_protection_exception.set_handler_fn(cp_protection_entry_point);
-            interrupt_descriptor_table.hv_injection_exception.set_handler_fn(hv_injection_interrupt_entry_point);
-            interrupt_descriptor_table.vmm_communication_exception.set_handler_fn(vmm_entry_point);
-            interrupt_descriptor_table.security_exception.set_handler_fn(security_exception_entry_point);
+            interrupt_descriptor_table
+                .divide_error
+                .set_handler_fn(divide_by_zero_interrupt_entry_point);
+            interrupt_descriptor_table
+                .debug
+                .set_handler_fn(debug_interrupt_entry_point);
+            interrupt_descriptor_table
+                .non_maskable_interrupt
+                .set_handler_fn(non_maskable_interrupt_entry_point);
+            interrupt_descriptor_table
+                .breakpoint
+                .set_handler_fn(breakpoint_interrupt_entry_point);
+            interrupt_descriptor_table
+                .overflow
+                .set_handler_fn(overflow_interrupt_entry_point);
+            interrupt_descriptor_table
+                .bound_range_exceeded
+                .set_handler_fn(bound_range_exceeded_interrupt_entry_point);
+            interrupt_descriptor_table
+                .invalid_opcode
+                .set_handler_fn(invalid_opcode_interrupt_entry_point);
+            interrupt_descriptor_table
+                .device_not_available
+                .set_handler_fn(device_not_available_interrupt_entry_point);
+            interrupt_descriptor_table
+                .double_fault
+                .set_handler_fn(double_fault_entry_point);
+            interrupt_descriptor_table
+                .invalid_tss
+                .set_handler_fn(invalid_tss_entry_point);
+            interrupt_descriptor_table
+                .segment_not_present
+                .set_handler_fn(segment_not_present_entry_point);
+            interrupt_descriptor_table
+                .stack_segment_fault
+                .set_handler_fn(stack_segment_fault_entry_point);
+            interrupt_descriptor_table
+                .general_protection_fault
+                .set_handler_fn(general_protection_fault_entry_point);
+            interrupt_descriptor_table
+                .page_fault
+                .set_handler_fn(page_fault_entry_point);
+            interrupt_descriptor_table
+                .x87_floating_point
+                .set_handler_fn(unhandled_interrupt_entry_point);
+            interrupt_descriptor_table
+                .alignment_check
+                .set_handler_fn(alignment_check_entry_point);
+            interrupt_descriptor_table
+                .machine_check
+                .set_handler_fn(machine_check_interrupt_entry_point);
+            interrupt_descriptor_table
+                .simd_floating_point
+                .set_handler_fn(unhandled_interrupt_entry_point);
+            interrupt_descriptor_table
+                .virtualization
+                .set_handler_fn(virtualization_entry_point);
+            interrupt_descriptor_table
+                .cp_protection_exception
+                .set_handler_fn(cp_protection_entry_point);
+            interrupt_descriptor_table
+                .hv_injection_exception
+                .set_handler_fn(hv_injection_interrupt_entry_point);
+            interrupt_descriptor_table
+                .vmm_communication_exception
+                .set_handler_fn(vmm_entry_point);
+            interrupt_descriptor_table
+                .security_exception
+                .set_handler_fn(security_exception_entry_point);
 
             for i in EXTERNAL_INTERRUPTS_START..u8::MAX {
                 interrupt_descriptor_table[i].set_handler_fn(unhandled_interrupt_entry_point);
@@ -689,8 +735,10 @@ impl Kernel {
 
             interrupt_descriptor_table[TIMER_INTERRUPT_ID]
                 //.set_handler_addr(VirtAddr::new((timer_interrupt_entry_point as usize).try_into().unwrap()));
-                .set_handler_addr(VirtAddr::new((timer_entry_point as usize).try_into().unwrap()));
-                //.set_handler_fn(timer_entry_point);
+                .set_handler_addr(VirtAddr::new(
+                    (timer_entry_point as usize).try_into().unwrap(),
+                ));
+            //.set_handler_fn(timer_entry_point);
             interrupt_descriptor_table[KEYBOARD_INTERRUPT_ID]
                 .set_handler_fn(keyboard_interrupt_entry_point);
 
@@ -834,7 +882,11 @@ impl Kernel {
                 x86_64::instructions::nop();
             }
 
-            local_apic.send_sipi_all((crate::architecture::smp::smp_real_mode_entry as u64).try_into().unwrap());
+            local_apic.send_sipi_all(
+                (crate::architecture::smp::smp_real_mode_entry as u64)
+                    .try_into()
+                    .unwrap(),
+            );
         }
     }
 
@@ -846,13 +898,11 @@ impl Kernel {
         let mut stack_address = 0;
         let mut mapper = self.page_table_mapper();
 
-        for stack_frame_identifier in self
-            .frame_manager()
-            .allocate_window(4).unwrap()
-        {
+        for stack_frame_identifier in self.frame_manager().allocate_window(4).unwrap() {
             stack_address = self
                 .frame_manager()
-                .translate_frame_identifier(stack_frame_identifier).as_usize();
+                .translate_frame_identifier(stack_frame_identifier)
+                .as_usize();
 
             let page = Page::<Size4KiB>::containing_address(VirtAddr::new(
                 (stack_address).try_into().unwrap(),
@@ -869,7 +919,7 @@ impl Kernel {
                         PhysFrame::from_start_address(PhysAddr::new(
                             stack_address.try_into().unwrap(),
                         ))
-                            .unwrap(),
+                        .unwrap(),
                         PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
                         &mut EmptyFrameAllocator,
                     )

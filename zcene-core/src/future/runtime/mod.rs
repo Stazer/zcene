@@ -36,7 +36,6 @@ pub use future_runtime_task_reference::*;
 pub use future_runtime_waker::*;
 pub use future_runtime_yielder::*;
 
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 use ztd::Constructor;

@@ -14,7 +14,9 @@ pub extern "x86-interrupt" fn unhandled_interrupt_entry_point(_stack_frame: Inte
     loop {}
 }
 
-pub extern "x86-interrupt" fn non_maskable_interrupt_entry_point(_stack_frame: InterruptStackFrame) {
+pub extern "x86-interrupt" fn non_maskable_interrupt_entry_point(
+    _stack_frame: InterruptStackFrame,
+) {
     Kernel::get().logger().write("non_maskable interrupt");
 
     loop {}
@@ -26,19 +28,22 @@ pub extern "x86-interrupt" fn debug_interrupt_entry_point(_stack_frame: Interrup
     loop {}
 }
 
-pub extern "x86-interrupt" fn invalid_opcode_interrupt_entry_point(stack_frame: InterruptStackFrame) {
+pub extern "x86-interrupt" fn invalid_opcode_interrupt_entry_point(
+    stack_frame: InterruptStackFrame,
+) {
     Kernel::get()
         .logger()
         .writer(|w| write!(w, "invalid opcode {:?}\n", stack_frame));
 
     loop {}
 }
-pub extern "x86-interrupt" fn device_not_available_interrupt_entry_point(_stack_frame: InterruptStackFrame) {
+pub extern "x86-interrupt" fn device_not_available_interrupt_entry_point(
+    _stack_frame: InterruptStackFrame,
+) {
     Kernel::get().logger().write("device not available");
 
     loop {}
 }
-
 
 pub extern "x86-interrupt" fn overflow_interrupt_entry_point(_stack_frame: InterruptStackFrame) {
     Kernel::get().logger().write("overflow interrupt");
@@ -52,17 +57,20 @@ pub extern "x86-interrupt" fn breakpoint_interrupt_entry_point(_stack_frame: Int
     loop {}
 }
 
-
-pub extern "x86-interrupt" fn bound_range_exceeded_interrupt_entry_point(_stack_frame: InterruptStackFrame) {
+pub extern "x86-interrupt" fn bound_range_exceeded_interrupt_entry_point(
+    _stack_frame: InterruptStackFrame,
+) {
     Kernel::get().logger().write("bound");
 
     loop {}
 }
-pub extern "x86-interrupt" fn unhandled_interrupt_with_error_code_entry_point(_stack_frame: InterruptStackFrame, err: u64) {
+pub extern "x86-interrupt" fn unhandled_interrupt_with_error_code_entry_point(
+    _stack_frame: InterruptStackFrame,
+    err: u64,
+) {
     Kernel::get()
         .logger()
         .writer(|w| write!(w, "unhandled {:#?}", err));
-
 
     loop {}
 }
@@ -75,51 +83,60 @@ pub extern "x86-interrupt" fn invalid_tss_entry_point(_stack_frame: InterruptSta
     loop {}
 }
 
-pub extern "x86-interrupt" fn segment_not_present_entry_point(_stack_frame: InterruptStackFrame, err: u64) {
+pub extern "x86-interrupt" fn segment_not_present_entry_point(
+    _stack_frame: InterruptStackFrame,
+    err: u64,
+) {
     Kernel::get()
         .logger()
         .writer(|w| write!(w, "segment {:#?}", err));
 
-
     loop {}
 }
 
-pub extern "x86-interrupt" fn stack_segment_fault_entry_point(_stack_frame: InterruptStackFrame, err: u64) {
+pub extern "x86-interrupt" fn stack_segment_fault_entry_point(
+    _stack_frame: InterruptStackFrame,
+    err: u64,
+) {
     Kernel::get()
         .logger()
         .writer(|w| write!(w, "stack {:#?}", err));
 
-
     loop {}
 }
 
-pub extern "x86-interrupt" fn general_protection_fault_entry_point(stack_frame: InterruptStackFrame, err: u64) {
+pub extern "x86-interrupt" fn general_protection_fault_entry_point(
+    stack_frame: InterruptStackFrame,
+    err: u64,
+) {
     Kernel::get()
         .logger()
         .writer(|w| write!(w, "protection fault {:?} err: {:#?}", stack_frame, err));
 
-
     loop {}
 }
 
-pub extern "x86-interrupt" fn alignment_check_entry_point(_stack_frame: InterruptStackFrame, err: u64) {
+pub extern "x86-interrupt" fn alignment_check_entry_point(
+    _stack_frame: InterruptStackFrame,
+    err: u64,
+) {
     Kernel::get()
         .logger()
         .writer(|w| write!(w, "alignment check {:#?}", err));
-
 
     loop {}
 }
 
 pub extern "x86-interrupt" fn virtualization_entry_point(_stack_frame: InterruptStackFrame) {
-    Kernel::get()
-        .logger()
-        .writer(|w| write!(w, "virt"));
+    Kernel::get().logger().writer(|w| write!(w, "virt"));
 
     loop {}
 }
 
-pub extern "x86-interrupt" fn cp_protection_entry_point(_stack_frame: InterruptStackFrame, err: u64) {
+pub extern "x86-interrupt" fn cp_protection_entry_point(
+    _stack_frame: InterruptStackFrame,
+    err: u64,
+) {
     Kernel::get()
         .logger()
         .writer(|w| write!(w, "cp protection {}", err));
@@ -127,11 +144,10 @@ pub extern "x86-interrupt" fn cp_protection_entry_point(_stack_frame: InterruptS
     loop {}
 }
 
-
-pub extern "x86-interrupt" fn hv_injection_interrupt_entry_point(_stack_frame: InterruptStackFrame) {
-    Kernel::get()
-        .logger()
-        .writer(|w| write!(w, "hv injection"));
+pub extern "x86-interrupt" fn hv_injection_interrupt_entry_point(
+    _stack_frame: InterruptStackFrame,
+) {
+    Kernel::get().logger().writer(|w| write!(w, "hv injection"));
 
     loop {}
 }
@@ -144,22 +160,28 @@ pub extern "x86-interrupt" fn vmm_entry_point(_stack_frame: InterruptStackFrame,
     loop {}
 }
 
-pub extern "x86-interrupt" fn security_exception_entry_point(_stack_frame: InterruptStackFrame, err: u64) {
+pub extern "x86-interrupt" fn security_exception_entry_point(
+    _stack_frame: InterruptStackFrame,
+    err: u64,
+) {
     Kernel::get()
         .logger()
         .writer(|w| write!(w, "security {:#?}", err));
 
-    loop {
-    }
+    loop {}
 }
 
-pub extern "x86-interrupt" fn divide_by_zero_interrupt_entry_point(_stack_frame: InterruptStackFrame) {
+pub extern "x86-interrupt" fn divide_by_zero_interrupt_entry_point(
+    _stack_frame: InterruptStackFrame,
+) {
     Kernel::get().logger().write("divide by zero");
 
     loop {}
 }
 
-pub extern "x86-interrupt" fn machine_check_interrupt_entry_point(_stack_frame: InterruptStackFrame) -> ! {
+pub extern "x86-interrupt" fn machine_check_interrupt_entry_point(
+    _stack_frame: InterruptStackFrame,
+) -> ! {
     Kernel::get().logger().write("Unhandled machine check");
 
     loop {}
