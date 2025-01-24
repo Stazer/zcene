@@ -361,6 +361,8 @@ where
 
         let id = crate::architecture::initial_local_apic_id().unwrap();
 
+        let next = scheduler.queue.pop_front();
+
         match scheduler.threads.get(&id).cloned() {
             Some(current_handle) => {
                 scheduler.threads.remove(&id);
@@ -368,6 +370,7 @@ where
                 current_handle
                     .stack_pointer
                     .store(stack_pointer, Ordering::SeqCst);
+
                 scheduler.queue.push_back(Thread::Preemptive {
                     actor: current_handle.clone(),
                 });
@@ -393,7 +396,7 @@ where
             }
         };
 
-        println!(
+        /*println!(
             "{:?}",
             scheduler.queue.iter().map(|x| {
                 match x {
@@ -401,16 +404,20 @@ where
                     Thread::Preemptive { .. } => "preempt",
                 }
             })
-        );
+        );*/
 
-        match scheduler.queue.pop_front() {
+        match next {
             Some(Thread::Preemptive { actor: next_handle }) => {
                 scheduler.threads.insert(id, next_handle.clone());
                 next_handle.stack_pointer.load(Ordering::SeqCst)
             }
             Some(Thread::Cooperative { stack_pointer }) => stack_pointer.load(Ordering::SeqCst),
             None => {
-                panic!("HELLO")
+                println!("hello");
+
+                create_new_stack(
+                    Kernel::get().allocate_stack(),
+                )
             }
         }
     }
