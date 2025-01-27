@@ -1,5 +1,5 @@
 use crate::common::bits::{BitField, BitFieldLeftToRight};
-use crate::common::memory::{MemoryAddress, MemoryAddressPerspective};
+use crate::memory::address::{MemoryAddress, MemoryAddressPerspective};
 use crate::memory::frame::FrameIdentifier;
 use core::marker::PhantomData;
 use core::ops::Range;
@@ -84,7 +84,7 @@ where
         &self,
         frame_identifier: FrameIdentifier,
     ) -> MemoryAddress<P> {
-        MemoryAddress::new((frame_identifier.as_usize() * self.frame_byte_size) as u64)
+        MemoryAddress::new(frame_identifier.as_usize() * self.frame_byte_size)
     }
 
     #[inline]

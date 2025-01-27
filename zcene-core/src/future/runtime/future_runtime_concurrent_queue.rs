@@ -29,13 +29,9 @@ where
         match self.0.push(future) {
             Ok(()) => Ok(()),
             Err(PushError::Full(future)) => {
-                panic!("hello");
-
                 Err(future)
             }
             Err(PushError::Closed(future)) => {
-                panic!("hello");
-
                 Err(future)
             }
         }

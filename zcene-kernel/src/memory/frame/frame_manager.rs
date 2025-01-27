@@ -1,9 +1,9 @@
-use crate::common::memory::MemoryAddressPerspective;
+use crate::memory::address::MemoryAddressPerspective;
 use crate::memory::frame::FlatBitmapFrameManager;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub type FrameManager<'a, T>
-    = FlatBitmapFrameManager<'a, T>
+pub type FrameManager<'a, P>
+    = FlatBitmapFrameManager<'a, P>
 where
-    T: MemoryAddressPerspective;
+    P: MemoryAddressPerspective;

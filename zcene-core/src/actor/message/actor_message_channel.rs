@@ -1,5 +1,5 @@
 use crate::actor::{ActorMessage, ActorMessageChannelReceiver, ActorMessageChannelSender};
-use async_channel::{bounded, unbounded};
+use async_channel::{bounded};
 use core::marker::PhantomData;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -13,6 +13,7 @@ where
     M: ActorMessage,
 {
     pub fn new_unbounded() -> (ActorMessageChannelSender<M>, ActorMessageChannelReceiver<M>) {
+        // TODO
         let (sender, receiver) = bounded(100);
 
         (

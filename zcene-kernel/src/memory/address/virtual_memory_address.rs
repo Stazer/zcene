@@ -1,4 +1,4 @@
-use crate::common::memory::{MemoryAddress, VirtualMemoryAddressPerspective};
+use crate::memory::address::{MemoryAddress, VirtualMemoryAddressPerspective};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

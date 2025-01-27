@@ -1,4 +1,3 @@
-use core::fmt::Write;
 use core::ops::{Deref, DerefMut};
 use spin::MutexGuard;
 use ztd::Constructor;

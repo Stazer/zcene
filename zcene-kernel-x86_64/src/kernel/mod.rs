@@ -26,9 +26,7 @@ use x86_64::structures::paging::{Mapper, OffsetPageTable, Page, PageTable, PageT
 use x86_64::PhysAddr;
 use x86_64::VirtAddr;
 use zcene_kernel::common::linker_value;
-use zcene_kernel::common::memory::PhysicalMemoryAddress;
-use zcene_kernel::common::memory::VirtualMemoryAddress;
-use zcene_kernel::common::memory::{MemoryAddress, PhysicalMemoryAddressPerspective};
+use zcene_kernel::memory::address::{PhysicalMemoryAddress, PhysicalMemoryAddressPerspective, VirtualMemoryAddress};
 use zcene_kernel::memory::frame::{FrameManager, FrameManagerAllocationError};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -290,14 +288,14 @@ impl MemoryManager {
         &self,
         memory_address: VirtualMemoryAddress,
     ) -> PhysicalMemoryAddress {
-        PhysicalMemoryAddress::new(memory_address.as_u64() - self.physical_memory_offset)
+        PhysicalMemoryAddress::from(memory_address.as_u64() - self.physical_memory_offset)
     }
 
     pub fn translate_physical_memory_address(
         &self,
         memory_address: PhysicalMemoryAddress,
     ) -> VirtualMemoryAddress {
-        VirtualMemoryAddress::new(memory_address.as_u64() + self.physical_memory_offset)
+        VirtualMemoryAddress::from(memory_address.as_u64() + self.physical_memory_offset)
     }
 
     pub fn frame_manager(&self) -> FrameManager<'static, PhysicalMemoryAddressPerspective> {
@@ -306,7 +304,7 @@ impl MemoryManager {
 
     pub fn active_page_table(&self) -> &'static mut PageTable {
         let pointer = self
-            .translate_physical_memory_address(PhysicalMemoryAddress::new(
+            .translate_physical_memory_address(PhysicalMemoryAddress::from(
                 Cr3::read().0.start_address().as_u64(),
             ))
             .as_u64();
@@ -604,8 +602,8 @@ impl Kernel {
             }
 
             let start =
-                frame_manager.translate_memory_address(MemoryAddress::new(memory_region.start));
-            let end = frame_manager.translate_memory_address(MemoryAddress::new(memory_region.end));
+                frame_manager.translate_memory_address(PhysicalMemoryAddress::from(memory_region.start));
+            let end = frame_manager.translate_memory_address(PhysicalMemoryAddress::from(memory_region.end));
 
             for identifier in start..end {
                 if frame_manager

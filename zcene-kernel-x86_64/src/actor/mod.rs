@@ -68,7 +68,7 @@ pub struct Scheduler {
     stacks: BTreeSet<u64>,
 }
 
-use zcene_kernel::common::memory::VirtualMemoryAddress;
+use zcene_kernel::memory::address::VirtualMemoryAddress;
 
 pub type ActorExecutionContextIdentifier = usize;
 
@@ -320,42 +320,6 @@ impl<H> ActorHandler<H>
 where
     H: FutureRuntimeHandler,
 {
-    /*pub fn reschedule2(&self, stack_pointer: u64) -> u64 {
-        let mut scheduler = self.shared.scheduler.lock();
-
-        let id = crate::architecture::initial_local_apic_id().unwrap();
-
-        let next_handle = scheduler.queue.pop_front();
-
-        let current_handle = match scheduler.threads.get(&id).cloned() {
-            Some(current_handle) => {
-                scheduler.threads.remove(&id);
-                current_handle.stack_pointer.store(stack_pointer, Ordering::SeqCst);
-                scheduler.queue.push_back(current_handle.clone());
-
-                Some(current_handle)
-            },
-            None => {
-                scheduler.stacks.insert(stack_pointer);
-
-                None
-            },
-        };
-
-        match next_handle {
-            Some(next_handle) => {
-                scheduler.threads.insert(id, next_handle.clone());
-                next_handle.stack_pointer.load(Ordering::SeqCst)
-            },
-            None => {
-                match scheduler.stacks.pop_first() {
-                    Some(stack_pointer) => stack_pointer,
-                    None => create_new_stack(Kernel::get().allocate_stack()),
-                }
-            }
-        }
-    }*/
-
     pub fn reschedule(&self, stack_pointer: u64) -> u64 {
         let mut scheduler = self.shared.scheduler.lock();
 
@@ -396,16 +360,6 @@ where
             }
         };
 
-        /*println!(
-            "{:?}",
-            scheduler.queue.iter().map(|x| {
-                match x {
-                    Thread::Cooperative { .. } => "coop",
-                    Thread::Preemptive { .. } => "preempt",
-                }
-            })
-        );*/
-
         match next {
             Some(Thread::Preemptive { actor: next_handle }) => {
                 scheduler.threads.insert(id, next_handle.clone());
@@ -413,7 +367,7 @@ where
             }
             Some(Thread::Cooperative { stack_pointer }) => stack_pointer.load(Ordering::SeqCst),
             None => {
-                println!("hello");
+                println!("next...");
 
                 create_new_stack(
                     Kernel::get().allocate_stack(),

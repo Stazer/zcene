@@ -1,4 +1,4 @@
-use crate::actor::{ActorFuture, ActorMessage, ActorMessageSender, ActorSendError};
+use crate::actor::{ActorMessage};
 use async_channel::Receiver;
 use ztd::Constructor;
 

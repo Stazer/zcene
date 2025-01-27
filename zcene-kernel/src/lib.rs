@@ -1,4 +1,5 @@
 #![feature(lazy_type_alias)]
+#![feature(trait_alias)]
 #![feature(step_trait)]
 #![feature(new_range_api)]
 #![feature(allocator_api)]
