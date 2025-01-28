@@ -322,8 +322,7 @@ impl MemoryManager {
     }
 
     pub fn allocate_stack(&self) -> Option<VirtualMemoryAddress> {
-        todo!()
-        /*let stack_frame_count = 4;
+        let stack_frame_count = 4;
         let stack_size = stack_frame_count * FRAME_SIZE;
 
         let mut first_address = 0;
@@ -362,7 +361,7 @@ impl MemoryManager {
             }
         }
 
-        (first_address).try_into().unwrap()*/
+        Some(VirtualMemoryAddress::from(first_address))
     }
 }
 
@@ -405,7 +404,7 @@ impl Kernel {
         self.actor_system = Some(
             ActorSystem::try_new(crate::actor::ActorHandler::new(
                 FutureRuntime::new(FutureRuntimeHandler::default()).unwrap(),
-                crate::actor::Shared::default().into(),
+                alloc::sync::Arc::default(),
             ))
             .unwrap(),
         );

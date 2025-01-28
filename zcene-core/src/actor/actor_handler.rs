@@ -28,3 +28,10 @@ pub trait ActorHandler: ActorCommonBounds + Sized {
 
     fn enter(&self) -> Result<(), ActorEnterError>;
 }
+
+pub trait ActorRelocationHandler: ActorHandler {
+    fn relocate<A, B>(&self, first: ActorAddressReference<A, Self>, second: ActorAddressReference<B, Self>)
+    where
+        A: Actor<Self>,
+        B: Actor<Self>;
+}

@@ -12,13 +12,6 @@ use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Constructor, Debug)]
-pub struct ActorSpecification {
-    preemptive: bool,
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
 pub type ExecutionUnitIdentifier = usize;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -35,20 +28,20 @@ use x86_64::structures::paging::{PhysFrame, Size4KiB};
 use x86_64::PhysAddr;
 use x86_64::VirtAddr;
 
-struct Context {
-    stack_pointer: u64,
-}
-
 #[derive(Debug, Default)]
 pub struct Handle {
-    identifier: ActorIdentifier,
     stack_pointer: AtomicU64,
 }
 
 #[derive(Debug)]
 pub enum Thread {
-    Cooperative { stack_pointer: AtomicU64 },
-    Preemptive { actor: Arc<Handle> },
+    Cooperative {
+        stack_pointer: AtomicU64,
+    },
+    Preemptive {
+        actor: Arc<Handle>,
+        stack_pointer_memory_address: u32,
+    },
 }
 
 impl Thread {
@@ -56,17 +49,186 @@ impl Thread {
         matches!(self, Self::Cooperative { .. })
     }
 
-    pub fn is_preemtive(&self) -> bool {
+    pub fn is_preemptive(&self) -> bool {
         matches!(self, Self::Preemptive { .. })
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum ActorThreadType {
+    Cooperative,
+    Preemptive,
+}
+
+#[derive(Debug)]
+pub struct ActorThread {
+    r#type: ActorThreadType,
+    stack_pointer: Option<VirtualMemoryAddress>,
+}
+
 #[derive(Default)]
-pub struct Scheduler {
+pub struct ActorThreadScheduler {
     queue: VecDeque<Thread>,
     threads: BTreeMap<usize, Arc<Handle>>,
-    stacks: BTreeSet<u64>,
+    queue2: VecDeque<ActorThread>,
+    threads2: BTreeMap<ExecutionUnitIdentifier, ActorThread>,
 }
+
+impl ActorThreadScheduler {
+    pub fn r#break(
+        &mut self,
+        execution_unit_identifier: ExecutionUnitIdentifier,
+        stack_pointer: VirtualMemoryAddress
+    ) {
+        match self.threads2.remove(&execution_unit_identifier) {
+            Some(mut thread) => {
+                thread.stack_pointer = Some(stack_pointer);
+                self.queue2.push_back(thread);
+
+                if self
+                    .queue2
+                    .iter()
+                    .filter(|x| matches!(x.r#type, ActorThreadType::Cooperative))
+                    .count()
+                    < 1
+                {
+                    self.queue2.push_back(ActorThread {
+                        r#type: ActorThreadType::Cooperative,
+                        stack_pointer: None,
+                    });
+                }
+                /*match thread.r#type {
+                   ActorThreadType::Preemptive {
+                       self.queue2.push_back(ActorThread {
+                           r#type: ActorThreadType::
+                       })
+                   }
+                   ActorThreadType::Cooperative {
+
+                   }
+                }*/
+
+                /*thread.stack_pointer = Some(stack_pointer);
+                thread.r#type = ActorThreadType::Preemptive;
+
+                self.queue2.push_back(thread);
+
+                if self
+                    .queue2
+                    .iter()
+                    .filter(|x| matches!(x.r#type, ActorThreadType::Cooperative))
+                    .count()
+                    < 1
+                {
+                    self.queue2.push_back(ActorThread {
+                        r#type: ActorThreadType::Cooperative,
+                        stack_pointer: None,
+                    });
+                }*/
+            }
+            None => {
+                /*self.queue2.push_back(ActorThread {
+                    r#type: ActorThreadType::Cooperative,
+                    stack_pointer: stack_pointer,
+                });*/
+            }
+        }
+
+        /*match self.threads.remove(&execution_unit_identifier) {
+            Some(current_handle) => {
+                current_handle
+                    .stack_pointer
+                    .store(stack_pointer.as_u64(), Ordering::SeqCst);
+
+                self.queue.push_back(Thread::Preemptive {
+                    actor: current_handle.clone(),
+                    stack_pointer_memory_address: 0,
+                });
+
+                if self
+                    .queue
+                    .iter()
+                    .filter(|x| x.is_cooperative())
+                    .count()
+                    < 1
+                {
+                    self.queue.push_back(Thread::Cooperative {
+                        stack_pointer: AtomicU64::new(create_new_stack(
+                            Kernel::get().allocate_stack(),
+                        )),
+                    });
+                }
+            }
+            None => {
+                self.queue.push_back(Thread::Cooperative {
+                    stack_pointer: AtomicU64::new(stack_pointer.as_u64()),
+                });
+            }
+        }*/
+    }
+
+    pub fn r#continue(
+        &mut self,
+        execution_unit_identifier: ExecutionUnitIdentifier,
+        next: Option<Thread>,
+        next2: Option<ActorThread>,
+    ) -> VirtualMemoryAddress {
+        match next2 {
+            Some(thread) => {
+                let stack_pointer = thread.stack_pointer.unwrap_or_else(|| {
+                    println!("create new stack 0...");
+                    VirtualMemoryAddress::from(create_new_stack(
+                        Kernel::get().allocate_stack(),
+                    ))
+                });
+
+                self.threads2.insert(execution_unit_identifier, thread);
+
+                return stack_pointer
+            }
+            None => {
+                println!("create new stack 1...");
+                return VirtualMemoryAddress::from(create_new_stack(
+                    Kernel::get().allocate_stack(),
+                ))
+            }
+        }
+
+        /*match next {
+            Some(Thread::Preemptive { actor: next_handle, .. }) => {
+                self.threads.insert(execution_unit_identifier, next_handle.clone());
+                VirtualMemoryAddress::from(next_handle.stack_pointer.load(Ordering::SeqCst))
+            }
+            Some(Thread::Cooperative { stack_pointer }) => VirtualMemoryAddress::from(stack_pointer.load(Ordering::SeqCst)),
+            None => {
+                VirtualMemoryAddress::from(create_new_stack(
+                    Kernel::get().allocate_stack(),
+                ))
+            }
+        }*/
+    }
+
+    fn report_handle(&mut self, handle: Option<Arc<Handle>>) {
+        let id = crate::architecture::initial_local_apic_id().unwrap();
+
+        if let Some(ref handle) = handle {
+            self.threads.insert(id, handle.clone());
+
+            self.threads2.insert(id, ActorThread {
+                r#type: ActorThreadType::Preemptive,
+                stack_pointer: None,
+            });
+        } else {
+            self.threads.remove(&id);
+
+            self.threads2.insert(id, ActorThread {
+                r#type: ActorThreadType::Cooperative,
+                stack_pointer: None,
+            });
+        }
+    }
+}
+
 
 use zcene_kernel::memory::address::VirtualMemoryAddress;
 
@@ -74,56 +236,7 @@ pub type ActorExecutionContextIdentifier = usize;
 
 use ztd::Method;
 
-#[derive(Constructor, Debug)]
-pub struct ActorExecutionContext {
-    identifier: ActorExecutionContextIdentifier,
-    stack_pointer: VirtualMemoryAddress,
-}
-
-pub type ActorExecutionContextReference<H> =
-    Arc<ActorExecutionContext, <H as zcene_core::actor::ActorHandler>::Allocator>;
-
-#[derive(Default, Debug)]
-pub struct ActorQueuePreemptionSchedulerStrategy {
-    queue: VecDeque<Arc<ActorExecutionContext>>,
-}
-
-/*impl<H> ActorPreemptionScheduler<H> for ActorQueuePreemptionSchedulerStrategy
-where
-    H: zcene_core::actor::ActorHandler,
-{
-}*/
-
-pub trait ActorPreemptionSchedulerStrategy<H>
-where
-    H: zcene_core::actor::ActorHandler,
-{
-    fn r#continue(&mut self, execution_context: ActorExecutionContextReference<H>) {}
-
-    fn r#break(&mut self) {}
-}
-
-impl Scheduler {
-    fn report_handle(&mut self, handle: Option<Arc<Handle>>) {
-        let id = crate::architecture::initial_local_apic_id().unwrap();
-
-        let current = self.threads.get(&id).cloned().map(|x| x.identifier);
-
-        if let Some(ref handle) = handle {
-            self.threads.insert(id, handle.clone());
-        } else {
-            self.threads.remove(&id);
-        }
-    }
-}
-
 use zcene_kernel::synchronization::Mutex;
-
-#[derive(Default)]
-pub struct Shared {
-    scheduler: Mutex<Scheduler>,
-    identifier_counter: AtomicUsize,
-}
 
 use alloc::sync::Arc;
 
@@ -131,12 +244,9 @@ use alloc::sync::Arc;
 pub struct ActorHandler<H>
 where
     H: FutureRuntimeHandler,
-    //S: ActorPreemptionScheduler<Self>,
 {
     future_runtime: FutureRuntimeReference<H>,
-    //preemption_scheduler: S,
-    //scheduler: Arc<S>
-    shared: Arc<Shared>,
+    scheduler: Arc<Mutex<ActorThreadScheduler>>,
 }
 
 use core::future::Future;
@@ -152,7 +262,7 @@ where
 {
     actor: &'a mut A,
     message: A::Message,
-    shared: Arc<Shared>,
+    scheduler: Arc<Mutex<ActorThreadScheduler>>,
     handle: Arc<Handle>,
     handler: PhantomData<H>,
 }
@@ -168,22 +278,20 @@ where
     type Output = Result<(), actor::ActorHandleError>;
 
     fn poll(mut self: Pin<&mut Self>, context: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+        let scheduler = self.scheduler.clone();
         let handle = self.handle.clone();
-        let shared = self.shared.clone();
         let message = self.message.clone();
 
         let mut pinned = pin!(self.actor.handle(ActorCommonHandleContext::new(message)));
 
         without_interrupts(|| {
-            //preemption_scheduler.r#continue(handle.clone());
-            shared.scheduler.lock().report_handle(Some(handle.clone()));
+            scheduler.lock().report_handle(Some(handle.clone()));
         });
 
         let result = pinned.as_mut().poll(context);
 
         without_interrupts(|| {
-            //preemption_scheduler.r#break();
-            shared.scheduler.lock().report_handle(None);
+            scheduler.lock().report_handle(None);
         });
 
         result
@@ -218,20 +326,14 @@ where
     {
         let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
 
-        let identifier = self
-            .shared
-            .identifier_counter
-            .fetch_add(1, core::sync::atomic::Ordering::SeqCst);
-
         let reference = ActorAddressReference::<A, Self>::try_new_in(
             Self::Address::new(sender, PhantomData),
             self.allocator().clone(),
         )?;
 
-        let shared = self.shared.clone();
+        let scheduler = self.scheduler.clone();
 
         let handle = Arc::new(Handle {
-            identifier,
             stack_pointer: AtomicU64::default(),
         });
 
@@ -247,14 +349,12 @@ where
                 (ActorHandleExecutor {
                     actor: &mut actor,
                     message,
-                    shared: shared.clone(),
+                    scheduler: scheduler.clone(),
                     handle: handle.clone(),
                     handler: PhantomData::<H>,
                 })
                 .await;
             }
-
-            println!("exit...");
         });
 
         Ok(reference)
@@ -321,63 +421,23 @@ where
     H: FutureRuntimeHandler,
 {
     pub fn reschedule(&self, stack_pointer: u64) -> u64 {
-        let mut scheduler = self.shared.scheduler.lock();
+        let mut scheduler = self.scheduler.lock();
 
-        let id = crate::architecture::initial_local_apic_id().unwrap();
+        use crate::architecture::current_execution_unit_identifier;
 
+        let thread = scheduler.queue2.pop_front();
         let next = scheduler.queue.pop_front();
 
-        match scheduler.threads.get(&id).cloned() {
-            Some(current_handle) => {
-                scheduler.threads.remove(&id);
+        scheduler.r#break(
+            current_execution_unit_identifier(),
+            VirtualMemoryAddress::from(stack_pointer),
+        );
 
-                current_handle
-                    .stack_pointer
-                    .store(stack_pointer, Ordering::SeqCst);
-
-                scheduler.queue.push_back(Thread::Preemptive {
-                    actor: current_handle.clone(),
-                });
-
-                if scheduler
-                    .queue
-                    .iter()
-                    .filter(|x| x.is_cooperative())
-                    .count()
-                    < 1
-                {
-                    scheduler.queue.push_back(Thread::Cooperative {
-                        stack_pointer: AtomicU64::new(create_new_stack(
-                            Kernel::get().allocate_stack(),
-                        )),
-                    });
-                }
-            }
-            None => {
-                scheduler.queue.push_back(Thread::Cooperative {
-                    stack_pointer: AtomicU64::new(stack_pointer),
-                });
-            }
-        };
-
-        match next {
-            Some(Thread::Preemptive { actor: next_handle }) => {
-                scheduler.threads.insert(id, next_handle.clone());
-                next_handle.stack_pointer.load(Ordering::SeqCst)
-            }
-            Some(Thread::Cooperative { stack_pointer }) => stack_pointer.load(Ordering::SeqCst),
-            None => {
-                println!("next...");
-
-                create_new_stack(
-                    Kernel::get().allocate_stack(),
-                )
-            }
-        }
-    }
-
-    pub fn preempt(&self, stack_pointer: VirtualMemoryAddress) -> VirtualMemoryAddress {
-        stack_pointer
+        scheduler.r#continue(
+            current_execution_unit_identifier(),
+            next,
+            thread,
+        ).as_u64()
     }
 }
 
