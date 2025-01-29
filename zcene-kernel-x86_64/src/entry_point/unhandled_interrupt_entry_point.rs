@@ -202,9 +202,9 @@ pub unsafe extern "C" fn handle_preemption(stack_pointer: u64) -> u64 {
     let stack_pointer = Kernel::get()
         .actor_system()
         .handler()
-        .reschedule(stack_pointer);
+        .reschedule(stack_pointer.into());
 
-    stack_pointer
+    stack_pointer.as_u64()
 }
 
 use core::arch::naked_asm;

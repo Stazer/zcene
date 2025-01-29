@@ -17,7 +17,7 @@ zcene is a research actor model platform for hosted and baremetal environments.
 #### Building
 
 ``` shell
-pkg install -y rustup nasm
+pkg install -y nasm
 
 rustup install nightly
 rustup target add x86_64-unknown-none
