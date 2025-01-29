@@ -19,6 +19,11 @@ pub fn current_execution_unit_identifier() -> ExecutionUnitIdentifier {
         .unwrap_or_default()
 }
 
+#[derive(Debug)]
+pub enum ExecutionUnitMode {
+    Privileged,
+    Unprivileged,
+}
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 mod frame_size;
@@ -26,90 +31,5 @@ pub use frame_size::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use zcene_kernel::memory::address::{
-    MemoryAddress,
-    MemoryAddressPerspective,
-    VirtualMemoryAddressPerspective,
-    VirtualMemoryAddress,
-};
-
-pub struct Stack<P>
-where
-    P: MemoryAddressPerspective
-{
-    initial_memory_address: MemoryAddress<P>,
-    current_memory_address: MemoryAddress<P>,
-}
-
-/*impl<P> Stack<P>
-where
-    P: MemoryAddressPerspective
-{
-    pub fn new(
-        memory_address: MemoryAddress<P>,
-    ) -> Self {
-        Self {
-            initial_memory_address: memory_address,
-            current_memory_address: memory_address,
-        }
-    }
-}
-
-use x86_64::structures::gdt::SegmentSelector;
-use x86_64::registers::rflags::RFlags;
-use core::arch::asm;
-
-impl Stack<VirtualMemoryAddressPerspective> {
-    pub fn push_interrupt_frame(
-        &mut self,
-        rflags: RFlags,
-        function: fn() -> !,
-        stack_memory_address: VirtualMemoryAddress,
-        code_segment: SegmentSelector,
-        stack_segment: SegmentSelector,
-    ) {
-        let mut current_memory_address = self.current_memory_address.as_u64();
-
-        unsafe {
-            asm!(
-                "mov rbx, rsp",
-
-                "mov rsp, {current_stack_pointer}",
-
-                "push {stack_segment:r}",
-                "push {current_stack_pointer}",
-                "push {rflags}",
-                "push {code_segment:r}",
-                "push {instruction_pointer}",
-
-                "push 0",
-                "push 0",
-                "push 0",
-                "push 0",
-                "push 0",
-                "push 0",
-                "push 0",
-                "push 0",
-                "push 0",
-                "push 0",
-                "push 0",
-                "push 0",
-                "push 0",
-                "push 0",
-                "push 0",
-
-                "mov {current_stack_pointer}, rsp",
-
-                "mov rsp, rbx",
-
-                rflags = in(reg) rflags.bits(),
-                instruction_pointer = in(reg) VirtualMemoryAddress::from(function as u64).as_u64(),
-                current_stack_pointer = inout(reg) current_stack_pointer,
-                code_segment = in(reg) code_segment.0,
-                stack_segment = in(reg) stack_segment.0,
-            )
-        }
-
-        self.current_memory_address = VirtualMemoryAddress::from(current_memory_address);
-    }
-}*/
+mod stack;
+pub use stack::*;

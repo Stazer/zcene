@@ -1,1 +1,1 @@
-pub trait MemoryAddressPerspective {}
+pub trait MemoryAddressPerspective: Copy {}

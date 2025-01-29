@@ -4,6 +4,9 @@ use crate::kernel::Kernel;
 use zcene_kernel::memory::address::VirtualMemoryAddress;
 use alloc::collections::{BTreeMap, VecDeque};
 use ztd::{Method};
+use x86_64::PrivilegeLevel;
+use x86_64::structures::gdt::SegmentSelector;
+use x86_64::registers::rflags::RFlags;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -62,9 +65,15 @@ impl ActorThreadScheduler {
                 stack_pointer
             },
             None => {
-                VirtualMemoryAddress::from(create_new_stack(
-                    Kernel::get().allocate_stack(),
-                ))
+                let mut stack = Kernel::get().memory_manager().allocate_stack().unwrap();
+                stack.push_interrupt_frame(
+                    RFlags::RESUME_FLAG | RFlags::INTERRUPT_FLAG,
+                    crate::actor::hello,
+                    SegmentSelector::new(1, PrivilegeLevel::Ring0),
+                    SegmentSelector::new(2, PrivilegeLevel::Ring0),
+                );
+
+                *stack.current_memory_address()
             }
         }
     }

@@ -26,8 +26,9 @@ use x86_64::structures::paging::{Mapper, OffsetPageTable, Page, PageTable, PageT
 use x86_64::PhysAddr;
 use x86_64::VirtAddr;
 use zcene_kernel::common::linker_value;
-use zcene_kernel::memory::address::{PhysicalMemoryAddress, PhysicalMemoryAddressPerspective, VirtualMemoryAddress};
+use zcene_kernel::memory::address::{VirtualMemoryAddressPerspective, PhysicalMemoryAddress, PhysicalMemoryAddressPerspective, VirtualMemoryAddress};
 use zcene_kernel::memory::frame::{FrameManager, FrameManagerAllocationError};
+use crate::architecture::Stack;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -321,7 +322,7 @@ impl MemoryManager {
         }
     }
 
-    pub fn allocate_stack(&self) -> Option<VirtualMemoryAddress> {
+    pub fn allocate_stack(&self) -> Option<Stack<VirtualMemoryAddressPerspective>> {
         let stack_frame_count = 4;
         let stack_size = stack_frame_count * FRAME_SIZE;
 
@@ -361,7 +362,9 @@ impl MemoryManager {
             }
         }
 
-        Some(VirtualMemoryAddress::from(first_address))
+        let first_address = VirtualMemoryAddress::from(first_address);
+
+        Some(Stack::new(first_address, stack_size))
     }
 }
 
@@ -372,9 +375,14 @@ pub struct Kernel {
     physical_memory_size_in_bytes: usize,
     actor_system: Option<KernelActorSystemReference>,
     timer_actor: Option<KernelActorAddressReference<TimerActor>>,
+    memory_manager: MemoryManager,
 }
 
 impl Kernel {
+    pub fn memory_manager(&self) -> &MemoryManager {
+        &self.memory_manager
+    }
+
     pub fn get<'a>() -> &'a Kernel {
         unsafe { &*KERNEL.get() }
     }
@@ -580,6 +588,9 @@ impl Kernel {
                 entry.set_flags(flags);
             }
         }
+
+        self.memory_manager.physical_memory_size_in_bytes = self.physical_memory_size_in_bytes as _;
+        self.memory_manager.physical_memory_offset = self.physical_memory_offset as _;
 
         Ok(())
     }
@@ -938,4 +949,8 @@ static KERNEL: SyncUnsafeCell<Kernel> = SyncUnsafeCell::new(Kernel {
     physical_memory_size_in_bytes: 0,
     actor_system: None,
     timer_actor: None,
+    memory_manager: MemoryManager {
+        physical_memory_offset: 0,
+        physical_memory_size_in_bytes: 0,
+    },
 });
