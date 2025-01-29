@@ -24,7 +24,6 @@ where
 {
     future_runtime: FutureRuntimeReference<H>,
     scheduler: Arc<Mutex<ActorThreadScheduler>>,
-    //mailboxes: Mutex<HashMap<Any, ActorWeakMailbox>>,
 }
 
 impl<H> actor::ActorHandler for ActorHandler<H>

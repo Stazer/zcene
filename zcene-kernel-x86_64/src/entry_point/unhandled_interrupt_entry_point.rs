@@ -189,6 +189,17 @@ pub extern "x86-interrupt" fn machine_check_interrupt_entry_point(
 
 #[no_mangle]
 pub unsafe extern "C" fn handle_preemption(stack_pointer: u64) -> u64 {
+    crate::common::println!("preempt...");
+
+    let apic_base = (unsafe { x86::msr::rdmsr(x86::msr::APIC_BASE) } & 0xFFFFF000) + Kernel::get().memory_manager().physical_memory_offset();
+    let apic_ptr = apic_base as *mut u32;
+
+
+    unsafe {
+        use core::ptr;
+        ptr::write_volatile(apic_ptr.add(0x0B0 / 4), 0);
+    }
+
     if let Err(error) = Kernel::get()
         .timer_actor()
         .send(TimerActorMessage::Tick)
@@ -196,8 +207,6 @@ pub unsafe extern "C" fn handle_preemption(stack_pointer: u64) -> u64 {
     {
         crate::common::println!("{}", error);
     }
-
-    X2APIC::new().eoi();
 
     let stack_pointer = Kernel::get()
         .actor_system()
@@ -261,4 +270,7 @@ pub extern "x86-interrupt" fn timer_interrupt_entry_point(_stack_frame: Interrup
 
 pub extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
     X2APIC::new().eoi();
+}
+
+pub extern "x86-interrupt" fn spurious_handler(_stack_frame: InterruptStackFrame) {
 }

@@ -35,11 +35,18 @@ use zcene_kernel::memory::frame::{FrameManager, FrameManagerAllocationError};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+pub struct InterruptManager {
+
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 const FRAME_SIZE: usize = 4096;
 const EXTERNAL_INTERRUPTS_START: u8 = 0x20;
 const PARENT_PIC_OFFSET: u8 = EXTERNAL_INTERRUPTS_START;
 const CHILD_PIC_OFFSET: u8 = PARENT_PIC_OFFSET + 0x8;
 const TIMER_INTERRUPT_ID: u8 = 0x20;
+const SPURIOUS_ID: u8 = 0x20 + 15;
 const KEYBOARD_INTERRUPT_ID: u8 = 0x21;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -446,7 +453,7 @@ impl Kernel {
             .complete()
             .unwrap();
 
-        /*let root_actor = self.actor_system().spawn(RootActor::default()).unwrap();
+        let root_actor = self.actor_system().spawn(RootActor::default()).unwrap();
 
         timer_actor
             .send(TimerActorMessage::Subscription(
@@ -457,7 +464,7 @@ impl Kernel {
             .complete()
             .unwrap();
 
-        root_actor
+        /*root_actor
             .send(RootActorMessage::Subscription(
                 self.actor_system()
                     .spawn(LongRunningActor::default())
@@ -637,16 +644,16 @@ impl Kernel {
         Ok(())
     }
 
-    fn initialize_interrupts(&self) -> Result<LocalApic, InitializeKernelError> {
+    fn initialize_interrupts(&self) -> Result<(), InitializeKernelError> {
         unsafe {
             let mut pic = ChainedPics::new(PARENT_PIC_OFFSET, CHILD_PIC_OFFSET);
             pic.disable();
         }
 
-        let apic_virtual_address: u64 =
+        /*let apic_virtual_address: u64 =
             unsafe { xapic_base() + self.physical_memory_offset as u64 };
 
-        use x2apic::lapic::{TimerDivide, TimerMode};
+        //use x2apic::lapic::{TimerDivide, TimerMode};
 
         let mut local_apic = LocalApicBuilder::new()
             .timer_vector(TIMER_INTERRUPT_ID.into())
@@ -662,7 +669,7 @@ impl Kernel {
 
         unsafe {
             local_apic.enable();
-        }
+        }*/
 
         unsafe {
             let interrupt_descriptor_table = &mut *INTERRUPT_DESCRIPTOR_TABLE.get();
@@ -752,17 +759,63 @@ impl Kernel {
             interrupt_descriptor_table[KEYBOARD_INTERRUPT_ID]
                 .set_handler_fn(keyboard_interrupt_entry_point);
 
+            interrupt_descriptor_table[SPURIOUS_ID]
+                .set_handler_fn(spurious_handler);
+
             interrupt_descriptor_table.load();
+        }
+
+        let cpu_id = CpuId::new();
+        let feature_info = cpu_id.get_feature_info().unwrap();
+
+        if feature_info.has_apic() {
+            /*use x86::apic::ApicControl;
+            // MSR-Register für die APIC Base Address auslesen
+            let apic_base = (unsafe { x86::msr::rdmsr(x86::msr::APIC_BASE) } & 0xFFFFF000) + self.memory_manager.physical_memory_offset;
+
+            // APIC-Speicheradresse in einen Pointer umwandeln
+            let apic_ptr = apic_base as *mut u32;
+
+            // Unsafe Slice für den gesamten APIC-Speicherbereich erstellen (4 KB / 4 Bytes pro u32)
+            let apic_region: &'static mut [u32] = unsafe { core::slice::from_raw_parts_mut(apic_ptr, 4096 / 4) };
+
+            let mut xapic = x86::apic::xapic::XAPIC::new(apic_region);
+            xapic.tsc_enable(TIMER_INTERRUPT_ID);
+            xapic.attach();
+            //            //xapic.tsc_set(1_000_000);*/
+
+            use core::ops::Add;
+            use core::ptr;
+
+            const LVT_TIMER: usize = 0x320;
+            const APIC_TIMER_INIT_COUNT: usize = 0x380;
+            const APIC_TIMER_DIV: usize = 0x3E0; // Divide Configuration Register
+
+            let apic_base = (unsafe { x86::msr::rdmsr(x86::msr::APIC_BASE) } & 0xFFFFF000) + self.memory_manager.physical_memory_offset;
+            let apic_ptr = apic_base as *mut u32;
+            let apic_region: &'static mut [u32] = unsafe { core::slice::from_raw_parts_mut(apic_ptr, 4096 / 4) };
+            let mut xapic = x86::apic::xapic::XAPIC::new(apic_region);
+
+            unsafe {
+                ptr::write_volatile(apic_ptr.add(APIC_TIMER_DIV / 4), 0b0011);
+                ptr::write_volatile(apic_ptr.add(LVT_TIMER / 4), 0x20020);
+                ptr::write_volatile(apic_ptr.add(APIC_TIMER_INIT_COUNT / 4), 10_000_000);
+            }
+
+            //println!("APIC Timer aktiviert im periodischen Modus!");
+        } else if feature_info.has_x2apic() {
+            todo!()
         }
 
         use x86::apic::ioapic::IoApic;
 
-        unsafe {
+        /*unsafe {
             let mut apic = IoApic::new((self.physical_memory_offset + 0xFEC00000) as _);
             apic.enable(1, 0);
-        }
+        }*/
 
-        Ok(local_apic)
+        Ok(())
+        //Ok(local_apic)
     }
 
     fn initialize_heap(&mut self) -> Result<(), InitializeKernelError> {
