@@ -1,5 +1,6 @@
 use crate::actor::ActorCommonBounds;
+use core::any::Any;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait ActorMessage = ActorCommonBounds + Clone;
+pub trait ActorMessage = ActorCommonBounds + Clone + Any;

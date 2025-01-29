@@ -1,12 +1,12 @@
+use crate::actor::{ActorThread, ActorThreadType};
 use crate::architecture::ExecutionUnitIdentifier;
-use crate::actor::{ActorThread, ActorThreadType, create_new_stack};
 use crate::kernel::Kernel;
-use zcene_kernel::memory::address::VirtualMemoryAddress;
 use alloc::collections::{BTreeMap, VecDeque};
-use ztd::{Method};
-use x86_64::PrivilegeLevel;
-use x86_64::structures::gdt::SegmentSelector;
 use x86_64::registers::rflags::RFlags;
+use x86_64::structures::gdt::SegmentSelector;
+use x86_64::PrivilegeLevel;
+use zcene_kernel::memory::address::VirtualMemoryAddress;
+use ztd::Method;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -21,7 +21,7 @@ impl ActorThreadScheduler {
     pub fn r#break(
         &mut self,
         execution_unit_identifier: ExecutionUnitIdentifier,
-        stack_pointer: VirtualMemoryAddress
+        stack_pointer: VirtualMemoryAddress,
     ) {
         let mut thread = match self.threads.remove(&execution_unit_identifier) {
             Some(thread) => thread,
@@ -38,10 +38,8 @@ impl ActorThreadScheduler {
             .count()
             < 1
         {
-            self.queue.push_back(ActorThread::new(
-               ActorThreadType::Cooperative,
-               None,
-            ));
+            self.queue
+                .push_back(ActorThread::new(ActorThreadType::Cooperative, None));
         }
     }
 
@@ -57,13 +55,11 @@ impl ActorThreadScheduler {
 
                 stack_pointer
             }
-            None => None
+            None => None,
         };
 
         match stack_pointer {
-            Some(stack_pointer) => {
-                stack_pointer
-            },
+            Some(stack_pointer) => stack_pointer,
             None => {
                 let mut stack = Kernel::get().memory_manager().allocate_stack().unwrap();
                 stack.push_interrupt_frame(
@@ -79,16 +75,16 @@ impl ActorThreadScheduler {
     }
 
     pub fn begin(&mut self, execution_unit_identifier: ExecutionUnitIdentifier) {
-        self.threads.insert(execution_unit_identifier, ActorThread::new(
-            ActorThreadType::Preemptive ,
-            None
-        ));
+        self.threads.insert(
+            execution_unit_identifier,
+            ActorThread::new(ActorThreadType::Preemptive, None),
+        );
     }
 
     pub fn end(&mut self, execution_unit_identifier: ExecutionUnitIdentifier) {
-        self.threads.insert(execution_unit_identifier, ActorThread::new(
-            ActorThreadType::Cooperative,
-            None,
-        ));
+        self.threads.insert(
+            execution_unit_identifier,
+            ActorThread::new(ActorThreadType::Cooperative, None),
+        );
     }
 }

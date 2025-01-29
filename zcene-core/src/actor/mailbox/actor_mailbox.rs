@@ -1,6 +1,6 @@
 use crate::actor::{
     ActorFuture, ActorHandler, ActorMailboxMessageSender, ActorMessage, ActorMessageSender,
-    ActorSendError,
+    ActorSendError, ActorWeakMailbox,
 };
 use alloc::sync::Arc;
 use core::fmt::{self, Debug, Formatter};
@@ -46,5 +46,15 @@ where
 {
     fn send(&self, message: M) -> impl ActorFuture<'_, Result<(), ActorSendError>> {
         async { self.caller.send(message).await }
+    }
+}
+
+impl<M, H> ActorMailbox<M, H>
+where
+    M: ActorMessage,
+    H: ActorHandler,
+{
+    pub fn downgrade(&self) -> ActorWeakMailbox<M, H> {
+        ActorWeakMailbox::<M, H>::new(Arc::downgrade(&self.caller))
     }
 }

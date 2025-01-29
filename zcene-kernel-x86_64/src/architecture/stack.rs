@@ -1,15 +1,12 @@
-use zcene_kernel::memory::address::{
-    MemoryAddress,
-    MemoryAddressPerspective,
-    VirtualMemoryAddressPerspective,
-    VirtualMemoryAddress,
-};
-use ztd::Method;
+use core::arch::asm;
 use x86_64::registers::rflags::RFlags;
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::PrivilegeLevel;
-use core::arch::asm;
 use x86_64::VirtAddr;
+use zcene_kernel::memory::address::{
+    MemoryAddress, MemoryAddressPerspective, VirtualMemoryAddress, VirtualMemoryAddressPerspective,
+};
+use ztd::Method;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -17,7 +14,7 @@ use x86_64::VirtAddr;
 #[Method(accessors)]
 pub struct Stack<P>
 where
-    P: MemoryAddressPerspective
+    P: MemoryAddressPerspective,
 {
     initial_memory_address: MemoryAddress<P>,
     current_memory_address: MemoryAddress<P>,
@@ -26,12 +23,9 @@ where
 
 impl<P> Stack<P>
 where
-    P: MemoryAddressPerspective
+    P: MemoryAddressPerspective,
 {
-    pub fn new(
-        memory_address: MemoryAddress<P>,
-        total_size: usize,
-    ) -> Self {
+    pub fn new(memory_address: MemoryAddress<P>, total_size: usize) -> Self {
         Self {
             initial_memory_address: memory_address,
             current_memory_address: memory_address,

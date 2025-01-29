@@ -1,6 +1,6 @@
-use ztd::{Constructor, Method};
-use zcene_kernel::memory::address::VirtualMemoryAddress;
 use crate::actor::ActorThreadType;
+use zcene_kernel::memory::address::VirtualMemoryAddress;
+use ztd::{Constructor, Method};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

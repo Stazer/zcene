@@ -28,12 +28,8 @@ where
     ) -> Result<(), FutureRuntimeTaskReference<H>> {
         match self.0.push(future) {
             Ok(()) => Ok(()),
-            Err(PushError::Full(future)) => {
-                Err(future)
-            }
-            Err(PushError::Closed(future)) => {
-                Err(future)
-            }
+            Err(PushError::Full(future)) => Err(future),
+            Err(PushError::Closed(future)) => Err(future),
         }
     }
 

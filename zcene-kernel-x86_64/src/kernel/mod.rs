@@ -4,6 +4,7 @@ pub use interrupt_descriptor_table::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+use crate::architecture::Stack;
 use crate::entry_point::{
     double_fault_entry_point, keyboard_interrupt_entry_point, page_fault_entry_point,
     timer_interrupt_entry_point, timer_interrupt_handler, unhandled_interrupt_entry_point,
@@ -26,9 +27,11 @@ use x86_64::structures::paging::{Mapper, OffsetPageTable, Page, PageTable, PageT
 use x86_64::PhysAddr;
 use x86_64::VirtAddr;
 use zcene_kernel::common::linker_value;
-use zcene_kernel::memory::address::{VirtualMemoryAddressPerspective, PhysicalMemoryAddress, PhysicalMemoryAddressPerspective, VirtualMemoryAddress};
+use zcene_kernel::memory::address::{
+    PhysicalMemoryAddress, PhysicalMemoryAddressPerspective, VirtualMemoryAddress,
+    VirtualMemoryAddressPerspective,
+};
 use zcene_kernel::memory::frame::{FrameManager, FrameManagerAllocationError};
-use crate::architecture::Stack;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -330,13 +333,11 @@ impl MemoryManager {
         let mut stack_address = 0;
         let mut mapper = self.page_table_mapper();
 
-        for stack_frame_identifier in self
-            .frame_manager()
-            .allocate_window(4).unwrap()
-        {
+        for stack_frame_identifier in self.frame_manager().allocate_window(4).unwrap() {
             stack_address = self
                 .frame_manager()
-                .translate_frame_identifier(stack_frame_identifier).as_usize();
+                .translate_frame_identifier(stack_frame_identifier)
+                .as_usize();
 
             let page = Page::<Size4KiB>::containing_address(VirtAddr::new(
                 (stack_address).try_into().unwrap(),
@@ -353,7 +354,7 @@ impl MemoryManager {
                         PhysFrame::from_start_address(PhysAddr::new(
                             stack_address.try_into().unwrap(),
                         ))
-                            .unwrap(),
+                        .unwrap(),
                         PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
                         &mut EmptyFrameAllocator,
                     )
@@ -445,7 +446,7 @@ impl Kernel {
             .complete()
             .unwrap();
 
-        let root_actor = self.actor_system().spawn(RootActor::default()).unwrap();
+        /*let root_actor = self.actor_system().spawn(RootActor::default()).unwrap();
 
         timer_actor
             .send(TimerActorMessage::Subscription(
@@ -476,7 +477,7 @@ impl Kernel {
                     .unwrap(),
             ))
             .complete()
-            .unwrap();
+            .unwrap();*/
 
         /*root_actor.send(
             RootActorMessage::Subscription(
@@ -611,9 +612,10 @@ impl Kernel {
                 continue;
             }
 
-            let start =
-                frame_manager.translate_memory_address(PhysicalMemoryAddress::from(memory_region.start));
-            let end = frame_manager.translate_memory_address(PhysicalMemoryAddress::from(memory_region.end));
+            let start = frame_manager
+                .translate_memory_address(PhysicalMemoryAddress::from(memory_region.start));
+            let end = frame_manager
+                .translate_memory_address(PhysicalMemoryAddress::from(memory_region.end));
 
             for identifier in start..end {
                 if frame_manager

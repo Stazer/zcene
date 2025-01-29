@@ -1,5 +1,5 @@
 use crate::actor::{ActorMessage, ActorMessageChannelReceiver, ActorMessageChannelSender};
-use async_channel::{bounded};
+use async_channel::bounded;
 use core::marker::PhantomData;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -1,4 +1,4 @@
-use crate::actor::{ActorMessage, ActorContextMessageProvider};
+use crate::actor::{ActorContextMessageProvider, ActorMessage};
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

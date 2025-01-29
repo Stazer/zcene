@@ -1,6 +1,4 @@
-use crate::memory::address::{
-    MemoryAddressPerspective,
-};
+use crate::memory::address::MemoryAddressPerspective;
 use core::fmt::{self, Debug};
 use core::marker::PhantomData;
 
