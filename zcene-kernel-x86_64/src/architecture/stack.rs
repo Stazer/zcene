@@ -35,11 +35,11 @@ where
 }
 
 impl Stack<VirtualMemoryAddressPerspective> {
-    pub fn push_interrupt_frame(
+    #[inline(never)]
+    pub extern "C" fn push_interrupt_frame(
         &mut self,
         rflags: RFlags,
         function: fn() -> !,
-        //stack_memory_address: VirtualMemoryAddress,
         code_segment: SegmentSelector,
         stack_segment: SegmentSelector,
     ) {
@@ -78,7 +78,7 @@ impl Stack<VirtualMemoryAddressPerspective> {
                 "mov rsp, rbx",
 
                 rflags = in(reg) rflags.bits(),
-                instruction_pointer = in(reg) VirtualMemoryAddress::from(function as u64).as_u64(),
+                instruction_pointer = in(reg) function as u64,
                 current_stack_pointer = inout(reg) current_memory_address,
                 code_segment = in(reg) code_segment.0,
                 stack_segment = in(reg) stack_segment.0,

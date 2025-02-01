@@ -189,11 +189,8 @@ pub extern "x86-interrupt" fn machine_check_interrupt_entry_point(
 
 #[no_mangle]
 pub unsafe extern "C" fn handle_preemption(stack_pointer: u64) -> u64 {
-    crate::common::println!("preempt...");
-
     let apic_base = (unsafe { x86::msr::rdmsr(x86::msr::APIC_BASE) } & 0xFFFFF000) + Kernel::get().memory_manager().physical_memory_offset();
     let apic_ptr = apic_base as *mut u32;
-
 
     unsafe {
         use core::ptr;

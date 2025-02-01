@@ -1,0 +1,5 @@
+use crate::common::volatile::{Volatile, VolatileWriteAccessMode};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub type WriteVolatile<T> = Volatile<T, VolatileWriteAccessMode>;

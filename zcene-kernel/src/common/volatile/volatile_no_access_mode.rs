@@ -1,0 +1,7 @@
+use crate::common::volatile::VolatileAccessMode;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub struct VolatileNoAccessMode;
+
+impl VolatileAccessMode for VolatileNoAccessMode {}
