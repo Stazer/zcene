@@ -1,5 +1,6 @@
 mod interrupt_descriptor_table;
 
+use crate::driver::acpi::hpet::HpetRegisters;
 pub use interrupt_descriptor_table::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -35,9 +36,7 @@ use zcene_kernel::memory::frame::{FrameManager, FrameManagerAllocationError};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct InterruptManager {
-
-}
+pub struct InterruptManager {}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -389,42 +388,6 @@ pub struct Kernel {
 
 use zcene_kernel::common::volatile::{ReadVolatile, ReadWriteVolatile};
 
-#[repr(C)]
-pub struct HpetMemoryRegion {
-    /// The General Capabilities and ID Register, at offset 0x0.
-    pub general_capabilities_and_id: ReadVolatile<u64>,
-    _padding0:                       u64,
-    /// The General Configuration Register, at offset 0x10.
-    pub general_configuration:       ReadWriteVolatile<u64>,
-    _padding1:                       u64,
-    /// The General Interrupt Status Register, at offset 0x20.
-    pub general_interrupt_status:    ReadWriteVolatile<u64>,
-    _padding2:                       [u64; (0xF0 - 0x28) / 8], // 25 u64s
-    /// The Main Counter Value Register, at offset 0xF0.
-    pub main_counter_value:          ReadWriteVolatile<u64>,
-    _padding3:                       u64,
-}
-
-impl HpetMemoryRegion {
-    pub fn counter(&self) -> u64 {
-        self.main_counter_value.read()
-    }
-
-    pub fn enable(&mut self) {
-        self.general_configuration.update(|old_val_ref| old_val_ref | 0x1);
-    }
-
-    pub fn disable(&mut self) {
-        self.general_configuration.update(|old_val_ref| old_val_ref & !0x1);
-    }
-
-    pub fn counter_period_in_femtoseconds(&self) -> u32 {
-        let caps = self.general_capabilities_and_id.read();
-        let period = caps >> 32;
-        period as u32
-    }
-}
-
 impl Kernel {
     pub fn memory_manager(&self) -> &MemoryManager {
         &self.memory_manager
@@ -437,6 +400,7 @@ impl Kernel {
     pub fn get_mut<'a>() -> &'a mut Kernel {
         unsafe { &mut *KERNEL.get() }
     }
+
     pub fn initialize<'a>(
         &mut self,
         boot_info: &'a mut BootInfo,
@@ -451,44 +415,31 @@ impl Kernel {
 
         self.logger.attach_boot_info(boot_info);
 
-        use core::ptr::NonNull;
         use bootloader_api::info::Optional;
+        use core::ptr::NonNull;
+
+        use crate::driver::acpi::PhysicalMemoryOffsetAcpiHandler;
+        use acpi::hpet::HpetTable;
+        use acpi::{AcpiTables, HpetInfo};
 
         if let Optional::Some(rsdp) = rsdp_addr {
-            #[derive(Debug, Clone)]
-            struct MyHandler(u64);
-
-            use acpi::{AcpiTables, AcpiHandler, PhysicalMapping, HpetInfo};
-            use acpi::hpet::HpetTable;
-            use core::mem::size_of;
-
-            impl AcpiHandler for MyHandler {
-                unsafe fn map_physical_region<T>(
-                    &self,
-                    physical_address: usize,
-                    size: usize,
-                ) -> PhysicalMapping<Self, T> {
-                    PhysicalMapping::new(
-                        physical_address,
-                        NonNull::new((physical_address + self.0 as usize) as *mut T).unwrap(),
-                        size,
-                        size,
-                        self.clone(),
-                    )
-                }
-
-                fn unmap_physical_region<T>(region: &PhysicalMapping<Self, T>) {
-
-                }
-            }
-
-            let acpi_tables = unsafe { AcpiTables::from_rsdp(MyHandler(self.physical_memory_offset as _), rsdp as _).unwrap() };
+            let acpi_tables = unsafe {
+                AcpiTables::from_rsdp(
+                    PhysicalMemoryOffsetAcpiHandler::new(self.physical_memory_offset as _),
+                    rsdp as _,
+                )
+                .unwrap()
+            };
             let hpet_table = acpi_tables.find_table::<HpetTable>();
 
             let hpet_info = HpetInfo::new(&acpi_tables).unwrap();
 
-            let mut region = unsafe { ((hpet_info.base_address + self.physical_memory_offset) as *mut HpetMemoryRegion).as_mut().unwrap() };
-            region.enable();
+            let mut registers = unsafe {
+                ((hpet_info.base_address + self.physical_memory_offset) as *mut HpetRegisters)
+                    .as_mut()
+                    .unwrap()
+            };
+            registers.enable();
             self.hpet_base = Some(hpet_info.base_address as _);
         }
 
@@ -634,8 +585,12 @@ impl Kernel {
         self.actor_system.as_ref().unwrap()
     }
 
-    pub fn hpet(&self) -> &mut HpetMemoryRegion {
-        unsafe { ((self.hpet_base.unwrap() + self.physical_memory_offset as u64) as *mut HpetMemoryRegion).as_mut().unwrap() }
+    pub fn hpet(&self) -> &mut HpetRegisters {
+        unsafe {
+            ((self.hpet_base.unwrap() + self.physical_memory_offset as u64) as *mut HpetRegisters)
+                .as_mut()
+                .unwrap()
+        }
     }
 
     fn initialize_cores(&mut self) {
@@ -842,8 +797,7 @@ impl Kernel {
             interrupt_descriptor_table[KEYBOARD_INTERRUPT_ID]
                 .set_handler_fn(keyboard_interrupt_entry_point);
 
-            interrupt_descriptor_table[SPURIOUS_ID]
-                .set_handler_fn(spurious_handler);
+            interrupt_descriptor_table[SPURIOUS_ID].set_handler_fn(spurious_handler);
 
             interrupt_descriptor_table.load_unsafe();
         }
@@ -853,9 +807,7 @@ impl Kernel {
 
         use crate::architecture::interrupts::LocalInterruptManager;
 
-        let r#type = LocalInterruptManager::new(
-            self.physical_memory_offset as _
-        );
+        let r#type = LocalInterruptManager::new(self.physical_memory_offset as _);
 
         r#type.enable_timer(0x20, core::time::Duration::from_millis(100));
 

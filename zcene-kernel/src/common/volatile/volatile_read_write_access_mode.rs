@@ -1,4 +1,6 @@
-use crate::common::volatile::{VolatileAccessMode, VolatileReadingAccessMode, VolatileWritingAccessMode};
+use crate::common::volatile::{
+    VolatileAccessMode, VolatileReadingAccessMode, VolatileWritingAccessMode,
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

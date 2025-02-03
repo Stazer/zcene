@@ -51,6 +51,9 @@ where
     where
         M: ActorMessage,
     {
-        self.bucket::<M>().map(|data| data.iter()).into_iter().flatten()
+        self.bucket::<M>()
+            .map(|data| data.iter())
+            .into_iter()
+            .flatten()
     }
 }

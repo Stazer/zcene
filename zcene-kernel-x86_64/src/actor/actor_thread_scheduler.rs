@@ -65,8 +65,8 @@ impl ActorThreadScheduler {
             None => {
                 //let mut stack = create_new_stack(Kernel::get().memory_manager().allocate_stack().unwrap().current_memory_address().as_u64());
 
-                let mut stack = Kernel::get().memory_manager().allocate_stack().unwrap();//.current_memory_address().as_u64();
-                //crate::common::println!("from... {:?}", stack);
+                let mut stack = Kernel::get().memory_manager().allocate_stack().unwrap(); //.current_memory_address().as_u64();
+                                                                                          //crate::common::println!("from... {:?}", stack);
 
                 stack.push_interrupt_frame(
                     RFlags::empty(),
@@ -98,7 +98,6 @@ impl ActorThreadScheduler {
         );
     }
 }
-
 
 #[inline(never)]
 extern "C" fn create_new_stack(mut new_stack_pointer: u64) -> u64 {

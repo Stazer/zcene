@@ -1,6 +1,9 @@
+use crate::common::volatile::{
+    VolatileAccessMode, VolatileReadWriteAccessMode, VolatileReadingAccessMode,
+    VolatileWritingAccessMode,
+};
 use core::marker::PhantomData;
-use crate::common::volatile::{VolatileReadWriteAccessMode, VolatileAccessMode, VolatileWritingAccessMode, VolatileReadingAccessMode};
-use core::ptr::{write_volatile, read_volatile};
+use core::ptr::{read_volatile, write_volatile};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -11,7 +14,7 @@ where
 
 impl<T, A> Volatile<T, A>
 where
-    A: VolatileAccessMode
+    A: VolatileAccessMode,
 {
     pub fn new(value: T) -> Self {
         Self(value, PhantomData::<A>)
@@ -21,18 +24,14 @@ where
     where
         A: VolatileWritingAccessMode,
     {
-        unsafe {
-            write_volatile(&mut self.0, value)
-        }
+        unsafe { write_volatile(&mut self.0, value) }
     }
 
     pub fn read(&self) -> T
     where
         A: VolatileReadingAccessMode,
     {
-        unsafe {
-            read_volatile(&self.0)
-        }
+        unsafe { read_volatile(&self.0) }
     }
 
     pub fn update<F>(&mut self, function: F)
