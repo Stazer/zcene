@@ -42,6 +42,14 @@ where
     pub fn as_u64(&self) -> u64 {
         self.value as _
     }
+
+    pub fn cast<T>(&self) -> *const T {
+        self.value as *const T
+    }
+
+    pub fn cast_mut<T>(&self) -> *mut T {
+        self.value as *mut T
+    }
 }
 
 impl<P> From<usize> for MemoryAddress<P>

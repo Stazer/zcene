@@ -386,7 +386,9 @@ pub struct Kernel {
     hpet_base: Option<u64>,
 }
 
+use crate::driver::acpi::hpet::Hpet;
 use zcene_kernel::common::volatile::{ReadVolatile, ReadWriteVolatile};
+use zcene_kernel::time::Timer;
 
 impl Kernel {
     pub fn memory_manager(&self) -> &MemoryManager {
@@ -434,13 +436,14 @@ impl Kernel {
 
             let hpet_info = HpetInfo::new(&acpi_tables).unwrap();
 
-            let mut registers = unsafe {
-                ((hpet_info.base_address + self.physical_memory_offset) as *mut HpetRegisters)
+            self.hpet_base = Some(hpet_info.base_address as _);
+            Hpet::new(unsafe {
+                ((self.hpet_base.unwrap() + self.physical_memory_offset as u64)
+                    as *mut HpetRegisters)
                     .as_mut()
                     .unwrap()
-            };
-            registers.enable();
-            self.hpet_base = Some(hpet_info.base_address as _);
+            })
+            .enable();
         }
 
         self.initialize_cores();
@@ -585,12 +588,12 @@ impl Kernel {
         self.actor_system.as_ref().unwrap()
     }
 
-    pub fn hpet(&self) -> &mut HpetRegisters {
-        unsafe {
+    pub fn timer(&self) -> impl Timer + '_ {
+        Hpet::new(unsafe {
             ((self.hpet_base.unwrap() + self.physical_memory_offset as u64) as *mut HpetRegisters)
                 .as_mut()
                 .unwrap()
-        }
+        })
     }
 
     fn initialize_cores(&mut self) {
@@ -807,7 +810,7 @@ impl Kernel {
 
         use crate::architecture::interrupts::LocalInterruptManager;
 
-        let r#type = LocalInterruptManager::new(self.physical_memory_offset as _);
+        let r#type = LocalInterruptManager::new(self.memory_manager());
 
         r#type.enable_timer(0x20, core::time::Duration::from_millis(100));
 

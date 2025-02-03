@@ -1,7 +1,3 @@
-mod mutex;
-
-pub use mutex::*;
-
 macro_rules! println {
     ($format_string:expr) => {
         let _ = crate::kernel::Kernel::get()
