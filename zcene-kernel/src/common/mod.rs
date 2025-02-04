@@ -2,8 +2,10 @@ mod align;
 pub mod bits;
 mod linker_value;
 pub mod volatile;
+mod r#as;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub use align::*;
 pub use linker_value::*;
+pub use r#as::*;

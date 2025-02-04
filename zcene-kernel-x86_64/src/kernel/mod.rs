@@ -479,6 +479,47 @@ pub struct Kernel {
     hpet_base: Option<u64>,
 }
 
+use zcene_kernel::time::AtomicTimer;
+use crate::driver::acpi::PhysicalMemoryOffsetAcpiHandler;
+use acpi::hpet::HpetTable;
+use acpi::{AcpiTables, HpetInfo};
+
+pub enum KernelTimer<'a> {
+    Atomic(AtomicTimer),
+    Hpet(Hpet<'a>),
+}
+
+impl<'a> KernelTimer<'a> {
+    pub fn new(
+        memory_manager: &MemoryManager,
+        rsdp_address: Option<PhysicalMemoryAddress>,
+    ) -> Self {
+        if let Some(rsdp_address) = rsdp_address {
+            use zcene_kernel::common::As;
+            let acpi_tables = unsafe {
+                AcpiTables::from_rsdp(
+                    PhysicalMemoryOffsetAcpiHandler::new(memory_manager.physical_memory_offset() as usize),
+                    rsdp_address.as_u64().r#as(),
+                )
+                .unwrap()
+            };
+            let hpet_table = acpi_tables.find_table::<HpetTable>();
+
+            let hpet_info = HpetInfo::new(&acpi_tables).unwrap();
+
+            Hpet::new(unsafe {
+                ((hpet_info.base_address + memory_manager.physical_memory_offset.r#as())
+                    as *mut HpetRegisters)
+                    .as_mut()
+                    .unwrap()
+            })
+            .enable();
+        }
+
+        todo!()
+    }
+}
+
 use crate::driver::acpi::hpet::Hpet;
 use zcene_kernel::common::volatile::{ReadVolatile, ReadWriteVolatile};
 use zcene_kernel::time::Timer;
@@ -510,7 +551,6 @@ impl Kernel {
             )
         )
             .unwrap();
-
 
         use crate::driver::acpi::PhysicalMemoryOffsetAcpiHandler;
         use acpi::hpet::HpetTable;
@@ -560,6 +600,17 @@ impl Kernel {
             .send(TimerActorMessage::Subscription(
                 actor_system
                     .spawn(ApplicationActor::new(2, 0))
+                    .unwrap()
+                    .mailbox()
+                    .unwrap(),
+            ))
+            .complete()
+            .unwrap();
+
+        timer_actor
+            .send(TimerActorMessage::Subscription(
+                actor_system
+                    .spawn(ApplicationActor::new(3, 0))
                     .unwrap()
                     .mailbox()
                     .unwrap(),
