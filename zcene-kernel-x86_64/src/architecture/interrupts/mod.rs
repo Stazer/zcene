@@ -65,6 +65,9 @@ impl LocalInterruptManager {
             todo!()
         }
 
+        use core::fmt::Write;
+        crate::common::println!("HELLO");
+
         todo!()
     }
 
@@ -84,9 +87,15 @@ impl LocalInterruptManager {
 
 use ztd::Constructor;
 
-#[derive(Constructor)]
 pub struct InterruptManager {
 }
 
 impl InterruptManager {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    /*pub fn local_interrupt_manager(&self) -> LocalInterruptManager {
+        todo!()
+    }*/
 }

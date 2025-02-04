@@ -1,9 +1,9 @@
-use crate::actor::{ActorHandleExecutor, ActorThreadScheduler};
+use crate::actor::{ActorThreadScheduler};
 use crate::architecture::current_execution_unit_identifier;
 use crate::kernel::Kernel;
+use x86_64::instructions::interrupts::without_interrupts;
 use alloc::sync::Arc;
 use core::marker::PhantomData;
-use x86_64::instructions::interrupts::without_interrupts;
 use zcene_core::actor;
 use zcene_core::actor::{
     Actor, ActorAddressReference, ActorCommonHandleContext, ActorDiscoveryHandler, ActorEnterError,
@@ -13,7 +13,6 @@ use zcene_core::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
 use zcene_kernel::memory::address::VirtualMemoryAddress;
 use zcene_kernel::synchronization::Mutex;
 use ztd::Constructor;
-use ztd::Method;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -64,15 +63,42 @@ where
         self.future_runtime.spawn(async move {
             let mut actor = actor;
 
+            without_interrupts(|| {
+                scheduler.lock().begin(current_execution_unit_identifier());
+            });
+
+            actor.create(()).await;
+
+            without_interrupts(|| {
+                scheduler.lock().end(current_execution_unit_identifier());
+            });
+
             loop {
                 let message = match receiver.receive().await {
                     Some(message) => message,
                     None => break,
                 };
 
-                ActorHandleExecutor::new(&mut actor, message, scheduler.clone(), PhantomData::<H>)
-                    .await;
+                without_interrupts(|| {
+                    scheduler.lock().begin(current_execution_unit_identifier());
+                });
+
+                actor.handle(ActorCommonHandleContext::new(message)).await;
+
+                without_interrupts(|| {
+                    scheduler.lock().end(current_execution_unit_identifier());
+                });
             }
+
+            without_interrupts(|| {
+                scheduler.lock().begin(current_execution_unit_identifier());
+            });
+
+            actor.destroy(()).await;
+
+            without_interrupts(|| {
+                scheduler.lock().end(current_execution_unit_identifier());
+            });
         });
 
         Ok(reference)

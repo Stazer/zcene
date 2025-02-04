@@ -1,10 +1,8 @@
 use core::arch::asm;
 use x86_64::registers::rflags::RFlags;
 use x86_64::structures::gdt::SegmentSelector;
-use x86_64::PrivilegeLevel;
-use x86_64::VirtAddr;
 use zcene_kernel::memory::address::{
-    MemoryAddress, MemoryAddressPerspective, VirtualMemoryAddress, VirtualMemoryAddressPerspective,
+    MemoryAddress, MemoryAddressPerspective,
 };
 use ztd::Method;
 
@@ -34,7 +32,10 @@ where
     }
 }
 
-impl Stack<VirtualMemoryAddressPerspective> {
+impl<P> Stack<P>
+where
+    P: MemoryAddressPerspective,
+{
     #[inline(never)]
     pub extern "C" fn push_interrupt_frame(
         &mut self,
@@ -85,6 +86,6 @@ impl Stack<VirtualMemoryAddressPerspective> {
             )
         }
 
-        self.current_memory_address = VirtualMemoryAddress::from(current_memory_address);
+        self.current_memory_address = MemoryAddress::from(current_memory_address);
     }
 }

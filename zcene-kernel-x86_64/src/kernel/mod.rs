@@ -82,6 +82,7 @@ pub enum InitializeKernelError {
     FrameAllocation(FrameManagerAllocationError),
     Fmt(fmt::Error),
     BuildLocalApic(&'static str),
+    InitializeMemoryManager(InitializeMemoryManagerError),
 }
 
 impl From<fmt::Error> for InitializeKernelError {
@@ -93,6 +94,12 @@ impl From<fmt::Error> for InitializeKernelError {
 impl From<FrameManagerAllocationError> for InitializeKernelError {
     fn from(error: FrameManagerAllocationError) -> Self {
         Self::FrameAllocation(error)
+    }
+}
+
+impl From<InitializeMemoryManagerError> for InitializeKernelError {
+    fn from(error: InitializeMemoryManagerError) -> Self {
+        Self::InitializeMemoryManager(error)
     }
 }
 
@@ -277,12 +284,100 @@ pub struct MemoryManager {
     physical_memory_size_in_bytes: u64,
 }
 
+#[derive(Debug)]
+pub enum InitializeMemoryManagerError {
+    UnsupportedMapping,
+    FrameAllocation(FrameManagerAllocationError),
+}
+
+impl From<FrameManagerAllocationError> for InitializeMemoryManagerError {
+    fn from(error: FrameManagerAllocationError) -> Self {
+        Self::FrameAllocation(error)
+    }
+}
+
 impl MemoryManager {
-    pub fn new(physical_memory_offset: u64, physical_memory_size_in_bytes: u64) -> Self {
-        Self {
+    pub fn new(
+        boot_info: &mut BootInfo,
+    ) -> Result<Self, InitializeMemoryManagerError> {
+        let physical_memory_size_in_bytes = boot_info
+            .memory_regions
+            .iter()
+            .filter(|region| {
+                matches!(
+                    region.kind,
+                    MemoryRegionKind::Usable | MemoryRegionKind::Bootloader
+                )
+            })
+            .map(|region| region.end - region.start)
+            .sum::<u64>();
+
+        let physical_memory_offset = boot_info
+            .physical_memory_offset
+            .into_option()
+            .ok_or(InitializeMemoryManagerError::UnsupportedMapping)?;
+
+        let this = Self {
             physical_memory_offset,
             physical_memory_size_in_bytes,
+        };
+
+        for entry in this.active_page_table().iter_mut() {
+            let mut flags = entry.flags();
+
+            if flags.contains(PageTableFlags::PRESENT) {
+                flags.insert(PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
+                entry.set_flags(flags);
+            }
         }
+
+        let mut frame_manager = this.frame_manager();
+
+        for memory_region in boot_info.memory_regions.iter() {
+            if matches!(memory_region.kind, MemoryRegionKind::Usable) {
+                continue;
+            }
+
+            let start = frame_manager
+                .translate_memory_address(PhysicalMemoryAddress::from(memory_region.start));
+            let end = frame_manager
+                .translate_memory_address(PhysicalMemoryAddress::from(memory_region.end));
+
+            for identifier in start..end {
+                if frame_manager
+                    .translate_frame_identifier(identifier)
+                    .as_u64()
+                    >= physical_memory_size_in_bytes
+                {
+                    continue;
+                }
+
+                match frame_manager.allocate_frames(once(identifier)) {
+                    Ok(()) => {}
+                    Err(FrameManagerAllocationError::Allocated(_)) => {}
+                    Err(error) => todo!(),
+                }
+            }
+        }
+
+        let frame_count = 10 * 1;
+        let heap_frame_identifiers = frame_manager
+            .allocate_window(frame_count)?;
+
+        let mut allocator = GLOBAL_ALLOCATOR.inner().lock();
+
+        let memory_address =
+            frame_manager
+            .translate_frame_identifier(heap_frame_identifiers.last().unwrap());
+
+        unsafe {
+            allocator.init(
+                (memory_address.as_u64() + this.physical_memory_offset) as *mut u8,
+                frame_count * frame_manager.frame_byte_size(),
+            );
+        }
+
+        Ok(this)
     }
 
     pub fn physical_memory(&self) -> &'static mut [u8] {
@@ -378,10 +473,8 @@ impl MemoryManager {
 pub struct Kernel {
     logger: Logger,
     cores: usize,
-    physical_memory_offset: usize,
-    physical_memory_size_in_bytes: usize,
-    actor_system: Option<KernelActorSystemReference>,
-    timer_actor: Option<KernelActorAddressReference<TimerActor>>,
+    actor_system: KernelActorSystemReference,
+    timer_actor: KernelActorAddressReference<TimerActor>,
     memory_manager: MemoryManager,
     hpet_base: Option<u64>,
 }
@@ -389,45 +482,46 @@ pub struct Kernel {
 use crate::driver::acpi::hpet::Hpet;
 use zcene_kernel::common::volatile::{ReadVolatile, ReadWriteVolatile};
 use zcene_kernel::time::Timer;
+use alloc::sync::Arc;
+use bootloader_api::info::Optional;
 
 impl Kernel {
-    pub fn memory_manager(&self) -> &MemoryManager {
-        &self.memory_manager
-    }
-
-    pub fn get<'a>() -> &'a Kernel {
-        unsafe { &*KERNEL.get() }
-    }
-
-    pub fn get_mut<'a>() -> &'a mut Kernel {
-        unsafe { &mut *KERNEL.get() }
-    }
-
-    pub fn initialize<'a>(
-        &mut self,
-        boot_info: &'a mut BootInfo,
-    ) -> Result<(), InitializeKernelError>
-    where
-        'a: 'static,
-    {
-        self.initialize_physical_memory(boot_info)?;
-        self.initialize_frame_manager(boot_info)?;
-
+    pub fn new(
+        boot_info: &'static mut BootInfo,
+    ) -> Result<Self, InitializeKernelError> {
         let rsdp_addr = boot_info.rsdp_addr;
 
-        self.logger.attach_boot_info(boot_info);
+        let logger = Logger::new();
+        logger.attach_boot_info(
+            unsafe {
+                (boot_info as *mut BootInfo).as_mut().unwrap()
+            }
+        );
 
-        use bootloader_api::info::Optional;
-        use core::ptr::NonNull;
+        let memory_manager = MemoryManager::new(
+            unsafe {
+                (boot_info as *mut BootInfo).as_mut().unwrap()
+            }
+        )?;
+
+        let actor_system = ActorSystem::try_new(crate::actor::ActorHandler::new(
+                FutureRuntime::new(FutureRuntimeHandler::default()).unwrap(),
+                Arc::default(),
+            )
+        )
+            .unwrap();
+
 
         use crate::driver::acpi::PhysicalMemoryOffsetAcpiHandler;
         use acpi::hpet::HpetTable;
         use acpi::{AcpiTables, HpetInfo};
 
+        let mut hpet_base = None;
+
         if let Optional::Some(rsdp) = rsdp_addr {
             let acpi_tables = unsafe {
                 AcpiTables::from_rsdp(
-                    PhysicalMemoryOffsetAcpiHandler::new(self.physical_memory_offset as _),
+                    PhysicalMemoryOffsetAcpiHandler::new(memory_manager.physical_memory_offset as _),
                     rsdp as _,
                 )
                 .unwrap()
@@ -436,9 +530,9 @@ impl Kernel {
 
             let hpet_info = HpetInfo::new(&acpi_tables).unwrap();
 
-            self.hpet_base = Some(hpet_info.base_address as _);
+            hpet_base = Some(hpet_info.base_address as _);
             Hpet::new(unsafe {
-                ((self.hpet_base.unwrap() + self.physical_memory_offset as u64)
+                ((hpet_base.unwrap() + memory_manager.physical_memory_offset as u64)
                     as *mut HpetRegisters)
                     .as_mut()
                     .unwrap()
@@ -446,29 +540,14 @@ impl Kernel {
             .enable();
         }
 
-        self.initialize_cores();
-        let local_apic = self.initialize_interrupts()?;
-        self.initialize_smp()?;
-
-        self.initialize_heap()?;
-
-        self.actor_system = Some(
-            ActorSystem::try_new(crate::actor::ActorHandler::new(
-                FutureRuntime::new(FutureRuntimeHandler::default()).unwrap(),
-                alloc::sync::Arc::default(),
-            ))
-            .unwrap(),
-        );
-
-        let timer_actor = self.actor_system().spawn(TimerActor::default()).unwrap();
-
-        self.timer_actor = Some(timer_actor.clone());
+        let timer_actor = actor_system.spawn(TimerActor::default()).unwrap();
 
         use zcene_core::actor::ActorAddressExt;
+        use zcene_core::future::FutureExt;
 
         timer_actor
             .send(TimerActorMessage::Subscription(
-                self.actor_system()
+                actor_system
                     .spawn(ApplicationActor::new(1, 0))
                     .unwrap()
                     .mailbox()
@@ -479,7 +558,7 @@ impl Kernel {
 
         timer_actor
             .send(TimerActorMessage::Subscription(
-                self.actor_system()
+                actor_system
                     .spawn(ApplicationActor::new(2, 0))
                     .unwrap()
                     .mailbox()
@@ -488,56 +567,36 @@ impl Kernel {
             .complete()
             .unwrap();
 
-        let root_actor = self.actor_system().spawn(RootActor::default()).unwrap();
+        let this = Self {
+            logger,
+            hpet_base,
+            cores: 1,
+            actor_system,
+            timer_actor,
+            memory_manager,
+        };
 
-        timer_actor
-            .send(TimerActorMessage::Subscription(
-                root_actor
-                    .mailbox_with_mapping(|_| RootActorMessage::NoOperation)
-                    .unwrap(),
-            ))
-            .complete()
-            .unwrap();
+        Ok(this)
+    }
 
-        /*root_actor
-            .send(RootActorMessage::Subscription(
-                self.actor_system()
-                    .spawn(LongRunningActor::default())
-                    .unwrap()
-                    .mailbox()
-                    .unwrap(),
-            ))
-            .complete()
-            .unwrap();
+    pub fn memory_manager(&self) -> &MemoryManager {
+        &self.memory_manager
+    }
 
-        root_actor
-            .send(RootActorMessage::Subscription(
-                self.actor_system()
-                    .spawn(LongRunningActor::new(1, 1))
-                    .unwrap()
-                    .mailbox()
-                    .unwrap(),
-            ))
-            .complete()
-            .unwrap();*/
+    pub fn get<'a>() -> &'a Kernel {
+        unsafe {
+            KERNEL.get().as_ref().unwrap().as_ptr().as_ref().unwrap()
+        }
+    }
 
-        /*root_actor.send(
-            RootActorMessage::Subscription(
-                self.actor_system().spawn(LongRunningActor::new(1, 1)).unwrap().mailbox().unwrap()
-            )
-        ).complete().unwrap();*/
-
-        use zcene_core::future::FutureExt;
-
-        //self.boot_application_processors(local_apic);
-
-        self.logger().writer(|w| write!(w, "zcene\n",))?;
-
-        Ok(())
+    pub fn get_mut<'a>() -> &'a mut Kernel {
+        unsafe {
+            KERNEL.get().as_mut().unwrap().as_mut_ptr().as_mut().unwrap()
+        }
     }
 
     pub fn timer_actor(&self) -> &KernelActorAddressReference<TimerActor> {
-        self.timer_actor.as_ref().unwrap()
+        &self.timer_actor
     }
 
     pub fn logger(&self) -> &Logger {
@@ -545,6 +604,10 @@ impl Kernel {
     }
 
     pub fn run(&self) -> ! {
+        self.logger().writer(|w| write!(w, "zcene\n",));
+
+        self.initialize_interrupts();
+
         x86_64::instructions::interrupts::enable();
 
         self.actor_system().enter().unwrap();
@@ -552,45 +615,13 @@ impl Kernel {
         loop {}
     }
 
-    pub fn physical_memory(&self) -> &'static mut [u8] {
-        unsafe {
-            from_raw_parts_mut(
-                self.physical_memory_offset as *mut u8,
-                self.physical_memory_size_in_bytes,
-            )
-        }
-    }
-
-    pub fn active_page_table(&self) -> &'static mut PageTable {
-        let (level_4_table_frame, _) = Cr3::read();
-
-        let phys = level_4_table_frame.start_address().as_u64() as usize;
-        let virt = (self.physical_memory_offset + phys) as usize;
-        let page_table_ptr: *mut PageTable = virt as _;
-
-        unsafe { &mut *page_table_ptr }
-    }
-
-    pub fn page_table_mapper(&self) -> OffsetPageTable<'static> {
-        unsafe {
-            OffsetPageTable::new(
-                self.active_page_table(),
-                VirtAddr::new(self.physical_memory_offset as u64),
-            )
-        }
-    }
-
-    pub fn frame_manager(&self) -> FrameManager<'static, PhysicalMemoryAddressPerspective> {
-        unsafe { FrameManager::new_initialized(FRAME_SIZE, self.physical_memory()) }
-    }
-
     pub fn actor_system(&self) -> &KernelActorSystemReference {
-        self.actor_system.as_ref().unwrap()
+        &self.actor_system
     }
 
     pub fn timer(&self) -> impl Timer + '_ {
         Hpet::new(unsafe {
-            ((self.hpet_base.unwrap() + self.physical_memory_offset as u64) as *mut HpetRegisters)
+            ((self.hpet_base.unwrap() + self.memory_manager.physical_memory_offset as u64) as *mut HpetRegisters)
                 .as_mut()
                 .unwrap()
         })
@@ -607,84 +638,6 @@ impl Kernel {
                 _ => 0,
             };
         }
-    }
-
-    fn initialize_physical_memory(
-        &mut self,
-        boot_info: &mut BootInfo,
-    ) -> Result<(), InitializeKernelError> {
-        self.physical_memory_size_in_bytes = boot_info
-            .memory_regions
-            .iter()
-            .filter(|region| {
-                matches!(
-                    region.kind,
-                    MemoryRegionKind::Usable | MemoryRegionKind::Bootloader
-                )
-            })
-            .map(|region| region.end - region.start)
-            .sum::<u64>() as usize;
-
-        self.physical_memory_offset = boot_info
-            .physical_memory_offset
-            .into_option()
-            .ok_or(InitializeKernelError::PhysicalMemoryOffsetUnvailable)?
-            as usize;
-
-        for entry in self.active_page_table().iter_mut() {
-            let mut flags = entry.flags();
-
-            if flags.contains(PageTableFlags::PRESENT) {
-                flags.insert(PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
-                entry.set_flags(flags);
-            }
-        }
-
-        self.memory_manager.physical_memory_size_in_bytes = self.physical_memory_size_in_bytes as _;
-        self.memory_manager.physical_memory_offset = self.physical_memory_offset as _;
-
-        Ok(())
-    }
-
-    fn initialize_frame_manager(
-        &mut self,
-        boot_info: &mut BootInfo,
-    ) -> Result<(), InitializeKernelError> {
-        let mut frame_manager = FrameManager::<'_, PhysicalMemoryAddressPerspective>::new(
-            FRAME_SIZE,
-            self.physical_memory(),
-        );
-
-        let physical_memory_size_in_bytes = self.physical_memory_size_in_bytes;
-
-        for memory_region in boot_info.memory_regions.iter() {
-            if matches!(memory_region.kind, MemoryRegionKind::Usable) {
-                continue;
-            }
-
-            let start = frame_manager
-                .translate_memory_address(PhysicalMemoryAddress::from(memory_region.start));
-            let end = frame_manager
-                .translate_memory_address(PhysicalMemoryAddress::from(memory_region.end));
-
-            for identifier in start..end {
-                if frame_manager
-                    .translate_frame_identifier(identifier)
-                    .as_usize()
-                    >= physical_memory_size_in_bytes
-                {
-                    continue;
-                }
-
-                match frame_manager.allocate_frames(once(identifier)) {
-                    Ok(()) => {}
-                    Err(FrameManagerAllocationError::Allocated(_)) => {}
-                    Err(error) => return Err(error.into()),
-                }
-            }
-        }
-
-        Ok(())
     }
 
     fn initialize_interrupts(&self) -> Result<(), InitializeKernelError> {
@@ -825,36 +778,19 @@ impl Kernel {
         //Ok(local_apic)
     }
 
-    fn initialize_heap(&mut self) -> Result<(), InitializeKernelError> {
-        let frame_count = 1024 * 10;
-        let heap_frame_identifiers = self.frame_manager().allocate_window(frame_count)?;
-
-        let mut allocator = GLOBAL_ALLOCATOR.inner().lock();
-
-        let memory_address = self
-            .frame_manager()
-            .translate_frame_identifier(heap_frame_identifiers.last().unwrap());
-
-        unsafe {
-            allocator.init(
-                (memory_address.as_usize() + self.physical_memory_offset) as *mut u8,
-                1024 * self.frame_manager().frame_byte_size(),
-            );
-        }
-
-        Ok(())
-    }
-
     fn initialize_smp(&mut self) -> Result<(), InitializeKernelError> {
         let smp_frame_identifier = self
+            .memory_manager()
             .frame_manager()
             .unallocated_frame_identifiers()
             .next()
             .unwrap();
 
-        self.frame_manager()
+        self.memory_manager.frame_manager()
             .allocate_frames(once(smp_frame_identifier))?;
+
         let smp_memory_address = self
+            .memory_manager()
             .frame_manager()
             .translate_frame_identifier(smp_frame_identifier);
 
@@ -870,14 +806,14 @@ impl Kernel {
 
         let smp_section_to = unsafe {
             from_raw_parts_mut(
-                (self.physical_memory_offset + smp_memory_address.as_usize()) as *mut u8,
+                (self.memory_manager.physical_memory_offset + smp_memory_address.as_u64()) as *mut u8,
                 smp_sections_size,
             )
         };
 
         smp_section_to.copy_from_slice(smp_section_from);
 
-        let mut mapper = self.page_table_mapper();
+        let mut mapper = self.memory_manager().page_table_mapper();
 
         let smp_page = Page::<Size4KiB>::containing_address(VirtAddr::new(
             smp_sections_start.try_into().unwrap(),
@@ -901,10 +837,12 @@ impl Kernel {
         let total_stack_size = (self.cores - 1) * stack_size;
 
         for stack_frame_identifier in self
+            .memory_manager()
             .frame_manager()
             .allocate_window((self.cores - 1) * stack_frame_count)?
         {
             let stack_address = self
+                .memory_manager()
                 .frame_manager()
                 .translate_frame_identifier(stack_frame_identifier);
 
@@ -960,60 +898,10 @@ impl Kernel {
         }
     }
 
-    pub fn allocate_stack(&self) -> u64 {
-        let stack_frame_count = 4;
-        let stack_size = stack_frame_count * FRAME_SIZE;
-
-        let mut first_address = 0;
-        let mut stack_address = 0;
-        let mut mapper = self.page_table_mapper();
-
-        for stack_frame_identifier in self.frame_manager().allocate_window(4).unwrap() {
-            stack_address = self
-                .frame_manager()
-                .translate_frame_identifier(stack_frame_identifier)
-                .as_usize();
-
-            let page = Page::<Size4KiB>::containing_address(VirtAddr::new(
-                (stack_address).try_into().unwrap(),
-            ));
-
-            if first_address == 0 {
-                first_address = page.start_address().as_u64() + stack_size as u64;
-            }
-
-            unsafe {
-                mapper
-                    .map_to(
-                        page,
-                        PhysFrame::from_start_address(PhysAddr::new(
-                            stack_address.try_into().unwrap(),
-                        ))
-                        .unwrap(),
-                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                        &mut EmptyFrameAllocator,
-                    )
-                    .expect("Hello World")
-                    .flush();
-            }
-        }
-
-        (first_address).try_into().unwrap()
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static KERNEL: SyncUnsafeCell<Kernel> = SyncUnsafeCell::new(Kernel {
-    logger: Logger::new(),
-    hpet_base: None,
-    cores: 1,
-    physical_memory_offset: 0,
-    physical_memory_size_in_bytes: 0,
-    actor_system: None,
-    timer_actor: None,
-    memory_manager: MemoryManager {
-        physical_memory_offset: 0,
-        physical_memory_size_in_bytes: 0,
-    },
-});
+use core::mem::MaybeUninit;
+
+pub static KERNEL: SyncUnsafeCell<MaybeUninit<Kernel>> = SyncUnsafeCell::new(MaybeUninit::zeroed());

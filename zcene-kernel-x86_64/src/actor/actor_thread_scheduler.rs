@@ -17,8 +17,6 @@ pub struct ActorThreadScheduler {
     threads: BTreeMap<ExecutionUnitIdentifier, ActorThread>,
 }
 
-use core::fmt::Write;
-
 impl ActorThreadScheduler {
     pub fn r#break(
         &mut self,
