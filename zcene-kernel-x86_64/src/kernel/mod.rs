@@ -10,29 +10,30 @@ use crate::entry_point::{
     double_fault_entry_point, keyboard_interrupt_entry_point, page_fault_entry_point,
     timer_interrupt_entry_point, timer_interrupt_handler, unhandled_interrupt_entry_point,
 };
-use crate::driver::acpi::hpet::Hpet;
-use zcene_kernel::common::volatile::{ReadVolatile, ReadWriteVolatile};
-use zcene_kernel::time::Timer;
 use alloc::sync::Arc;
-use bootloader_api::info::Optional;
-use crate::global_allocator::GLOBAL_ALLOCATOR;
-use crate::logger::Logger;
-use bootloader_api::info::MemoryRegionKind;
 use bootloader_api::BootInfo;
+use bootloader_api::info::MemoryRegionKind;
+use bootloader_api::info::Optional;
 use core::cell::SyncUnsafeCell;
 use core::fmt::{self, Write};
 use core::iter::once;
 use core::slice::from_raw_parts_mut;
+use crate::driver::acpi::hpet::Hpet;
+use crate::global_allocator::GLOBAL_ALLOCATOR;
+use crate::logger::Logger;
+use crate::memory::{InitializeMemoryManagerError, MemoryManager};
 use pic8259::ChainedPics;
 use x2apic::lapic::LocalApic;
 use x2apic::lapic::{xapic_base, IpiDestMode, LocalApicBuilder};
 use x86::cpuid::CpuId;
 use x86::cpuid::TopologyType;
-use x86_64::registers::control::Cr3;
-use x86_64::structures::paging::{Mapper, OffsetPageTable, Page, PageTable, PageTableFlags};
 use x86_64::PhysAddr;
 use x86_64::VirtAddr;
+use x86_64::registers::control::Cr3;
+use x86_64::structures::paging::{Mapper, OffsetPageTable, Page, PageTable, PageTableFlags};
 use zcene_kernel::common::linker_value;
+use zcene_kernel::common::volatile::{ReadVolatile, ReadWriteVolatile};
+use zcene_kernel::time::Timer;
 use zcene_kernel::memory::address::{
     PhysicalMemoryAddress, PhysicalMemoryAddressPerspective, VirtualMemoryAddress,
     VirtualMemoryAddressPerspective,
@@ -44,10 +45,6 @@ use acpi::hpet::HpetTable;
 use acpi::{AcpiTables, HpetInfo};
 use core::time::Duration;
 use zcene_kernel::common::As;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-pub struct InterruptManager {}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -283,203 +280,9 @@ use zcene_core::actor::{ActorAddressReference, ActorSystem, ActorSystemReference
 
 pub type KernelActorHandler = crate::actor::ActorHandler<FutureRuntimeHandler>;
 pub type KernelActorSystemReference = ActorSystemReference<KernelActorHandler>;
-pub type KernelActorAddress<A> = <KernelActorHandler as ActorHandler>::Address<A>;
 pub type KernelActorAddressReference<A> = ActorAddressReference<A, KernelActorHandler>;
 
 use ztd::Method;
-
-#[derive(Debug, Method)]
-#[Method(accessors)]
-pub struct MemoryManager {
-    physical_memory_offset: u64,
-    physical_memory_size_in_bytes: u64,
-}
-
-#[derive(Debug)]
-pub enum InitializeMemoryManagerError {
-    UnsupportedMapping,
-    FrameAllocation(FrameManagerAllocationError),
-}
-
-impl From<FrameManagerAllocationError> for InitializeMemoryManagerError {
-    fn from(error: FrameManagerAllocationError) -> Self {
-        Self::FrameAllocation(error)
-    }
-}
-
-impl MemoryManager {
-    pub fn new(
-        boot_info: &mut BootInfo,
-    ) -> Result<Self, InitializeMemoryManagerError> {
-        let physical_memory_size_in_bytes = boot_info
-            .memory_regions
-            .iter()
-            .filter(|region| {
-                matches!(
-                    region.kind,
-                    MemoryRegionKind::Usable | MemoryRegionKind::Bootloader
-                )
-            })
-            .map(|region| region.end - region.start)
-            .sum::<u64>();
-
-        let physical_memory_offset = boot_info
-            .physical_memory_offset
-            .into_option()
-            .ok_or(InitializeMemoryManagerError::UnsupportedMapping)?;
-
-        let this = Self {
-            physical_memory_offset,
-            physical_memory_size_in_bytes,
-        };
-
-        for entry in this.active_page_table().iter_mut() {
-            let mut flags = entry.flags();
-
-            if flags.contains(PageTableFlags::PRESENT) {
-                flags.insert(PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
-                entry.set_flags(flags);
-            }
-        }
-
-        let mut frame_manager = this.frame_manager();
-
-        for memory_region in boot_info.memory_regions.iter() {
-            if matches!(memory_region.kind, MemoryRegionKind::Usable) {
-                continue;
-            }
-
-            let start = frame_manager
-                .translate_memory_address(PhysicalMemoryAddress::from(memory_region.start));
-            let end = frame_manager
-                .translate_memory_address(PhysicalMemoryAddress::from(memory_region.end));
-
-            for identifier in start..end {
-                if frame_manager
-                    .translate_frame_identifier(identifier)
-                    .as_u64()
-                    >= physical_memory_size_in_bytes
-                {
-                    continue;
-                }
-
-                match frame_manager.allocate_frames(once(identifier)) {
-                    Ok(()) => {}
-                    Err(FrameManagerAllocationError::Allocated(_)) => {}
-                    Err(error) => todo!(),
-                }
-            }
-        }
-
-        let frame_count = 10 * 1;
-        let heap_frame_identifiers = frame_manager
-            .allocate_window(frame_count)?;
-
-        let mut allocator = GLOBAL_ALLOCATOR.inner().lock();
-
-        let memory_address =
-            frame_manager
-            .translate_frame_identifier(heap_frame_identifiers.last().unwrap());
-
-        unsafe {
-            allocator.init(
-                (memory_address.as_u64() + this.physical_memory_offset) as *mut u8,
-                frame_count * frame_manager.frame_byte_size(),
-            );
-        }
-
-        Ok(this)
-    }
-
-    pub fn physical_memory(&self) -> &'static mut [u8] {
-        unsafe {
-            from_raw_parts_mut(
-                self.physical_memory_offset as *mut u8,
-                self.physical_memory_size_in_bytes.try_into().unwrap(),
-            )
-        }
-    }
-
-    pub fn translate_virtual_memory_address(
-        &self,
-        memory_address: VirtualMemoryAddress,
-    ) -> PhysicalMemoryAddress {
-        PhysicalMemoryAddress::from(memory_address.as_u64() - self.physical_memory_offset)
-    }
-
-    pub fn translate_physical_memory_address(
-        &self,
-        memory_address: PhysicalMemoryAddress,
-    ) -> VirtualMemoryAddress {
-        VirtualMemoryAddress::from(memory_address.as_u64() + self.physical_memory_offset)
-    }
-
-    pub fn frame_manager(&self) -> FrameManager<'static, PhysicalMemoryAddressPerspective> {
-        unsafe { FrameManager::new_initialized(FRAME_SIZE, self.physical_memory()) }
-    }
-
-    pub fn active_page_table(&self) -> &'static mut PageTable {
-        let pointer = self
-            .translate_physical_memory_address(PhysicalMemoryAddress::from(
-                Cr3::read().0.start_address().as_u64(),
-            ))
-            .as_u64();
-
-        unsafe { &mut *(pointer as *mut PageTable) }
-    }
-
-    pub fn page_table_mapper(&self) -> OffsetPageTable<'static> {
-        unsafe {
-            OffsetPageTable::new(
-                self.active_page_table(),
-                VirtAddr::new(self.physical_memory_offset as u64),
-            )
-        }
-    }
-
-    pub fn allocate_stack(&self) -> Option<Stack<VirtualMemoryAddressPerspective>> {
-        let stack_frame_count = 4;
-        let stack_size = stack_frame_count * FRAME_SIZE;
-
-        let mut first_address = 0;
-        let mut stack_address = 0;
-        let mut mapper = self.page_table_mapper();
-
-        for stack_frame_identifier in self.frame_manager().allocate_window(4).unwrap() {
-            stack_address = self
-                .frame_manager()
-                .translate_frame_identifier(stack_frame_identifier)
-                .as_usize();
-
-            let page = Page::<Size4KiB>::containing_address(VirtAddr::new(
-                (stack_address).try_into().unwrap(),
-            ));
-
-            if first_address == 0 {
-                first_address = page.start_address().as_u64() + stack_size as u64;
-            }
-
-            unsafe {
-                mapper
-                    .map_to(
-                        page,
-                        PhysFrame::from_start_address(PhysAddr::new(
-                            stack_address.try_into().unwrap(),
-                        ))
-                        .unwrap(),
-                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                        &mut EmptyFrameAllocator,
-                    )
-                    .expect("Hello World")
-                    .flush();
-            }
-        }
-
-        let first_address = VirtualMemoryAddress::from(first_address);
-
-        Some(Stack::new(first_address, stack_size))
-    }
-}
 
 pub struct Kernel {
     logger: Logger,
@@ -509,7 +312,7 @@ impl<'a> KernelTimer<'a> {
     fn new_hpet(memory_manager: &MemoryManager, rsdp_address: PhysicalMemoryAddress) -> Option<Self> {
         let acpi_tables = unsafe {
             AcpiTables::from_rsdp(
-                PhysicalMemoryOffsetAcpiHandler::new(memory_manager.physical_memory_offset().r#as()),
+                memory_manager.clone(),
                 rsdp_address.as_usize(),
             ).ok()?
         };
@@ -851,7 +654,8 @@ impl Kernel {
 
         let smp_section_to = unsafe {
             from_raw_parts_mut(
-                (self.memory_manager.physical_memory_offset + smp_memory_address.as_u64()) as *mut u8,
+                (self.memory_manager.translate_physical_memory_address(PhysicalMemoryAddress::from(smp_memory_address)).cast_mut::<u8>()),
+                //(self.memory_manager.physical_memory_offset() + smp_memory_address.as_u64()) as *mut u8,
                 smp_sections_size,
             )
         };

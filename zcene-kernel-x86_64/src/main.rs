@@ -12,13 +12,18 @@ extern crate alloc;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub mod actor;
-pub mod architecture;
-pub mod common;
-pub mod driver;
 mod entry_point;
-pub mod future;
 mod global_allocator;
 mod kernel;
 mod logger;
 mod panic_handler;
+pub mod actor;
+pub mod architecture;
+pub mod common;
+pub mod driver;
+pub mod future;
+pub mod memory;
+
+kernel!(
+    KernelActor,
+)

@@ -5,7 +5,7 @@ use core::slice::from_raw_parts_mut;
 use core::time::Duration;
 use pic8259::ChainedPics;
 use crate::driver::xapic::XApic;
-use crate::kernel::MemoryManager;
+use crate::memory::MemoryManager;
 use x86::cpuid::CpuId;
 use x86::msr::{rdmsr, APIC_BASE};
 use x86::time::rdtsc;
