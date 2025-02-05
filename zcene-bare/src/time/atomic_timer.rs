@@ -11,14 +11,12 @@ pub struct AtomicTimer {
 }
 
 impl AtomicTimer {
-   pub fn new(
-       duration: Duration,
-   ) -> Self {
-       Self {
-           counter: AtomicU32::default(),
-           duration,
-       }
-   }
+    pub fn new(duration: Duration) -> Self {
+        Self {
+            counter: AtomicU32::default(),
+            duration,
+        }
+    }
 }
 
 impl Timer for AtomicTimer {
@@ -27,9 +25,7 @@ impl Timer for AtomicTimer {
     }
 
     fn duration_between(&self, start: TimerInstant, end: TimerInstant) -> Duration {
-        let factor = end
-            .value()
-            .saturating_sub(start.value());
+        let factor = end.value().saturating_sub(start.value());
 
         self.duration * factor
     }

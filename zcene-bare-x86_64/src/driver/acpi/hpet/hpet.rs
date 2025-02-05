@@ -1,8 +1,8 @@
-use crate::driver::acpi::hpet::{HpetRegisters};
+use crate::driver::acpi::hpet::HpetRegisters;
 use core::time::Duration;
+use zcene_bare::common::As;
 use zcene_bare::time::{Timer, TimerInstant};
 use ztd::Constructor;
-use zcene_bare::common::As;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -53,12 +53,10 @@ impl<'a> Timer for Hpet<'a> {
     }
 
     fn duration_between(&self, start: TimerInstant, end: TimerInstant) -> Duration {
-        let ticks = end
-            .value()
-            .saturating_sub(start.value());
+        let ticks = end.value().saturating_sub(start.value());
 
         Duration::from_nanos(
-            u64::from(ticks) * u64::from(self.counter_tick_in_femtoseconds()) / 10u64.pow(6)
+            u64::from(ticks) * u64::from(self.counter_tick_in_femtoseconds()) / 10u64.pow(6),
         )
     }
 }

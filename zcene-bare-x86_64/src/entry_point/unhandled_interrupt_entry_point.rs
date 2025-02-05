@@ -191,7 +191,12 @@ use zcene_bare::memory::address::PhysicalMemoryAddress;
 
 #[no_mangle]
 pub unsafe extern "C" fn handle_preemption(stack_pointer: u64) -> u64 {
-    let apic_ptr = Kernel::get().memory_manager().translate_physical_memory_address(PhysicalMemoryAddress::from(x86::msr::rdmsr(x86::msr::APIC_BASE)  & 0xFFFFF000)).cast_mut::<u32>();
+    let apic_ptr = Kernel::get()
+        .memory_manager()
+        .translate_physical_memory_address(PhysicalMemoryAddress::from(
+            x86::msr::rdmsr(x86::msr::APIC_BASE) & 0xFFFFF000,
+        ))
+        .cast_mut::<u32>();
 
     unsafe {
         use core::ptr;

@@ -1,11 +1,11 @@
 use crate::architecture::FRAME_SIZE;
+use crate::driver::xapic::XApic;
+use crate::kernel::memory::KernelMemoryManager;
 use core::mem::size_of;
 use core::ptr::{read_volatile, write_volatile};
 use core::slice::from_raw_parts_mut;
 use core::time::Duration;
 use pic8259::ChainedPics;
-use crate::driver::xapic::XApic;
-use crate::memory::MemoryManager;
 use x86::cpuid::CpuId;
 use x86::msr::{rdmsr, APIC_BASE};
 use x86::time::rdtsc;
@@ -29,7 +29,7 @@ pub struct LocalInterruptManager {
 }
 
 impl LocalInterruptManager {
-    pub fn new(memory_manager: &MemoryManager) -> Self {
+    pub fn new(memory_manager: &KernelMemoryManager) -> Self {
         let cpu_id = CpuId::new();
         let feature_info = cpu_id.get_feature_info();
 
@@ -47,7 +47,7 @@ impl LocalInterruptManager {
                 r#type: LocalInterruptManagerType::XAPIC {
                     base: memory_manager
                         .translate_physical_memory_address(XApic::base_address())
-                        .cast_mut::<u32>()
+                        .cast_mut::<u32>(),
                 },
             };
         }
@@ -84,8 +84,7 @@ impl LocalInterruptManager {
 
 use ztd::Constructor;
 
-pub struct InterruptManager {
-}
+pub struct InterruptManager {}
 
 impl InterruptManager {
     pub fn new() -> Self {

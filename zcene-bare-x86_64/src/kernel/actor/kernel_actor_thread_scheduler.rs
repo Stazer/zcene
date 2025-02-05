@@ -1,5 +1,5 @@
-use crate::actor::{ActorThread, ActorThreadType};
 use crate::architecture::ExecutionUnitIdentifier;
+use crate::kernel::actor::{KernelActorThread, KernelActorThreadType};
 use crate::kernel::Kernel;
 use alloc::collections::{BTreeMap, VecDeque};
 use x86_64::registers::rflags::RFlags;
@@ -12,12 +12,12 @@ use ztd::Method;
 
 #[derive(Default, Method)]
 #[Method(all)]
-pub struct ActorThreadScheduler {
-    queue: VecDeque<ActorThread>,
-    threads: BTreeMap<ExecutionUnitIdentifier, ActorThread>,
+pub struct KernelActorThreadScheduler {
+    queue: VecDeque<KernelActorThread>,
+    threads: BTreeMap<ExecutionUnitIdentifier, KernelActorThread>,
 }
 
-impl ActorThreadScheduler {
+impl KernelActorThreadScheduler {
     pub fn r#break(
         &mut self,
         execution_unit_identifier: ExecutionUnitIdentifier,
@@ -34,19 +34,21 @@ impl ActorThreadScheduler {
         if self
             .queue
             .iter()
-            .filter(|x| matches!(x.r#type(), ActorThreadType::Cooperative))
+            .filter(|x| matches!(x.r#type(), KernelActorThreadType::Cooperative))
             .count()
             < 1
         {
-            self.queue
-                .push_back(ActorThread::new(ActorThreadType::Cooperative, None));
+            self.queue.push_back(KernelActorThread::new(
+                KernelActorThreadType::Cooperative,
+                None,
+            ));
         }
     }
 
     pub fn r#continue(
         &mut self,
         execution_unit_identifier: ExecutionUnitIdentifier,
-        next_thread: Option<ActorThread>,
+        next_thread: Option<KernelActorThread>,
     ) -> VirtualMemoryAddress {
         let stack_pointer = match next_thread {
             Some(thread) => {
@@ -65,7 +67,7 @@ impl ActorThreadScheduler {
 
                 stack.push_interrupt_frame(
                     RFlags::empty(),
-                    crate::actor::hello,
+                    crate::kernel::actor::hello,
                     SegmentSelector::new(1, PrivilegeLevel::Ring0),
                     SegmentSelector::new(2, PrivilegeLevel::Ring0),
                 );
@@ -78,14 +80,14 @@ impl ActorThreadScheduler {
     pub fn begin(&mut self, execution_unit_identifier: ExecutionUnitIdentifier) {
         self.threads.insert(
             execution_unit_identifier,
-            ActorThread::new(ActorThreadType::Preemptive, None),
+            KernelActorThread::new(KernelActorThreadType::Preemptive, None),
         );
     }
 
     pub fn end(&mut self, execution_unit_identifier: ExecutionUnitIdentifier) {
         self.threads.insert(
             execution_unit_identifier,
-            ActorThread::new(ActorThreadType::Cooperative, None),
+            KernelActorThread::new(KernelActorThreadType::Cooperative, None),
         );
     }
 }

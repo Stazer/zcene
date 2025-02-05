@@ -1,37 +1,34 @@
-use bootloader_api::BootInfo;
-use bootloader_api::info::MemoryRegionKind;
-use x86_64::structures::paging::PageTableFlags;
-use zcene_bare::memory::frame::{
-    FrameManagerAllocationError,
-};
-use zcene_bare::memory::address::{
-    PhysicalMemoryAddress,
-};
-use core::iter::once;
-use core::slice::from_raw_parts_mut;
-use acpi::{AcpiHandler, PhysicalMapping};
-use core::ptr::NonNull;
-use crate::architecture::FRAME_SIZE;
 use crate::architecture::Stack;
+use crate::architecture::FRAME_SIZE;
 use crate::global_allocator::GLOBAL_ALLOCATOR;
 use crate::kernel::EmptyFrameAllocator;
+use acpi::{AcpiHandler, PhysicalMapping};
+use bootloader_api::info::MemoryRegionKind;
+use bootloader_api::BootInfo;
+use core::iter::once;
+use core::ptr::NonNull;
+use core::slice::from_raw_parts_mut;
 use x86_64::registers::control::Cr3;
 use x86_64::structures::paging::OffsetPageTable;
 use x86_64::structures::paging::Page;
 use x86_64::structures::paging::PageTable;
+use x86_64::structures::paging::PageTableFlags;
 use x86_64::structures::paging::Size4KiB;
 use x86_64::structures::paging::{Mapper, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
+use zcene_bare::common::As;
+use zcene_bare::memory::address::PhysicalMemoryAddress;
 use zcene_bare::memory::address::PhysicalMemoryAddressPerspective;
+use zcene_bare::memory::address::VirtualMemoryAddress;
 use zcene_bare::memory::address::VirtualMemoryAddressPerspective;
-use zcene_bare::memory::address::{VirtualMemoryAddress};
 use zcene_bare::memory::frame::FrameManager;
+use zcene_bare::memory::frame::FrameManagerAllocationError;
 use ztd::Method;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone, Debug, Method)]
-pub struct MemoryManager {
+pub struct KernelMemoryManager {
     physical_memory_offset: u64,
     physical_memory_size_in_bytes: u64,
 }
@@ -48,10 +45,8 @@ impl From<FrameManagerAllocationError> for InitializeMemoryManagerError {
     }
 }
 
-impl MemoryManager {
-    pub fn new(
-        boot_info: &mut BootInfo,
-    ) -> Result<Self, InitializeMemoryManagerError> {
+impl KernelMemoryManager {
+    pub fn new(boot_info: &mut BootInfo) -> Result<Self, InitializeMemoryManagerError> {
         let physical_memory_size_in_bytes = boot_info
             .memory_regions
             .iter()
@@ -113,14 +108,12 @@ impl MemoryManager {
         }
 
         let frame_count = 10 * 1;
-        let heap_frame_identifiers = frame_manager
-            .allocate_window(frame_count)?;
+        let heap_frame_identifiers = frame_manager.allocate_window(frame_count)?;
 
         let mut allocator = GLOBAL_ALLOCATOR.inner().lock();
 
         let memory_address =
-            frame_manager
-            .translate_frame_identifier(heap_frame_identifiers.last().unwrap());
+            frame_manager.translate_frame_identifier(heap_frame_identifiers.last().unwrap());
 
         unsafe {
             allocator.init(
@@ -145,14 +138,22 @@ impl MemoryManager {
         &self,
         memory_address: VirtualMemoryAddress,
     ) -> PhysicalMemoryAddress {
-        PhysicalMemoryAddress::from(memory_address.as_u64().saturating_sub(self.physical_memory_offset))
+        PhysicalMemoryAddress::from(
+            memory_address
+                .as_u64()
+                .saturating_sub(self.physical_memory_offset),
+        )
     }
 
     pub fn translate_physical_memory_address(
         &self,
         memory_address: PhysicalMemoryAddress,
     ) -> VirtualMemoryAddress {
-        VirtualMemoryAddress::from(memory_address.as_u64().saturating_add(self.physical_memory_offset))
+        VirtualMemoryAddress::from(
+            memory_address
+                .as_u64()
+                .saturating_add(self.physical_memory_offset),
+        )
     }
 
     pub fn frame_manager(&self) -> FrameManager<'static, PhysicalMemoryAddressPerspective> {
@@ -220,24 +221,4 @@ impl MemoryManager {
 
         Some(Stack::new(first_address, stack_size))
     }
-}
-
-use zcene_bare::common::As;
-
-impl AcpiHandler for MemoryManager {
-    unsafe fn map_physical_region<T>(
-        &self,
-        physical_address: usize,
-        size: usize,
-    ) -> PhysicalMapping<Self, T> {
-        PhysicalMapping::new(
-            physical_address,
-            NonNull::new((physical_address + self.physical_memory_offset.r#as()) as *mut T).unwrap(),
-            size,
-            size,
-            self.clone(),
-        )
-    }
-
-    fn unmap_physical_region<T>(region: &PhysicalMapping<Self, T>) {}
 }

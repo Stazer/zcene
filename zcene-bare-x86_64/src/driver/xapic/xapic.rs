@@ -1,10 +1,10 @@
-use zcene_bare::time::{Timer, TimerInstant};
-use zcene_bare::memory::address::{PhysicalMemoryAddress};
-use crate::driver::xapic::{XApicRegisters};
-use ztd::Constructor;
+use crate::driver::xapic::XApicRegisters;
 use core::time::Duration;
 use x86::msr::rdmsr;
 use x86::msr::APIC_BASE;
+use zcene_bare::memory::address::PhysicalMemoryAddress;
+use zcene_bare::time::{Timer, TimerInstant};
+use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -13,12 +13,9 @@ pub struct XApic<'a> {
     registers: &'a mut XApicRegisters,
 }
 
-
 impl<'a> XApic<'a> {
     pub fn base_address() -> PhysicalMemoryAddress {
-        PhysicalMemoryAddress::from(
-            unsafe { rdmsr(APIC_BASE) & 0xFFFFF000 }
-        )
+        PhysicalMemoryAddress::from(unsafe { rdmsr(APIC_BASE) & 0xFFFFF000 })
     }
 
     pub fn set_spurious_interrupt_vector(&mut self, vector: u8) {

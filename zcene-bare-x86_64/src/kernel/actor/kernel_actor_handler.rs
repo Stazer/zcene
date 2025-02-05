@@ -1,40 +1,36 @@
-use crate::actor::{ActorThreadScheduler};
 use crate::architecture::current_execution_unit_identifier;
+use crate::kernel::actor::KernelActorThreadScheduler;
+use crate::kernel::future::runtime::KernelFutureRuntimeHandler;
+use crate::kernel::future::runtime::KernelFutureRuntimeReference;
 use crate::kernel::Kernel;
-use x86_64::instructions::interrupts::without_interrupts;
 use alloc::sync::Arc;
 use core::marker::PhantomData;
-use zcene_core::actor;
-use zcene_core::actor::{
-    Actor, ActorAddressReference, ActorCommonHandleContext, ActorDiscoveryHandler, ActorEnterError,
-    ActorMailbox, ActorMessage, ActorMessageChannel, ActorMessageChannelAddress, ActorSpawnError,
-};
-use zcene_core::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
+use x86_64::instructions::interrupts::without_interrupts;
 use zcene_bare::memory::address::VirtualMemoryAddress;
 use zcene_bare::synchronization::Mutex;
+use zcene_core::actor::{
+    Actor, ActorAddressReference, ActorCommonHandleContext, ActorDiscoveryHandler, ActorEnterError,
+    ActorHandler, ActorMailbox, ActorMessage, ActorMessageChannel, ActorMessageChannelAddress,
+    ActorSpawnError,
+};
+use zcene_core::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Constructor)]
-pub struct ActorHandler<H>
-where
-    H: FutureRuntimeHandler,
-{
-    future_runtime: FutureRuntimeReference<H>,
-    scheduler: Arc<Mutex<ActorThreadScheduler>>,
+pub struct KernelActorHandler {
+    future_runtime: KernelFutureRuntimeReference,
+    scheduler: Arc<Mutex<KernelActorThreadScheduler>>,
 }
 
-impl<H> actor::ActorHandler for ActorHandler<H>
-where
-    H: FutureRuntimeHandler,
-{
+impl ActorHandler for KernelActorHandler {
     type Address<A>
         = ActorMessageChannelAddress<A, Self>
     where
         A: Actor<Self>;
 
-    type Allocator = H::Allocator;
+    type Allocator = <KernelFutureRuntimeHandler as FutureRuntimeHandler>::Allocator;
 
     type CreateContext = ();
     type HandleContext<M>
@@ -111,10 +107,7 @@ where
     }
 }
 
-impl<H> ActorHandler<H>
-where
-    H: FutureRuntimeHandler,
-{
+impl KernelActorHandler {
     pub fn reschedule(&self, stack_pointer: VirtualMemoryAddress) -> VirtualMemoryAddress {
         let mut scheduler = self.scheduler.lock();
 
@@ -129,10 +122,7 @@ where
     }
 }
 
-impl<H> ActorDiscoveryHandler for ActorHandler<H>
-where
-    H: FutureRuntimeHandler,
-{
+impl ActorDiscoveryHandler for KernelActorHandler {
     fn discover<M>(&self) -> Option<ActorMailbox<M, Self>>
     where
         M: ActorMessage,

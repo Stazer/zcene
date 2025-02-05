@@ -1,5 +1,5 @@
 #[derive(Debug, PartialEq, Eq)]
-pub enum ActorThreadType {
+pub enum KernelActorThreadType {
     Cooperative,
     Preemptive,
 }
