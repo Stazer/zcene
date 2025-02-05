@@ -1,7 +1,0 @@
-[package]
-name = "zcene-kernel-x86_64-uefi"
-version = "0.0.0"
-edition = "2021"
-
-[build-dependencies]
-bootloader = { version = "*" }

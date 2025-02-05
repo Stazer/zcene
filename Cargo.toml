@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "zcene-core",
-    "zcene-kernel",
-    "zcene-kernel-x86_64",
-    "zcene-kernel-x86_64-uefi",
+    "zcene-bare",
+    "zcene-bare-x86_64",
+    "zcene-bare-x86_64-uefi",
 ]
