@@ -1,6 +1,4 @@
-pub struct KernelInterruptManager {
-
-}
+pub struct KernelInterruptManager {}
 
 use crate::architecture::FRAME_SIZE;
 use crate::driver::xapic::XApic;

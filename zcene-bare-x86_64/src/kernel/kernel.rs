@@ -11,6 +11,7 @@ use crate::kernel::actor::{
 use crate::kernel::future::runtime::{KernelFutureRuntime, KernelFutureRuntimeHandler};
 use crate::kernel::memory::{InitializeMemoryManagerError, KernelMemoryManager};
 use crate::kernel::KernelInterruptManager;
+use crate::kernel::KernelTimer;
 use crate::logger::Logger;
 use acpi::hpet::HpetTable;
 use acpi::{AcpiTables, HpetInfo};
@@ -25,7 +26,6 @@ use core::iter::once;
 use core::slice::from_raw_parts_mut;
 use core::time::Duration;
 use pic8259::ChainedPics;
-use crate::kernel::KernelTimer;
 use x2apic::lapic::LocalApic;
 use x2apic::lapic::{xapic_base, IpiDestMode, LocalApicBuilder};
 use x86::cpuid::CpuId;
@@ -42,11 +42,13 @@ use zcene_bare::memory::address::{
     VirtualMemoryAddressPerspective,
 };
 use zcene_bare::memory::frame::{FrameManager, FrameManagerAllocationError};
+use zcene_core::actor::ActorAddressExt;
 use zcene_core::actor::{
     Actor, ActorAddressReference, ActorCreateError, ActorFuture, ActorHandleError, ActorHandler,
     ActorSystem, ActorSystemReference,
 };
 use zcene_core::future::runtime::{FutureRuntime, FutureRuntimeActorHandler};
+use zcene_core::future::FutureExt;
 use ztd::Method;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -301,9 +303,6 @@ impl Kernel {
         );
 
         let timer_actor = actor_system.spawn(TimerActor::default()).unwrap();
-
-        use zcene_core::actor::ActorAddressExt;
-        use zcene_core::future::FutureExt;
 
         timer_actor
             .send(TimerActorMessage::Subscription(
