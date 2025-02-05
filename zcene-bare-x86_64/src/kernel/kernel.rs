@@ -10,6 +10,7 @@ use crate::kernel::actor::{
 };
 use crate::kernel::future::runtime::{KernelFutureRuntime, KernelFutureRuntimeHandler};
 use crate::kernel::memory::{InitializeMemoryManagerError, KernelMemoryManager};
+use crate::kernel::KernelInterruptManager;
 use crate::logger::Logger;
 use acpi::hpet::HpetTable;
 use acpi::{AcpiTables, HpetInfo};
@@ -275,6 +276,7 @@ pub struct Kernel {
     timer_actor: KernelActorAddressReference<TimerActor>,
     memory_manager: KernelMemoryManager,
     timer: KernelTimer<'static>,
+    interrupt_manager: KernelInterruptManager,
 }
 
 impl Kernel {
@@ -336,6 +338,8 @@ impl Kernel {
             .complete()
             .unwrap();
 
+        let interrupt_manager = KernelInterruptManager {};
+
         let this = Self {
             logger,
             cores: 1,
@@ -343,6 +347,7 @@ impl Kernel {
             timer_actor,
             memory_manager,
             timer,
+            interrupt_manager,
         };
 
         Ok(this)
@@ -394,6 +399,10 @@ impl Kernel {
 
     pub fn timer(&self) -> &KernelTimer {
         &self.timer
+    }
+
+    pub fn interrupt_manager(&self) -> &KernelInterruptManager {
+        &self.interrupt_manager
     }
 
     fn initialize_cores(&mut self) {
@@ -527,10 +536,10 @@ impl Kernel {
             interrupt_descriptor_table.load_unsafe();
         }
 
+        use crate::kernel::LocalInterruptManager;
+
         let cpu_id = CpuId::new();
         let feature_info = cpu_id.get_feature_info().unwrap();
-
-        use crate::architecture::interrupts::LocalInterruptManager;
 
         let r#type = LocalInterruptManager::new(self.memory_manager());
 

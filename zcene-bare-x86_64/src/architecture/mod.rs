@@ -33,5 +33,3 @@ pub use frame_size::*;
 
 mod stack;
 pub use stack::*;
-
-pub mod interrupts;
