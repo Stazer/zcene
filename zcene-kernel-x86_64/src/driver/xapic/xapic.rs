@@ -2,6 +2,7 @@ use zcene_kernel::time::{Timer, TimerInstant};
 use zcene_kernel::memory::address::{PhysicalMemoryAddress};
 use crate::driver::xapic::{XApicRegisters};
 use ztd::Constructor;
+use core::time::Duration;
 use x86::msr::rdmsr;
 use x86::msr::APIC_BASE;
 
@@ -12,7 +13,6 @@ pub struct XApic<'a> {
     registers: &'a mut XApicRegisters,
 }
 
-use core::time::Duration;
 
 impl<'a> XApic<'a> {
     pub fn base_address() -> PhysicalMemoryAddress {
@@ -28,7 +28,7 @@ impl<'a> XApic<'a> {
             .write(1 << 8 | vector as u32);
     }
 
-    pub fn calibrate<T>(&mut self, timer: T, duration: Duration) -> u32
+    pub fn calibrate<T>(&mut self, timer: &T, duration: Duration) -> u32
     where
         T: Timer,
     {
@@ -38,13 +38,7 @@ impl<'a> XApic<'a> {
 
         let start = timer.now();
 
-        loop {
-            let current = timer.now();
-
-            if current.duration_since(&start) >= duration {
-                break;
-            }
-        }
+        while timer.duration_between(start, timer.now()) < duration {}
 
         u32::MAX - self.registers.timer_current_count().read()
     }

@@ -1,6 +1,8 @@
-use crate::driver::acpi::hpet::{HpetInstant, HpetRegisters};
-use zcene_kernel::time::Timer;
+use crate::driver::acpi::hpet::{HpetRegisters};
+use core::time::Duration;
+use zcene_kernel::time::{Timer, TimerInstant};
 use ztd::Constructor;
+use zcene_kernel::common::As;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -46,9 +48,17 @@ impl<'a> Hpet<'a> {
 }
 
 impl<'a> Timer for Hpet<'a> {
-    type Instant = HpetInstant;
+    fn now(&self) -> TimerInstant {
+        TimerInstant::new(self.counter().try_into().unwrap_or(u32::MAX))
+    }
 
-    fn now(&self) -> Self::Instant {
-        HpetInstant::new(self.counter(), self.counter_tick_in_femtoseconds().into())
+    fn duration_between(&self, start: TimerInstant, end: TimerInstant) -> Duration {
+        let ticks = end
+            .value()
+            .saturating_sub(start.value());
+
+        Duration::from_nanos(
+            u64::from(ticks) * u64::from(self.counter_tick_in_femtoseconds()) / 10u64.pow(6)
+        )
     }
 }

@@ -65,9 +65,6 @@ impl LocalInterruptManager {
             todo!()
         }
 
-        use core::fmt::Write;
-        crate::common::println!("HELLO");
-
         todo!()
     }
 

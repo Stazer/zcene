@@ -1,7 +1,11 @@
 use core::time::Duration;
+use ztd::{Constructor, Method};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait TimerInstant {
-    fn duration_since(&self, other: &Self) -> Duration;
+#[derive(Constructor, Copy, Clone, Debug, Method)]
+#[Method(all)]
+#[repr(transparent)]
+pub struct TimerInstant {
+    value: u32,
 }

@@ -1,4 +1,4 @@
-use crate::time::{Timer, AtomicTimerInstant};
+use crate::time::{Timer, TimerInstant};
 use core::sync::atomic::{AtomicU32, Ordering};
 use core::time::Duration;
 
@@ -22,12 +22,15 @@ impl AtomicTimer {
 }
 
 impl Timer for AtomicTimer {
-    type Instant = AtomicTimerInstant;
+    fn now(&self) -> TimerInstant {
+        TimerInstant::new(self.counter.fetch_add(1, Ordering::SeqCst))
+    }
 
-    fn now(&self) -> Self::Instant {
-        AtomicTimerInstant::new(
-            self.counter.fetch_add(1, Ordering::SeqCst),
-            self.duration,
-        )
+    fn duration_between(&self, start: TimerInstant, end: TimerInstant) -> Duration {
+        let factor = end
+            .value()
+            .saturating_sub(start.value());
+
+        self.duration * factor
     }
 }

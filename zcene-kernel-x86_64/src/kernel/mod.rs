@@ -10,6 +10,11 @@ use crate::entry_point::{
     double_fault_entry_point, keyboard_interrupt_entry_point, page_fault_entry_point,
     timer_interrupt_entry_point, timer_interrupt_handler, unhandled_interrupt_entry_point,
 };
+use crate::driver::acpi::hpet::Hpet;
+use zcene_kernel::common::volatile::{ReadVolatile, ReadWriteVolatile};
+use zcene_kernel::time::Timer;
+use alloc::sync::Arc;
+use bootloader_api::info::Optional;
 use crate::global_allocator::GLOBAL_ALLOCATOR;
 use crate::logger::Logger;
 use bootloader_api::info::MemoryRegionKind;
@@ -33,6 +38,12 @@ use zcene_kernel::memory::address::{
     VirtualMemoryAddressPerspective,
 };
 use zcene_kernel::memory::frame::{FrameManager, FrameManagerAllocationError};
+use zcene_kernel::time::{AtomicTimer, TimerInstant};
+use crate::driver::acpi::PhysicalMemoryOffsetAcpiHandler;
+use acpi::hpet::HpetTable;
+use acpi::{AcpiTables, HpetInfo};
+use core::time::Duration;
+use zcene_kernel::common::As;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -476,13 +487,8 @@ pub struct Kernel {
     actor_system: KernelActorSystemReference,
     timer_actor: KernelActorAddressReference<TimerActor>,
     memory_manager: MemoryManager,
-    hpet_base: Option<u64>,
+    timer: KernelTimer<'static>,
 }
-
-use zcene_kernel::time::AtomicTimer;
-use crate::driver::acpi::PhysicalMemoryOffsetAcpiHandler;
-use acpi::hpet::HpetTable;
-use acpi::{AcpiTables, HpetInfo};
 
 pub enum KernelTimer<'a> {
     Atomic(AtomicTimer),
@@ -494,37 +500,55 @@ impl<'a> KernelTimer<'a> {
         memory_manager: &MemoryManager,
         rsdp_address: Option<PhysicalMemoryAddress>,
     ) -> Self {
-        if let Some(rsdp_address) = rsdp_address {
-            use zcene_kernel::common::As;
-            let acpi_tables = unsafe {
-                AcpiTables::from_rsdp(
-                    PhysicalMemoryOffsetAcpiHandler::new(memory_manager.physical_memory_offset() as usize),
-                    rsdp_address.as_u64().r#as(),
-                )
-                .unwrap()
-            };
-            let hpet_table = acpi_tables.find_table::<HpetTable>();
+        rsdp_address
+            .map(|rsdp_address| Self::new_hpet(memory_manager, rsdp_address))
+            .flatten()
+            .unwrap_or_else(Self::new_atomic)
+    }
 
-            let hpet_info = HpetInfo::new(&acpi_tables).unwrap();
+    fn new_hpet(memory_manager: &MemoryManager, rsdp_address: PhysicalMemoryAddress) -> Option<Self> {
+        let acpi_tables = unsafe {
+            AcpiTables::from_rsdp(
+                PhysicalMemoryOffsetAcpiHandler::new(memory_manager.physical_memory_offset().r#as()),
+                rsdp_address.as_usize(),
+            ).ok()?
+        };
 
-            Hpet::new(unsafe {
-                ((hpet_info.base_address + memory_manager.physical_memory_offset.r#as())
-                    as *mut HpetRegisters)
-                    .as_mut()
-                    .unwrap()
-            })
-            .enable();
-        }
+        let hpet_address = memory_manager.translate_physical_memory_address(
+            PhysicalMemoryAddress::new(HpetInfo::new(&acpi_tables).ok()?.base_address)
+        );
 
-        todo!()
+        let mut hpet = Hpet::new(
+            unsafe {
+                hpet_address.cast_mut::<HpetRegisters>().as_mut()?
+            }
+        );
+
+        hpet.enable();
+
+        Some(Self::Hpet(hpet))
+    }
+
+    fn new_atomic() -> Self {
+        Self::Atomic(AtomicTimer::new(Duration::from_millis(10)))
     }
 }
 
-use crate::driver::acpi::hpet::Hpet;
-use zcene_kernel::common::volatile::{ReadVolatile, ReadWriteVolatile};
-use zcene_kernel::time::Timer;
-use alloc::sync::Arc;
-use bootloader_api::info::Optional;
+impl<'a> Timer for KernelTimer<'a> {
+    fn now(&self) -> TimerInstant {
+        match self {
+            Self::Atomic(atomic) => atomic.now(),
+            Self::Hpet(hpet) => hpet.now(),
+        }
+    }
+
+    fn duration_between(&self, start: TimerInstant, end: TimerInstant) -> Duration {
+        match self {
+            Self::Atomic(atomic) => atomic.duration_between(start, end),
+            Self::Hpet(hpet) => hpet.duration_between(start, end),
+        }
+    }
+}
 
 impl Kernel {
     pub fn new(
@@ -552,33 +576,7 @@ impl Kernel {
         )
             .unwrap();
 
-        use crate::driver::acpi::PhysicalMemoryOffsetAcpiHandler;
-        use acpi::hpet::HpetTable;
-        use acpi::{AcpiTables, HpetInfo};
-
-        let mut hpet_base = None;
-
-        if let Optional::Some(rsdp) = rsdp_addr {
-            let acpi_tables = unsafe {
-                AcpiTables::from_rsdp(
-                    PhysicalMemoryOffsetAcpiHandler::new(memory_manager.physical_memory_offset as _),
-                    rsdp as _,
-                )
-                .unwrap()
-            };
-            let hpet_table = acpi_tables.find_table::<HpetTable>();
-
-            let hpet_info = HpetInfo::new(&acpi_tables).unwrap();
-
-            hpet_base = Some(hpet_info.base_address as _);
-            Hpet::new(unsafe {
-                ((hpet_base.unwrap() + memory_manager.physical_memory_offset as u64)
-                    as *mut HpetRegisters)
-                    .as_mut()
-                    .unwrap()
-            })
-            .enable();
-        }
+        let timer = KernelTimer::new(&memory_manager, rsdp_addr.into_option().map(PhysicalMemoryAddress::from));
 
         let timer_actor = actor_system.spawn(TimerActor::default()).unwrap();
 
@@ -620,11 +618,11 @@ impl Kernel {
 
         let this = Self {
             logger,
-            hpet_base,
             cores: 1,
             actor_system,
             timer_actor,
             memory_manager,
+            timer,
         };
 
         Ok(this)
@@ -670,12 +668,8 @@ impl Kernel {
         &self.actor_system
     }
 
-    pub fn timer(&self) -> impl Timer + '_ {
-        Hpet::new(unsafe {
-            ((self.hpet_base.unwrap() + self.memory_manager.physical_memory_offset as u64) as *mut HpetRegisters)
-                .as_mut()
-                .unwrap()
-        })
+    pub fn timer(&self) -> &KernelTimer {
+        &self.timer
     }
 
     fn initialize_cores(&mut self) {
