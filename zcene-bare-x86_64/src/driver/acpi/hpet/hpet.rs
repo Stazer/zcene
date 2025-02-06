@@ -1,6 +1,5 @@
 use crate::driver::acpi::hpet::HpetRegisters;
 use core::time::Duration;
-use zcene_bare::common::As;
 use zcene_bare::time::{Timer, TimerInstant};
 use ztd::Constructor;
 

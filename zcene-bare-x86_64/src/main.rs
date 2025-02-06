@@ -18,5 +18,4 @@ pub mod driver;
 mod entry_point;
 mod global_allocator;
 mod kernel;
-mod logger;
 mod panic_handler;

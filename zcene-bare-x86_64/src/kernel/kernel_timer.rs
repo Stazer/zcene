@@ -1,6 +1,5 @@
 use crate::driver::acpi::hpet::{Hpet, HpetRegisters};
 use crate::kernel::memory::{KernelMemoryManager, KernelMemoryManagerAcpiHandler};
-use acpi::hpet::HpetTable;
 use acpi::{AcpiTables, HpetInfo};
 use core::time::Duration;
 use zcene_bare::memory::address::PhysicalMemoryAddress;

@@ -7,8 +7,4 @@ mod unhandled_interrupt_entry_point;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub use application_processor_entry_point::*;
 pub use bootstrap_processor_entry_point::*;
-pub use double_fault_entry_point::*;
-pub use page_fault_entry_point::*;
-pub use unhandled_interrupt_entry_point::*;

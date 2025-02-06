@@ -123,3 +123,17 @@
             );
         }
     }*/
+
+
+    /*fn initialize_cores(&mut self) {
+        let cpu_id = CpuId::new();
+
+        self.cores = 0;
+
+        for extended_topology_info in cpu_id.get_extended_topology_info().into_iter().flatten() {
+            self.cores += match extended_topology_info.level_type() {
+                TopologyType::Core => extended_topology_info.processors() as usize,
+                _ => 0,
+            };
+        }
+    }*/

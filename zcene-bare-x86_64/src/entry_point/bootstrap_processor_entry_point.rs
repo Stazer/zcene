@@ -1,7 +1,5 @@
 use crate::kernel::{Kernel, KERNEL};
 use bootloader_api::BootInfo;
-use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
-use core::fmt::Write;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

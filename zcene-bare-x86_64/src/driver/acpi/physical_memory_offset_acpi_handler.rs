@@ -1,6 +1,4 @@
-use acpi::hpet::HpetTable;
-use acpi::{AcpiHandler, AcpiTables, HpetInfo, PhysicalMapping};
-use core::mem::size_of;
+use acpi::{AcpiHandler, PhysicalMapping};
 use core::ptr::NonNull;
 use ztd::{Constructor, Method};
 

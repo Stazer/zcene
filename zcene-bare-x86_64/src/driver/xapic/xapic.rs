@@ -3,7 +3,7 @@ use core::time::Duration;
 use x86::msr::rdmsr;
 use x86::msr::APIC_BASE;
 use zcene_bare::memory::address::PhysicalMemoryAddress;
-use zcene_bare::time::{Timer, TimerInstant};
+use zcene_bare::time::Timer;
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

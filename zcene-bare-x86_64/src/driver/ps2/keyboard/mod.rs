@@ -1,5 +1,5 @@
 use alloc::vec::Vec;
-use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
+use pc_keyboard::DecodedKey;
 use zcene_core::actor::{
     Actor, ActorContextMessageProvider, ActorFuture, ActorHandleError, ActorHandler, ActorMailbox,
 };

@@ -13,7 +13,7 @@ use zcene_core::actor::{
     ActorHandler, ActorMailbox, ActorMessage, ActorMessageChannel, ActorMessageChannelAddress,
     ActorSpawnError,
 };
-use zcene_core::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
+use zcene_core::future::runtime::FutureRuntimeHandler;
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

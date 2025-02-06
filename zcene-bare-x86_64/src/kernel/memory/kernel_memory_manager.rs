@@ -1,14 +1,14 @@
-use crate::architecture::Stack;
-use crate::architecture::FRAME_SIZE;
-use crate::global_allocator::GLOBAL_ALLOCATOR;
-use crate::kernel::EmptyFrameAllocator;
-use acpi::{AcpiHandler, PhysicalMapping};
-use bootloader_api::info::MemoryRegionKind;
+use alloc::alloc::Global;
 use bootloader_api::BootInfo;
+use bootloader_api::info::MemoryRegionKind;
+use core::alloc::Allocator;
 use core::iter::once;
-use core::ptr::NonNull;
 use core::slice::from_raw_parts_mut;
+use crate::architecture::FRAME_SIZE;
+use crate::architecture::Stack;
+use crate::global_allocator::GLOBAL_ALLOCATOR;
 use x86_64::registers::control::Cr3;
+use x86_64::structures::paging::FrameAllocator;
 use x86_64::structures::paging::OffsetPageTable;
 use x86_64::structures::paging::Page;
 use x86_64::structures::paging::PageTable;
@@ -16,7 +16,6 @@ use x86_64::structures::paging::PageTableFlags;
 use x86_64::structures::paging::Size4KiB;
 use x86_64::structures::paging::{Mapper, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
-use zcene_bare::common::As;
 use zcene_bare::memory::address::PhysicalMemoryAddress;
 use zcene_bare::memory::address::PhysicalMemoryAddressPerspective;
 use zcene_bare::memory::address::VirtualMemoryAddress;
@@ -220,5 +219,30 @@ impl KernelMemoryManager {
         let first_address = VirtualMemoryAddress::from(first_address);
 
         Some(Stack::new(first_address, stack_size))
+    }
+
+    pub fn heap_allocator(&self) -> impl Allocator {
+        Global
+    }
+}
+
+pub struct EmptyFrameAllocator;
+
+unsafe impl FrameAllocator<Size4KiB> for EmptyFrameAllocator {
+    fn allocate_frame(&mut self) -> Option<PhysFrame> {
+        None
+    }
+}
+
+pub struct FixedFrameAllocator<T>(T)
+where
+    T: Iterator<Item = PhysFrame>;
+
+unsafe impl<T> FrameAllocator<Size4KiB> for FixedFrameAllocator<T>
+where
+    T: Iterator<Item = PhysFrame>,
+{
+    fn allocate_frame(&mut self) -> Option<PhysFrame> {
+        self.0.next()
     }
 }

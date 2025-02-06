@@ -1,7 +1,6 @@
 use core::alloc::GlobalAlloc;
 use core::alloc::Layout;
 use linked_list_allocator::LockedHeap;
-use x86_64::instructions::interrupts::without_interrupts;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
