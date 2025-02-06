@@ -1,8 +1,8 @@
 pub mod actor;
 pub mod future;
-pub mod memory;
-pub mod logger;
 pub mod interrupt;
+pub mod logger;
+pub mod memory;
 
 mod kernel;
 mod kernel_timer;

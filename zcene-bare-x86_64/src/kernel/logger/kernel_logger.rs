@@ -1,7 +1,7 @@
 use crate::kernel::logger::KernelLoggerWriter;
 use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
 use bootloader_x86_64_common::serial::SerialPort;
-use core::fmt::{Result, Write, Error};
+use core::fmt::{Error, Result, Write};
 use x86_64::instructions::interrupts::without_interrupts;
 use zcene_bare::synchronization::Mutex;
 
@@ -13,10 +13,7 @@ pub struct KernelLogger {
 }
 
 impl KernelLogger {
-    pub fn new(
-        frame_buffer: Option<FrameBufferWriter>,
-        serial_port: Option<SerialPort>,
-    ) -> Self {
+    pub fn new(frame_buffer: Option<FrameBufferWriter>, serial_port: Option<SerialPort>) -> Self {
         Self {
             frame_buffer: Mutex::new(frame_buffer),
             serial_port: Mutex::new(serial_port),
@@ -37,7 +34,7 @@ impl KernelLogger {
 
     pub fn writer<F>(&self, function: F) -> Result
     where
-        F: FnOnce(&mut KernelLoggerWriter<'_>) -> Result
+        F: FnOnce(&mut KernelLoggerWriter<'_>) -> Result,
     {
         function(&mut KernelLoggerWriter::new(self))
     }

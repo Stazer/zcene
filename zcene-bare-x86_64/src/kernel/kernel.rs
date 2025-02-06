@@ -2,35 +2,26 @@ use crate::kernel::actor::{
     KernelActorAddressReference, KernelActorHandler, KernelActorSystem, KernelActorSystemReference,
 };
 use crate::kernel::future::runtime::{KernelFutureRuntime, KernelFutureRuntimeHandler};
-use crate::kernel::memory::{InitializeMemoryManagerError, KernelMemoryManager};
-use core::mem::MaybeUninit;
 use crate::kernel::interrupt::KernelInterruptManager;
-use bootloader_x86_64_common::serial::SerialPort;
+use crate::kernel::logger::println;
+use crate::kernel::logger::KernelLogger;
+use crate::kernel::memory::{KernelMemoryManager, KernelMemoryManagerInitializeError};
 use crate::kernel::KernelTimer;
 use alloc::alloc::Global;
 use alloc::sync::Arc;
-use crate::kernel::logger::KernelLogger;
 use bootloader_api::BootInfo;
+use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
+use bootloader_x86_64_common::serial::SerialPort;
 use core::cell::SyncUnsafeCell;
 use core::fmt::{self, Write};
+use core::mem::MaybeUninit;
 use x86::cpuid::CpuId;
 use zcene_bare::memory::address::PhysicalMemoryAddress;
 use zcene_bare::memory::frame::FrameManagerAllocationError;
 use zcene_core::actor::ActorAddressExt;
-use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
-use crate::kernel::logger::println;
-use zcene_core::actor::{
-    Actor, ActorFuture, ActorHandleError, ActorHandler,
-};
+use zcene_core::actor::ActorSpawnError;
+use zcene_core::actor::{Actor, ActorFuture, ActorHandleError, ActorHandler};
 use zcene_core::future::FutureExt;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-const FRAME_SIZE: usize = 4096;
-const EXTERNAL_INTERRUPTS_START: usize = 0x20;
-const TIMER_INTERRUPT_ID: usize = 0x20;
-const SPURIOUS_ID: usize = 0x20 + 15;
-const KEYBOARD_INTERRUPT_ID: usize = 0x21;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -41,12 +32,19 @@ pub enum KernelInitializeError {
     FrameAllocation(FrameManagerAllocationError),
     Fmt(fmt::Error),
     BuildLocalApic(&'static str),
-    InitializeMemoryManager(InitializeMemoryManagerError),
+    KernelMemoryManagerInitialize(KernelMemoryManagerInitializeError),
+    ActorSpawn(ActorSpawnError),
 }
 
 impl From<fmt::Error> for KernelInitializeError {
     fn from(error: fmt::Error) -> Self {
         Self::Fmt(error)
+    }
+}
+
+impl From<ActorSpawnError> for KernelInitializeError {
+    fn from(error: ActorSpawnError) -> Self {
+        Self::ActorSpawn(error)
     }
 }
 
@@ -56,9 +54,9 @@ impl From<FrameManagerAllocationError> for KernelInitializeError {
     }
 }
 
-impl From<InitializeMemoryManagerError> for KernelInitializeError {
-    fn from(error: InitializeMemoryManagerError) -> Self {
-        Self::InitializeMemoryManager(error)
+impl From<KernelMemoryManagerInitializeError> for KernelInitializeError {
+    fn from(error: KernelMemoryManagerInitializeError) -> Self {
+        Self::KernelMemoryManagerInitialize(error)
     }
 }
 
@@ -226,7 +224,13 @@ impl Kernel {
             Some(unsafe { SerialPort::init() }),
         );
 
-        let memory_manager = KernelMemoryManager::new(boot_info)?;
+        let memory_manager = match KernelMemoryManager::new(&logger, boot_info) {
+            Ok(memory_manager) => memory_manager,
+            Err(error) => {
+                logger.writer(|writer| write!(writer, "{:?}", error));
+                return Err(error.into());
+            }
+        };
 
         let actor_system = KernelActorSystem::try_new(KernelActorHandler::new(
             KernelFutureRuntime::new(KernelFutureRuntimeHandler::default()).unwrap(),
@@ -236,26 +240,35 @@ impl Kernel {
 
         let timer = KernelTimer::new(
             &memory_manager,
-            boot_info.rsdp_addr.into_option().map(PhysicalMemoryAddress::from),
+            boot_info
+                .rsdp_addr
+                .into_option()
+                .map(PhysicalMemoryAddress::from),
         );
 
         let mut interrupt_manager = KernelInterruptManager::new();
-        interrupt_manager.bootstrap_local_interrupt_manager(
-            {
-                let mut local_interrupt_manager = crate::kernel::interrupt::LocalInterruptManager::new(&memory_manager);
-                local_interrupt_manager.enable_timer(
-                    &timer,
-                    unsafe {
-                    core::mem::transmute(crate::kernel::actor::timer_entry_point as *const u8)// as *const u8 as crate::kernel::interrupt::InterruptEntryPoint,
-                    },
-                    core::time::Duration::from_millis(100),
-                );
+        interrupt_manager.bootstrap_local_interrupt_manager({
+            let mut local_interrupt_manager =
+                crate::kernel::interrupt::LocalInterruptManager::new(&memory_manager);
+            local_interrupt_manager.enable_timer(
+                &timer,
+                unsafe {
+                    core::mem::transmute(crate::kernel::actor::timer_entry_point as *const u8)
+                },
+                core::time::Duration::from_millis(100),
+            );
 
-                local_interrupt_manager
+            local_interrupt_manager
+        });
+
+        let timer_actor = match actor_system.spawn(TimerActor::default()) {
+            Ok(timer_actor) => timer_actor,
+            Err(error) => {
+                logger.writer(|w| write!(w, "Error {:?}\n", error));
+
+                return Err(error.into());
             }
-        );
-
-        let timer_actor = actor_system.spawn(TimerActor::default()).unwrap();
+        };
 
         let this = Self {
             logger,
@@ -362,4 +375,7 @@ static BOOTLOADER_CONFIG: BootloaderConfig = {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-entry_point!(Kernel::bootstrap_processor_entry_point, config = &BOOTLOADER_CONFIG);
+entry_point!(
+    Kernel::bootstrap_processor_entry_point,
+    config = &BOOTLOADER_CONFIG
+);

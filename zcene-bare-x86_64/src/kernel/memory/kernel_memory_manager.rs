@@ -1,21 +1,25 @@
+use crate::architecture::Stack;
+use crate::architecture::FRAME_SIZE;
+use crate::global_allocator::GLOBAL_ALLOCATOR;
 use alloc::alloc::Global;
-use bootloader_api::BootInfo;
 use bootloader_api::info::MemoryRegionKind;
+use bootloader_api::BootInfo;
 use core::alloc::Allocator;
 use core::iter::once;
 use core::slice::from_raw_parts_mut;
-use crate::architecture::FRAME_SIZE;
-use crate::architecture::Stack;
-use crate::global_allocator::GLOBAL_ALLOCATOR;
 use x86_64::registers::control::Cr3;
+use x86_64::structures::paging::mapper::MapToError;
+use x86_64::structures::paging::page::AddressNotAligned;
 use x86_64::structures::paging::FrameAllocator;
 use x86_64::structures::paging::OffsetPageTable;
 use x86_64::structures::paging::Page;
+use x86_64::structures::paging::PageSize;
 use x86_64::structures::paging::PageTable;
 use x86_64::structures::paging::PageTableFlags;
 use x86_64::structures::paging::Size4KiB;
 use x86_64::structures::paging::{Mapper, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
+use zcene_bare::common::As;
 use zcene_bare::memory::address::PhysicalMemoryAddress;
 use zcene_bare::memory::address::PhysicalMemoryAddressPerspective;
 use zcene_bare::memory::address::VirtualMemoryAddress;
@@ -28,24 +32,55 @@ use ztd::Method;
 
 #[derive(Clone, Debug, Method)]
 pub struct KernelMemoryManager {
-    physical_memory_offset: u64,
+    physical_memory_offset: VirtualMemoryAddress,
     physical_memory_size_in_bytes: u64,
+    kernel_image_offset: u64,
+    kernel_image_length: u64,
+    kernel_physical_address: PhysicalMemoryAddress,
 }
 
 #[derive(Debug)]
-pub enum InitializeMemoryManagerError {
+pub enum KernelMemoryManagerInitializeError {
     UnsupportedMapping,
     FrameAllocation(FrameManagerAllocationError),
+    AddressNotAligned(AddressNotAligned),
+    MapToErrorFrameAllocationFailed,
+    MapToErrorParentEntryHugePage,
+    MapToErrorPageAlreadyMapped,
 }
 
-impl From<FrameManagerAllocationError> for InitializeMemoryManagerError {
+impl From<AddressNotAligned> for KernelMemoryManagerInitializeError {
+    fn from(error: AddressNotAligned) -> Self {
+        Self::AddressNotAligned(error)
+    }
+}
+
+impl From<FrameManagerAllocationError> for KernelMemoryManagerInitializeError {
     fn from(error: FrameManagerAllocationError) -> Self {
         Self::FrameAllocation(error)
     }
 }
 
+impl<P> From<MapToError<P>> for KernelMemoryManagerInitializeError
+where
+    P: PageSize,
+{
+    fn from(error: MapToError<P>) -> Self {
+        match error {
+            MapToError::FrameAllocationFailed => Self::MapToErrorFrameAllocationFailed,
+            MapToError::ParentEntryHugePage => Self::MapToErrorParentEntryHugePage,
+            MapToError::PageAlreadyMapped(_) => Self::MapToErrorPageAlreadyMapped,
+        }
+    }
+}
+
+pub struct KernelConfiguration {}
+
 impl KernelMemoryManager {
-    pub fn new(boot_info: &mut BootInfo) -> Result<Self, InitializeMemoryManagerError> {
+    pub fn new(
+        logger: &crate::kernel::logger::KernelLogger,
+        boot_info: &mut BootInfo,
+    ) -> Result<Self, KernelMemoryManagerInitializeError> {
         let physical_memory_size_in_bytes = boot_info
             .memory_regions
             .iter()
@@ -61,21 +96,24 @@ impl KernelMemoryManager {
         let physical_memory_offset = boot_info
             .physical_memory_offset
             .into_option()
-            .ok_or(InitializeMemoryManagerError::UnsupportedMapping)?;
+            .ok_or(KernelMemoryManagerInitializeError::UnsupportedMapping)?;
 
         let this = Self {
-            physical_memory_offset,
+            physical_memory_offset: VirtualMemoryAddress::from(physical_memory_offset),
             physical_memory_size_in_bytes,
+            kernel_image_offset: boot_info.kernel_image_offset,
+            kernel_image_length: boot_info.kernel_len,
+            kernel_physical_address: PhysicalMemoryAddress::from(boot_info.kernel_addr),
         };
 
-        for entry in this.active_page_table().iter_mut() {
+        /*for entry in this.active_page_table().iter_mut() {
             let mut flags = entry.flags();
 
             if flags.contains(PageTableFlags::PRESENT) {
                 flags.insert(PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
                 entry.set_flags(flags);
             }
-        }
+        }*/
 
         let mut frame_manager = this.frame_manager();
 
@@ -106,17 +144,43 @@ impl KernelMemoryManager {
             }
         }
 
-        let frame_count = 10 * 1;
-        let heap_frame_identifiers = frame_manager.allocate_window(frame_count)?;
+        let mut mapper = this.page_table_mapper();
+
+        let start_address = 0x0000_0000_FFFF_0000u64;
+        let frame_count = 1000;
+
+        let mut current_address = start_address;
+
+        for (i, heap_frame_identifier) in frame_manager
+            .unallocated_frame_identifiers()
+            .take(frame_count)
+            .enumerate()
+        {
+            let physical_address = frame_manager.translate_frame_identifier(heap_frame_identifier);
+
+            this.frame_manager().allocate_frames(once(heap_frame_identifier)).unwrap();
+
+            unsafe {
+                mapper
+                    .map_to(
+                        Page::<Size4KiB>::from_start_address_unchecked(VirtAddr::new(
+                            current_address,
+                        )),
+                        PhysFrame::from_start_address(PhysAddr::new(physical_address.as_u64()))?,
+                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                        &mut KernelMemoryManagerFrameAllocator::new(&this),
+                    )?
+                    .flush();
+            }
+
+            current_address += frame_manager.frame_byte_size().r#as();
+        }
 
         let mut allocator = GLOBAL_ALLOCATOR.inner().lock();
 
-        let memory_address =
-            frame_manager.translate_frame_identifier(heap_frame_identifiers.last().unwrap());
-
         unsafe {
             allocator.init(
-                (memory_address.as_u64() + this.physical_memory_offset) as *mut u8,
+                VirtualMemoryAddress::from(start_address).cast_mut(),
                 frame_count * frame_manager.frame_byte_size(),
             );
         }
@@ -124,11 +188,11 @@ impl KernelMemoryManager {
         Ok(this)
     }
 
-    pub fn physical_memory(&self) -> &'static mut [u8] {
+    fn physical_memory(&self) -> &'static mut [u8] {
         unsafe {
             from_raw_parts_mut(
-                self.physical_memory_offset as *mut u8,
-                self.physical_memory_size_in_bytes.try_into().unwrap(),
+                self.physical_memory_offset.cast_mut::<u8>(),
+                self.physical_memory_size_in_bytes.r#as(),
             )
         }
     }
@@ -140,7 +204,7 @@ impl KernelMemoryManager {
         PhysicalMemoryAddress::from(
             memory_address
                 .as_u64()
-                .saturating_sub(self.physical_memory_offset),
+                .saturating_sub(self.physical_memory_offset.as_u64()),
         )
     }
 
@@ -151,7 +215,7 @@ impl KernelMemoryManager {
         VirtualMemoryAddress::from(
             memory_address
                 .as_u64()
-                .saturating_add(self.physical_memory_offset),
+                .saturating_add(self.physical_memory_offset.as_u64()),
         )
     }
 
@@ -159,7 +223,7 @@ impl KernelMemoryManager {
         unsafe { FrameManager::new_initialized(FRAME_SIZE, self.physical_memory()) }
     }
 
-    pub fn active_page_table(&self) -> &'static mut PageTable {
+    fn active_page_table(&self) -> &'static mut PageTable {
         let pointer = self
             .translate_physical_memory_address(PhysicalMemoryAddress::from(
                 Cr3::read().0.start_address().as_u64(),
@@ -169,11 +233,11 @@ impl KernelMemoryManager {
         unsafe { &mut *(pointer as *mut PageTable) }
     }
 
-    pub fn page_table_mapper(&self) -> OffsetPageTable<'static> {
+    fn page_table_mapper(&self) -> OffsetPageTable<'static> {
         unsafe {
             OffsetPageTable::new(
                 self.active_page_table(),
-                VirtAddr::new(self.physical_memory_offset as u64),
+                VirtAddr::new(self.physical_memory_offset.as_usize().r#as()),
             )
         }
     }
@@ -209,7 +273,7 @@ impl KernelMemoryManager {
                         ))
                         .unwrap(),
                         PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                        &mut EmptyFrameAllocator,
+                        &mut KernelMemoryManagerFrameAllocator::new(self),
                     )
                     .expect("Hello World")
                     .flush();
@@ -226,23 +290,54 @@ impl KernelMemoryManager {
     }
 }
 
-pub struct EmptyFrameAllocator;
+use ztd::Constructor;
 
-unsafe impl FrameAllocator<Size4KiB> for EmptyFrameAllocator {
+#[derive(Constructor)]
+pub struct KernelMemoryManagerFrameAllocator<'a> {
+    memory_manager: &'a KernelMemoryManager,
+}
+
+unsafe impl FrameAllocator<Size4KiB> for KernelMemoryManagerFrameAllocator<'_> {
     fn allocate_frame(&mut self) -> Option<PhysFrame> {
-        None
+        let frame_identifier = self
+            .memory_manager
+            .frame_manager()
+            .unallocated_frame_identifiers()
+            .next()?;
+        self.memory_manager
+            .frame_manager()
+            .allocate_frames(once(frame_identifier))
+            .ok()?;
+
+        Some(
+            PhysFrame::from_start_address(PhysAddr::new(
+                self.memory_manager
+                    .frame_manager()
+                    .translate_frame_identifier(frame_identifier)
+                    .as_u64(),
+            ))
+            .ok()?,
+        )
     }
 }
 
-pub struct FixedFrameAllocator<T>(T)
-where
-    T: Iterator<Item = PhysFrame>;
+use x86_64::structures::paging::FrameDeallocator;
 
-unsafe impl<T> FrameAllocator<Size4KiB> for FixedFrameAllocator<T>
-where
-    T: Iterator<Item = PhysFrame>,
-{
-    fn allocate_frame(&mut self) -> Option<PhysFrame> {
-        self.0.next()
+#[derive(Constructor)]
+pub struct KernelMemoryManagerFrameDeallocator<'a> {
+    memory_manager: &'a KernelMemoryManager,
+}
+
+impl FrameDeallocator<Size4KiB> for KernelMemoryManagerFrameDeallocator<'_> {
+    unsafe fn deallocate_frame(&mut self, frame: PhysFrame<Size4KiB>) {
+        let frame_identifier = self
+            .memory_manager
+            .frame_manager()
+            .translate_memory_address(PhysicalMemoryAddress::from(frame.start_address().as_u64()));
+
+        self.memory_manager
+            .frame_manager()
+            .deallocate_frames(once(frame_identifier))
+            .unwrap();
     }
 }
