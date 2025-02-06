@@ -8,6 +8,11 @@ use core::marker::PhantomData;
 use x86_64::instructions::interrupts::without_interrupts;
 use zcene_bare::memory::address::VirtualMemoryAddress;
 use zcene_bare::synchronization::Mutex;
+use crate::kernel::logger::println;
+use zcene_bare::memory::address::PhysicalMemoryAddress;
+use zcene_core::actor::ActorMessageSender;
+use zcene_core::future::FutureExt;
+use crate::kernel::TimerActorMessage;
 use zcene_core::actor::{
     Actor, ActorAddressReference, ActorCommonHandleContext, ActorDiscoveryHandler, ActorEnterError,
     ActorHandler, ActorMailbox, ActorMessage, ActorMessageChannel, ActorMessageChannelAddress,
@@ -141,10 +146,6 @@ pub fn hello() -> ! {
     loop {}
 }
 
-use zcene_bare::memory::address::PhysicalMemoryAddress;
-use zcene_core::actor::ActorMessageSender;
-use zcene_core::future::FutureExt;
-use crate::kernel::TimerActorMessage;
 
 #[no_mangle]
 pub unsafe extern "C" fn handle_preemption(stack_pointer: u64) -> u64 {
@@ -165,7 +166,7 @@ pub unsafe extern "C" fn handle_preemption(stack_pointer: u64) -> u64 {
         .send(TimerActorMessage::Tick)
         .complete()
     {
-        crate::common::println!("{}", error);
+        println!("{}", error);
     }
 
     let stack_pointer = Kernel::get()

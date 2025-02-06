@@ -18,6 +18,7 @@ use zcene_bare::memory::address::PhysicalMemoryAddress;
 use zcene_bare::memory::frame::FrameManagerAllocationError;
 use zcene_core::actor::ActorAddressExt;
 use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
+use crate::kernel::logger::println;
 use zcene_core::actor::{
     Actor, ActorFuture, ActorHandleError, ActorHandler,
 };
@@ -84,7 +85,7 @@ where
             let cpu_id = CpuId::new();
             let feature_info = cpu_id.get_feature_info().unwrap();
 
-            crate::common::println!(
+            println!(
                 "application #{}, times: {}, ticks: {}, CPU: {}",
                 self.number,
                 self.times,
@@ -331,8 +332,6 @@ impl Kernel {
             .unwrap();
 
         self.logger().writer(|w| write!(w, "zcene\n",));
-
-        //self.initialize_interrupts();
 
         x86_64::instructions::interrupts::enable();
 

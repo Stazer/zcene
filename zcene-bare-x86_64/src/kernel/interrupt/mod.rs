@@ -1,10 +1,11 @@
 use crate::driver::xapic::XApic;
 use crate::kernel::memory::{KernelMemoryManager};
-use crate::common::println;
+use crate::kernel::logger::println;
 use core::time::Duration;
 use crate::kernel::KernelTimer;
 use pic8259::ChainedPics;
 use x86::cpuid::CpuId;
+use x86_64::structures::idt::InterruptStackFrame;
 use alloc::collections::{BTreeMap, BTreeSet};
 use crate::architecture::ExecutionUnitIdentifier;
 use crate::driver::xapic::{XApicRegisters};
@@ -205,4 +206,3 @@ impl KernelInterruptManager {
         local_interrupt_managers.insert(0, local_interrupt_manager);
     }
 }
-use x86_64::structures::idt::InterruptStackFrame;
