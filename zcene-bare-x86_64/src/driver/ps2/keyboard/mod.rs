@@ -51,7 +51,7 @@ where
         async move {
             match context.message() {
                 KeyboardMessage::Subscription(mailbox) => self.subscriptions.push(mailbox.clone()),
-                KeyboardMessage::Byte(byte) => {}
+                KeyboardMessage::Byte(_byte) => {}
             }
             Ok(())
         }

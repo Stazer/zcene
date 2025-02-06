@@ -25,6 +25,10 @@ impl<'a> XApic<'a> {
             .write(1 << 8 | vector as u32);
     }
 
+    pub fn signal_end_of_interrupt(&mut self) {
+        self.registers.eoi_mut().write(0);
+    }
+
     pub fn calibrate<T>(&mut self, timer: &T, duration: Duration) -> u32
     where
         T: Timer,

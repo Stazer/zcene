@@ -30,5 +30,5 @@ impl<'a> AcpiHandler for KernelMemoryManagerAcpiHandler<'a> {
         )
     }
 
-    fn unmap_physical_region<T>(region: &PhysicalMapping<Self, T>) {}
+    fn unmap_physical_region<T>(_region: &PhysicalMapping<Self, T>) {}
 }

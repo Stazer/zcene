@@ -9,7 +9,7 @@ use bootloader_x86_64_common::serial::SerialPort;
 use crate::kernel::KernelTimer;
 use alloc::alloc::Global;
 use alloc::sync::Arc;
-use crate::kernel::KernelLogger;
+use crate::kernel::logger::KernelLogger;
 use bootloader_api::BootInfo;
 use core::cell::SyncUnsafeCell;
 use core::fmt::{self, Write};
@@ -30,8 +30,6 @@ const EXTERNAL_INTERRUPTS_START: usize = 0x20;
 const TIMER_INTERRUPT_ID: usize = 0x20;
 const SPURIOUS_ID: usize = 0x20 + 15;
 const KEYBOARD_INTERRUPT_ID: usize = 0x21;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -138,37 +136,6 @@ where
     }
 }
 
-#[derive(Constructor, Default)]
-pub struct LongRunningActor {
-    number: usize,
-    times: usize,
-}
-
-impl<H> Actor<H> for LongRunningActor
-where
-    H: ActorHandler,
-{
-    type Message = ();
-
-    fn handle(
-        &mut self,
-        _context: H::HandleContext<Self::Message>,
-    ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
-        async move {
-            loop {
-                crate::common::println!("long running {}", self.number);
-
-                for i in 0..1000000000 {
-                    core::hint::black_box(());
-                    x86_64::instructions::nop();
-                }
-            }
-
-            Ok(())
-        }
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 use alloc::vec::Vec;
@@ -230,9 +197,25 @@ pub struct Kernel {
 }
 
 impl Kernel {
-    pub fn new(boot_info: &'static mut BootInfo) -> Result<Self, KernelInitializeError> {
-        let rsdp_addr = boot_info.rsdp_addr;
+    pub fn bootstrap_processor_entry_point(boot_info: &'static mut BootInfo) -> ! {
+        unsafe {
+            KERNEL
+                .get()
+                .as_mut()
+                .unwrap()
+                .write(Kernel::new(boot_info).unwrap());
+        }
 
+        Kernel::get().run();
+
+        loop {}
+    }
+
+    pub fn application_processor_entry_point() -> ! {
+        loop {}
+    }
+
+    pub fn new(boot_info: &'static mut BootInfo) -> Result<Self, KernelInitializeError> {
         let logger = KernelLogger::new(
             boot_info.framebuffer.take().map(|frame_buffer| {
                 let info = frame_buffer.info().clone();
@@ -255,7 +238,21 @@ impl Kernel {
             boot_info.rsdp_addr.into_option().map(PhysicalMemoryAddress::from),
         );
 
-        let interrupt_manager = KernelInterruptManager::new(&memory_manager);
+        let mut interrupt_manager = KernelInterruptManager::new();
+        interrupt_manager.bootstrap_local_interrupt_manager(
+            {
+                let mut local_interrupt_manager = crate::kernel::interrupt::LocalInterruptManager::new(&memory_manager);
+                local_interrupt_manager.enable_timer(
+                    &timer,
+                    unsafe {
+                    core::mem::transmute(crate::kernel::actor::timer_entry_point as *const u8)// as *const u8 as crate::kernel::interrupt::InterruptEntryPoint,
+                    },
+                    core::time::Duration::from_millis(100),
+                );
+
+                local_interrupt_manager
+            }
+        );
 
         let timer_actor = actor_system.spawn(TimerActor::default()).unwrap();
 
@@ -348,3 +345,22 @@ impl Kernel {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub static KERNEL: SyncUnsafeCell<MaybeUninit<Kernel>> = SyncUnsafeCell::new(MaybeUninit::zeroed());
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+use bootloader_api::config::Mapping;
+use bootloader_api::{entry_point, BootloaderConfig};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static BOOTLOADER_CONFIG: BootloaderConfig = {
+    let mut config = BootloaderConfig::new_default();
+    config.kernel_stack_size = 4 * 4096;
+    config.mappings.physical_memory = Some(Mapping::Dynamic);
+
+    config
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+entry_point!(Kernel::bootstrap_processor_entry_point, config = &BOOTLOADER_CONFIG);

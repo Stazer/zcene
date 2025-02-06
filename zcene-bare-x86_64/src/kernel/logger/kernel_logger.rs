@@ -1,6 +1,7 @@
+use crate::kernel::logger::KernelLoggerWriter;
 use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
 use bootloader_x86_64_common::serial::SerialPort;
-use core::fmt::{self, Write};
+use core::fmt::{Result, Write, Error};
 use x86_64::instructions::interrupts::without_interrupts;
 use zcene_bare::synchronization::Mutex;
 
@@ -34,26 +35,10 @@ impl KernelLogger {
         })
     }
 
-    pub fn writer<F>(&self, function: F) -> Result<(), fmt::Error>
+    pub fn writer<F>(&self, function: F) -> Result
     where
-        F: FnOnce(&mut InnerLogger<'_>) -> Result<(), fmt::Error>,
+        F: FnOnce(&mut KernelLoggerWriter<'_>) -> Result
     {
-        without_interrupts(|| {
-            function(&mut InnerLogger(self));
-
-            Ok(())
-        })
-    }
-}
-
-pub struct InnerLogger<'a>(&'a KernelLogger);
-
-impl<'a> core::fmt::Write for InnerLogger<'a> {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        without_interrupts(|| {
-            self.0.write(s);
-        });
-
-        Ok(())
+        function(&mut KernelLoggerWriter::new(self))
     }
 }

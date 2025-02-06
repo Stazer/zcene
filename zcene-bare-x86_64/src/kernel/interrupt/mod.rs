@@ -1,16 +1,21 @@
 use crate::driver::xapic::XApic;
 use crate::kernel::memory::{KernelMemoryManager};
+use crate::common::println;
 use core::time::Duration;
+use crate::kernel::KernelTimer;
 use pic8259::ChainedPics;
 use x86::cpuid::CpuId;
+use alloc::collections::{BTreeMap, BTreeSet};
+use crate::architecture::ExecutionUnitIdentifier;
 use crate::driver::xapic::{XApicRegisters};
 use alloc::boxed::Box;
 use x86_64::structures::idt::InterruptDescriptorTable;
 use zcene_bare::synchronization::Mutex;
+use core::fmt::Debug;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const PARENT_PIC_OFFSET: u8 = EXTERNAL_INTERRUPTS_START;
+const PARENT_PIC_OFFSET: u8 = EXTERNAL_INTERRUPTS_START as u8;
 const CHILD_PIC_OFFSET: u8 = PARENT_PIC_OFFSET + 0x8;
 const EXTERNAL_INTERRUPTS_START: u8 = 0x20;
 
@@ -20,6 +25,10 @@ pub enum LocalInterruptManagerType {
     X2APIC,
 }
 
+pub type InterruptEntryPoint = extern "x86-interrupt" fn(InterruptStackFrame);
+
+pub type InterruptVectorIdentifier = u8;
+
 unsafe impl Sync for LocalInterruptManagerType {}
 unsafe impl Send for LocalInterruptManagerType {}
 
@@ -27,15 +36,82 @@ impl LocalInterruptManagerType {}
 
 pub struct LocalInterruptManager {
     r#type: LocalInterruptManagerType,
-    descriptor_table: Mutex<Box<InterruptDescriptorTable>>,
+    descriptor_table: Box<InterruptDescriptorTable>,
+    free_vectors: BTreeSet<InterruptVectorIdentifier>,
+}
+
+pub type InterruptIdentifier = u8;
+
+#[inline(always)]
+extern "x86-interrupt" fn unhandled_interrupt_loop() -> ! {
+    loop {}
+}
+
+extern "x86-interrupt" fn unhandled_interrupt_entry_point<const N: &'static str>(stack_frame: InterruptStackFrame)
+{
+    println!("unhandled interrupt {}\n{:?}", N, stack_frame);
+}
+
+extern "x86-interrupt" fn unhandled_interrupt_entry_point_loop<const N: &'static str>(stack_frame: InterruptStackFrame) -> !
+{
+    unhandled_interrupt_entry_point::<N>(stack_frame);
+    unhandled_interrupt_loop()
+}
+
+extern "x86-interrupt" fn unhandled_interrupt_entry_point_with_error_code<const N: &'static str, E>(stack_frame: InterruptStackFrame, error_code: E)
+where
+    E: Debug
+{
+    println!("unhandled interrupt {} ({:?})\n{:?}", N, error_code, stack_frame);
+}
+
+extern "x86-interrupt" fn unhandled_interrupt_entry_point_with_error_code_loop<const N: &'static str, E>(stack_frame: InterruptStackFrame, error_code: E) -> !
+where
+    E: Debug
+{
+    unhandled_interrupt_entry_point_with_error_code::<N, E>(stack_frame, error_code);
+    unhandled_interrupt_loop()
 }
 
 impl LocalInterruptManager {
     pub fn new(memory_manager: &KernelMemoryManager) -> Self {
-        let descriptor_table = Box::new(InterruptDescriptorTable::new());
+        let mut table = Box::new(InterruptDescriptorTable::new());
+
+        table.divide_error.set_handler_fn(unhandled_interrupt_entry_point::<"divide error">);
+        table.debug.set_handler_fn(unhandled_interrupt_entry_point::<"debug">);
+        table.non_maskable_interrupt.set_handler_fn(unhandled_interrupt_entry_point::<"non maskable interrupt">);
+        table.breakpoint.set_handler_fn(unhandled_interrupt_entry_point::<"breakpoint">);
+        table.overflow.set_handler_fn(unhandled_interrupt_entry_point::<"overflow">);
+        table.bound_range_exceeded.set_handler_fn(unhandled_interrupt_entry_point::<"bound range">);
+        table.invalid_opcode.set_handler_fn(unhandled_interrupt_entry_point::<"invalid opcode">);
+        table.device_not_available.set_handler_fn(unhandled_interrupt_entry_point::<"device not available">);
+        table.double_fault.set_handler_fn(unhandled_interrupt_entry_point_with_error_code_loop::<"double fault", _>);
+        table.invalid_tss.set_handler_fn(unhandled_interrupt_entry_point_with_error_code::<"invalid tss", _>);
+        table.segment_not_present.set_handler_fn(unhandled_interrupt_entry_point_with_error_code::<"segment not present", _>);
+        table.stack_segment_fault.set_handler_fn(unhandled_interrupt_entry_point_with_error_code::<"stack segment fault", _>);
+        table.general_protection_fault.set_handler_fn(unhandled_interrupt_entry_point_with_error_code::<"general protection fault", _>);
+        table.page_fault.set_handler_fn(unhandled_interrupt_entry_point_with_error_code::<"page fault", _>);
+        table.x87_floating_point.set_handler_fn(unhandled_interrupt_entry_point::<"x87 floating point">);
+        table.alignment_check.set_handler_fn(unhandled_interrupt_entry_point_with_error_code::<"alignment check", _>);
+        table.machine_check.set_handler_fn(unhandled_interrupt_entry_point_loop::<"machine check">);
+        table.simd_floating_point.set_handler_fn(unhandled_interrupt_entry_point::<"simd floating point">);
+        table.virtualization.set_handler_fn(unhandled_interrupt_entry_point::<"virtualization">);
+        table.cp_protection_exception.set_handler_fn(unhandled_interrupt_entry_point_with_error_code::<"cp protection exception", _>);
+        table.hv_injection_exception.set_handler_fn(unhandled_interrupt_entry_point::<"hv injection exception">);
+        table.vmm_communication_exception.set_handler_fn(unhandled_interrupt_entry_point_with_error_code::<"vmm communication exception", _>);
+        table.security_exception.set_handler_fn(unhandled_interrupt_entry_point_with_error_code::<"security exception", _>);
+
+        let mut free_vectors = BTreeSet::default();
+
+        for vector in EXTERNAL_INTERRUPTS_START..255u8 {
+            let mut entry = table[vector.into()];
+            entry.set_handler_fn(unhandled_interrupt_entry_point::<"interrupt">);
+
+            free_vectors.insert(vector.into());
+        }
 
         unsafe {
-            descriptor_table.load_unsafe();
+            table.load_unsafe();
         }
 
         let cpu_id = CpuId::new();
@@ -57,7 +133,8 @@ impl LocalInterruptManager {
                         .translate_physical_memory_address(XApic::base_address())
                         .cast_mut::<u32>(),
                 },
-                descriptor_table: Mutex::new(descriptor_table),
+                free_vectors,
+                descriptor_table: table,
             };
         }
 
@@ -77,171 +154,55 @@ impl LocalInterruptManager {
         todo!()
     }
 
-    pub fn enable_timer(&self, vector: u8, duration: Duration) {
+    pub fn allocate(&mut self, entry_point: InterruptEntryPoint) -> Option<InterruptVectorIdentifier> {
+        let free_vector = self.free_vectors.pop_first()?;
+
+        self.descriptor_table[free_vector.into()].set_handler_fn(entry_point);
+        unsafe {
+            self.descriptor_table.load_unsafe();
+        }
+
+        Some(free_vector)
+    }
+
+    pub fn enable_timer(&mut self, timer: &KernelTimer, entry_point: InterruptEntryPoint, duration: Duration) {
+        match self.r#type {
+            LocalInterruptManagerType::XAPIC { base } => unsafe {
+                let vector = self.allocate(entry_point).unwrap();
+
+                let mut xapic = XApic::new((base as *mut XApicRegisters).as_mut().unwrap());
+                let ticks = xapic.calibrate(timer, duration);
+                xapic.enable_timer(vector, ticks);
+            },
+            _ => todo!(),
+        }
+    }
+
+    pub fn signal_end_of_interrupt(&self) {
         match self.r#type {
             LocalInterruptManagerType::XAPIC { base } => unsafe {
                 let mut xapic = XApic::new((base as *mut XApicRegisters).as_mut().unwrap());
-                let ticks = xapic.calibrate(crate::kernel::Kernel::get().timer(), duration);
-                xapic.enable_timer(vector, ticks);
+                xapic.signal_end_of_interrupt();
             },
             _ => todo!(),
         }
     }
 }
 
-use alloc::collections::BTreeMap;
-use crate::architecture::ExecutionUnitIdentifier;
-
 pub struct KernelInterruptManager {
     local_interrupt_managers: Mutex<BTreeMap<ExecutionUnitIdentifier, LocalInterruptManager>>,
 }
 
 impl KernelInterruptManager {
-    pub fn new(
-        memory_manager: &KernelMemoryManager,
-    ) -> Self {
+    pub fn new() -> Self {
         Self {
             local_interrupt_managers: Mutex::new(BTreeMap::default()),
         }
     }
 
-    /*pub fn local_interrupt_manager(&self) -> LocalInterruptManager {
-        todo!()
-    }*/
+    pub fn bootstrap_local_interrupt_manager(&mut self, local_interrupt_manager: LocalInterruptManager) {
+        let mut local_interrupt_managers = self.local_interrupt_managers.lock();
+        local_interrupt_managers.insert(0, local_interrupt_manager);
+    }
 }
-
-    /*fn initialize_interrupts(&self) -> Result<(), KernelInitializeError> {
-        /*let apic_virtual_address: u64 =
-            unsafe { xapic_base() + self.physical_memory_offset as u64 };
-
-        //use x2apic::lapic::{TimerDivide, TimerMode};
-
-        let mut local_apic = LocalApicBuilder::new()
-            .timer_vector(TIMER_INTERRUPT_ID.into())
-            .error_vector(33)
-            .spurious_vector(34)
-            .timer_mode(TimerMode::Periodic)
-            .timer_divide(TimerDivide::Div16)
-            .timer_initial(15_000_000)
-            .set_xapic_base(apic_virtual_address)
-            .ipi_destination_mode(IpiDestMode::Physical)
-            .build()
-            .map_err(KernelInitializeError::BuildLocalApic)?;
-
-        unsafe {
-            local_apic.enable();
-        }*/
-
-        unsafe {
-            use x86_64::structures::idt::InterruptDescriptorTable;
-
-            let mut interrupt_descriptor_table = InterruptDescriptorTable::new();
-            //let interrupt_descriptor_table = &mut *INTERRUPT_DESCRIPTOR_TABLE.get();
-
-            use crate::entry_point::*;
-
-            interrupt_descriptor_table
-                .divide_error
-                .set_handler_fn(divide_by_zero_interrupt_entry_point);
-            interrupt_descriptor_table
-                .debug
-                .set_handler_fn(debug_interrupt_entry_point);
-            interrupt_descriptor_table
-                .non_maskable_interrupt
-                .set_handler_fn(non_maskable_interrupt_entry_point);
-            interrupt_descriptor_table
-                .breakpoint
-                .set_handler_fn(breakpoint_interrupt_entry_point);
-            interrupt_descriptor_table
-                .overflow
-                .set_handler_fn(overflow_interrupt_entry_point);
-            interrupt_descriptor_table
-                .bound_range_exceeded
-                .set_handler_fn(bound_range_exceeded_interrupt_entry_point);
-            interrupt_descriptor_table
-                .invalid_opcode
-                .set_handler_fn(invalid_opcode_interrupt_entry_point);
-            interrupt_descriptor_table
-                .device_not_available
-                .set_handler_fn(device_not_available_interrupt_entry_point);
-            interrupt_descriptor_table
-                .double_fault
-                .set_handler_fn(double_fault_entry_point);
-            interrupt_descriptor_table
-                .invalid_tss
-                .set_handler_fn(invalid_tss_entry_point);
-            interrupt_descriptor_table
-                .segment_not_present
-                .set_handler_fn(segment_not_present_entry_point);
-            interrupt_descriptor_table
-                .stack_segment_fault
-                .set_handler_fn(stack_segment_fault_entry_point);
-            interrupt_descriptor_table
-                .general_protection_fault
-                .set_handler_fn(general_protection_fault_entry_point);
-            interrupt_descriptor_table
-                .page_fault
-                .set_handler_fn(page_fault_entry_point);
-            interrupt_descriptor_table
-                .x87_floating_point
-                .set_handler_fn(unhandled_interrupt_entry_point);
-            interrupt_descriptor_table
-                .alignment_check
-                .set_handler_fn(alignment_check_entry_point);
-            interrupt_descriptor_table
-                .machine_check
-                .set_handler_fn(machine_check_interrupt_entry_point);
-            interrupt_descriptor_table
-                .simd_floating_point
-                .set_handler_fn(unhandled_interrupt_entry_point);
-            interrupt_descriptor_table
-                .virtualization
-                .set_handler_fn(virtualization_entry_point);
-            interrupt_descriptor_table
-                .cp_protection_exception
-                .set_handler_fn(cp_protection_entry_point);
-            interrupt_descriptor_table
-                .hv_injection_exception
-                .set_handler_fn(hv_injection_interrupt_entry_point);
-            interrupt_descriptor_table
-                .vmm_communication_exception
-                .set_handler_fn(vmm_entry_point);
-            interrupt_descriptor_table
-                .security_exception
-                .set_handler_fn(security_exception_entry_point);
-
-            for i in EXTERNAL_INTERRUPTS_START..(u8::MAX as usize) {
-                interrupt_descriptor_table[i].set_handler_fn(unhandled_interrupt_entry_point);
-            }
-
-            interrupt_descriptor_table[TIMER_INTERRUPT_ID]
-                //.set_handler_addr(VirtAddr::new((timer_interrupt_entry_point as usize).try_into().unwrap()));
-                .set_handler_addr(VirtAddr::new(
-                    (timer_entry_point as usize).try_into().unwrap(),
-                ));
-            //.set_handler_fn(timer_entry_point);
-            interrupt_descriptor_table[KEYBOARD_INTERRUPT_ID]
-                .set_handler_fn(keyboard_interrupt_entry_point);
-
-            interrupt_descriptor_table[SPURIOUS_ID].set_handler_fn(spurious_handler);
-
-            interrupt_descriptor_table.load_unsafe();
-        }
-
-        use crate::kernel::LocalInterruptManager;
-
-        let cpu_id = CpuId::new();
-        let feature_info = cpu_id.get_feature_info().unwrap();
-
-        let r#type = LocalInterruptManager::new(self.memory_manager());
-
-        r#type.enable_timer(0x20, core::time::Duration::from_millis(100));
-
-        /*unsafe {
-            let mut apic = IoApic::new((self.physical_memory_offset + 0xFEC00000) as _);
-            apic.enable(1, 0);
-        }*/
-
-        Ok(())
-        //Ok(local_apic)
-    }*/
+use x86_64::structures::idt::InterruptStackFrame;
