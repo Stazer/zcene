@@ -106,15 +106,6 @@ impl KernelMemoryManager {
             kernel_physical_address: PhysicalMemoryAddress::from(boot_info.kernel_addr),
         };
 
-        /*for entry in this.active_page_table().iter_mut() {
-            let mut flags = entry.flags();
-
-            if flags.contains(PageTableFlags::PRESENT) {
-                flags.insert(PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
-                entry.set_flags(flags);
-            }
-        }*/
-
         let mut frame_manager = this.frame_manager();
 
         for memory_region in boot_info.memory_regions.iter() {
@@ -147,7 +138,7 @@ impl KernelMemoryManager {
         let mut mapper = this.page_table_mapper();
 
         let start_address = 0x0000_0000_FFFF_0000u64;
-        let frame_count = 1000;
+        let frame_count = 10000;
 
         let mut current_address = start_address;
 
