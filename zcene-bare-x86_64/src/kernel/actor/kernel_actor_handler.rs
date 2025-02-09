@@ -1,12 +1,12 @@
+use alloc::sync::Arc;
+use core::marker::PhantomData;
 use crate::architecture::current_execution_unit_identifier;
+use crate::kernel::Kernel;
+use crate::kernel::TimerActorMessage;
 use crate::kernel::actor::KernelActorThreadScheduler;
 use crate::kernel::future::runtime::KernelFutureRuntimeHandler;
 use crate::kernel::future::runtime::KernelFutureRuntimeReference;
 use crate::kernel::logger::println;
-use crate::kernel::Kernel;
-use crate::kernel::TimerActorMessage;
-use alloc::sync::Arc;
-use core::marker::PhantomData;
 use x86_64::instructions::interrupts::without_interrupts;
 use zcene_bare::memory::address::PhysicalMemoryAddress;
 use zcene_bare::memory::address::VirtualMemoryAddress;
