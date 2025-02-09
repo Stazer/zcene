@@ -96,43 +96,32 @@ where
     }
 }
 
-#[derive(Constructor, Default)]
-pub struct RootActor {
-    subscriptions: Vec<ActorMailbox<(), KernelActorHandler>, Global>,
-}
+use core::marker::PhantomData;
 
-#[derive(Clone)]
-pub enum RootActorMessage {
-    Subscription(ActorMailbox<(), KernelActorHandler>),
-    NoOperation,
-}
-
-impl<H> Actor<H> for RootActor
+#[derive(Default)]
+pub struct UnprivilegedActor<A, H>
 where
+    A: Actor<H>,
     H: ActorHandler,
-    H::HandleContext<RootActorMessage>: ActorContextMessageProvider<RootActorMessage>,
 {
-    type Message = RootActorMessage;
+    actor: A,
+    handler: PhantomData::<H>,
+}
 
-    fn handle(
-        &mut self,
-        context: H::HandleContext<Self::Message>,
-    ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
-        async move {
-            match context.message() {
-                RootActorMessage::Subscription(subscription) => {
-                    let subscription = subscription.clone();
+impl<A, H> Actor<H> for UnprivilegedActor<A, H>
+where
+    A: Actor<H>,
+    H: ActorHandler,
+{
+    type Message = ();
+}
 
-                    subscription.send(()).await.unwrap();
+impl<A, H> UnprivilegedActor<A, H>
+where
+    A: Actor<H>,
+    H: ActorHandler,
+{
 
-                    self.subscriptions.push(subscription);
-                }
-                RootActorMessage::NoOperation => {}
-            };
-
-            Ok(())
-        }
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -205,6 +194,51 @@ impl Kernel {
                 .write(Kernel::new(boot_info).unwrap());
         }
 
+        unsafe {
+            use x86::msr::{rdmsr, wrmsr, IA32_EFER};
+
+            wrmsr(IA32_EFER, rdmsr(IA32_EFER) | 1);
+        }
+
+        use crate::kernel::actor::KernelActorSpawnSpecification;
+        use crate::kernel::actor::KernelActorExecutionMode;
+        use crate::kernel::actor::KernelActorInstructionRegion;
+        use zcene_bare::memory::address::VirtualMemoryAddress;
+        use crate::user::MainActor;
+
+        use crate::user::USER_SECTIONS_START;
+        use crate::user::USER_SECTIONS_SIZE;
+
+        /*println!(
+            "{} {} {}",
+            <MainActor as Actor<KernelActorHandler>>::create as u64,
+            <MainActor as Actor<KernelActorHandler>>::handle as u64,
+            <MainActor as Actor<KernelActorHandler>>::destroy as u64
+        );*/
+
+        Kernel::get().actor_system().spawn(
+            KernelActorSpawnSpecification::new(
+                MainActor,
+                KernelActorExecutionMode::Unprivileged,
+                KernelActorInstructionRegion::new(
+                    VirtualMemoryAddress::new(
+                        Kernel::get()
+                            .memory_manager()
+                            .kernel_image_virtual_memory_region()
+                            .start().as_usize() +
+                            unsafe {
+                                linker_value(&USER_SECTIONS_START)
+                            }
+                    ),
+                    unsafe {
+                        linker_value(&USER_SECTIONS_SIZE)
+                    }
+                ),
+            ),
+        );
+
+        use zcene_bare::common::linker_value;
+
         Kernel::get().run();
 
         loop {}
@@ -212,6 +246,13 @@ impl Kernel {
 
     pub fn application_processor_entry_point() -> ! {
         loop {}
+    }
+
+    #[naked]
+    pub unsafe fn system_call() {
+       core::arch::naked_asm!(
+          "nop",
+       )
     }
 
     pub fn new(boot_info: &'static mut BootInfo) -> Result<Self, KernelInitializeError> {
@@ -261,7 +302,20 @@ impl Kernel {
             local_interrupt_manager
         });
 
-        let timer_actor = match actor_system.spawn(TimerActor::default()) {
+        use crate::kernel::actor::KernelActorSpawnSpecification;
+        use crate::kernel::actor::KernelActorExecutionMode;
+        use crate::kernel::actor::KernelActorInstructionRegion;
+        use zcene_bare::memory::address::VirtualMemoryAddress;
+
+        let spawn_result = actor_system.spawn(
+            KernelActorSpawnSpecification::new(
+                TimerActor::default(),
+                KernelActorExecutionMode::Privileged,
+                memory_manager.kernel_image_virtual_memory_region(),
+            ),
+        );
+
+        let timer_actor = match spawn_result {
             Ok(timer_actor) => timer_actor,
             Err(error) => {
                 logger.writer(|w| write!(w, "Error {:?}\n", error));
@@ -311,40 +365,7 @@ impl Kernel {
     }
 
     pub fn run(&self) -> ! {
-        self.timer_actor
-            .send(TimerActorMessage::Subscription(
-                self.actor_system
-                    .spawn(ApplicationActor::new(1, 0))
-                    .unwrap()
-                    .mailbox()
-                    .unwrap(),
-            ))
-            .complete()
-            .unwrap();
-
-        self.timer_actor
-            .send(TimerActorMessage::Subscription(
-                self.actor_system
-                    .spawn(ApplicationActor::new(2, 0))
-                    .unwrap()
-                    .mailbox()
-                    .unwrap(),
-            ))
-            .complete()
-            .unwrap();
-
-        self.timer_actor
-            .send(TimerActorMessage::Subscription(
-                self.actor_system
-                    .spawn(ApplicationActor::new(3, 0))
-                    .unwrap()
-                    .mailbox()
-                    .unwrap(),
-            ))
-            .complete()
-            .unwrap();
-
-        self.logger().writer(|w| write!(w, "zcene\n",));
+        self.logger().writer(|w| write!(w, "zcene\n"));
 
         x86_64::instructions::interrupts::enable();
 

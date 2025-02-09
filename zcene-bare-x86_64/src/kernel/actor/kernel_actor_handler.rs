@@ -21,6 +21,45 @@ use zcene_core::future::runtime::FutureRuntimeHandler;
 use zcene_core::future::FutureExt;
 use ztd::Constructor;
 
+pub use super::*;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+use zcene_bare::memory::address::VirtualMemoryAddressPerspective;
+use zcene_bare::memory::region::VirtualMemoryRegion;
+
+pub type KernelActorInstructionRegion = VirtualMemoryRegion;
+
+pub struct KernelActorSpawnSpecification<A, H>
+where
+    A: Actor<H>,
+    H: ActorHandler,
+{
+    actor: A,
+    execution_mode: KernelActorExecutionMode,
+    instruction_region: KernelActorInstructionRegion,
+    handler: PhantomData<H>,
+}
+
+impl<A, H> KernelActorSpawnSpecification<A, H>
+where
+    A: Actor<H>,
+    H: ActorHandler,
+{
+    pub fn new(
+        actor: A,
+        execution_mode: KernelActorExecutionMode,
+        instruction_region: KernelActorInstructionRegion,
+    ) -> Self {
+        Self {
+            actor,
+            execution_mode,
+            instruction_region,
+            handler: PhantomData::<H>,
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Constructor)]
@@ -44,11 +83,15 @@ impl ActorHandler for KernelActorHandler {
         M: ActorMessage;
     type DestroyContext = ();
 
+    type SpawnSpecification<A> = KernelActorSpawnSpecification<A, Self>
+    where
+        A: Actor<Self>;
+
     fn allocator(&self) -> &Self::Allocator {
         self.future_runtime.handler().allocator()
     }
 
-    fn spawn<A>(&self, actor: A) -> Result<ActorAddressReference<A, Self>, ActorSpawnError>
+    fn spawn<A>(&self, specification: Self::SpawnSpecification<A>) -> Result<ActorAddressReference<A, Self>, ActorSpawnError>
     where
         A: Actor<Self>,
     {
@@ -62,11 +105,13 @@ impl ActorHandler for KernelActorHandler {
         let scheduler = self.scheduler.clone();
 
         self.future_runtime.spawn(async move {
-            let mut actor = actor;
+            let mut actor = specification.actor;
 
             without_interrupts(|| {
                 scheduler.lock().begin(current_execution_unit_identifier());
             });
+
+            //crate::kernel::logger::println!("HELLO {:?}", specification);
 
             actor.create(()).await;
 

@@ -1,6 +1,6 @@
 use crate::architecture::Stack;
 use crate::architecture::FRAME_SIZE;
-use crate::global_allocator::GLOBAL_ALLOCATOR;
+use crate::kernel::KERNEL_GLOBAL_ALLOCATOR;
 use alloc::alloc::Global;
 use bootloader_api::info::MemoryRegionKind;
 use bootloader_api::BootInfo;
@@ -26,7 +26,14 @@ use zcene_bare::memory::address::VirtualMemoryAddress;
 use zcene_bare::memory::address::VirtualMemoryAddressPerspective;
 use zcene_bare::memory::frame::FrameManager;
 use zcene_bare::memory::frame::FrameManagerAllocationError;
+use zcene_bare::memory::region::VirtualMemoryRegion;
 use ztd::Method;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+use zcene_bare::memory::address::{MemoryAddress, MemoryAddressPerspective};
+
+pub const EXECUTION_PAGE_TABLE_INDEX: usize = 256;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -34,9 +41,8 @@ use ztd::Method;
 pub struct KernelMemoryManager {
     physical_memory_offset: VirtualMemoryAddress,
     physical_memory_size_in_bytes: u64,
-    kernel_image_offset: u64,
+    kernel_image_start_virtual_memory_address: VirtualMemoryAddress,
     kernel_image_length: u64,
-    kernel_physical_address: PhysicalMemoryAddress,
 }
 
 #[derive(Debug)]
@@ -101,9 +107,8 @@ impl KernelMemoryManager {
         let this = Self {
             physical_memory_offset: VirtualMemoryAddress::from(physical_memory_offset),
             physical_memory_size_in_bytes,
-            kernel_image_offset: boot_info.kernel_image_offset,
             kernel_image_length: boot_info.kernel_len,
-            kernel_physical_address: PhysicalMemoryAddress::from(boot_info.kernel_addr),
+            kernel_image_start_virtual_memory_address: VirtualMemoryAddress::from(physical_memory_offset + boot_info.kernel_addr),
         };
 
         let mut frame_manager = this.frame_manager();
@@ -134,6 +139,122 @@ impl KernelMemoryManager {
                 }
             }
         }
+
+        /*let p1 = |address: u64| {
+            (address >> 12) as u16
+        };
+
+        let p2 = |address: u64| {
+            (address >> 12 >> 9)as u16
+        };
+
+        let p3 = |address: u64| {
+            (address >> 12 >> 9 >> 9)as u16
+        };
+
+        let p4 = |address: u64| {
+            (address >> 12 >> 9 >> 9 >> 9)as u16
+        };
+
+        let forge_address = |p4: u16, p3: u16, p2: u16, p1: u16, index: u16| -> u64 {
+            (p4 as u64) << (9 + 9 + 9 + 12) |
+            (p3 as u64) << (9 + 9 + 12) |
+            (p2 as u64) << (9 + 12) |
+            (p1 as u64) << 12 |
+            (index as u64)
+        };
+
+        use core::fmt::Write;
+
+        let b = Cr3::read_raw();
+
+        let page_table = this.active_page_table();
+
+        let mut frame_manager = this.frame_manager();
+        let a = frame_manager.unallocated_frame_identifiers().next().unwrap();
+        let execution_page_table = frame_manager.allocate_frames(once(a)).unwrap();
+
+        // Execution Stack
+        page_table[256].set_addr(PhysAddr::new(frame_manager.translate_frame_identifier(a).as_u64()), PageTableFlags::PRESENT);
+        //page_table[256].set_addr(b.0.start_address(), PageTableFlags::PRESENT | PageTableFlags::HUGE_PAGE | PageTableFlags::NO_EXECUTE);
+        //page_table[257].set_addr(b.0.start_address(), PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::HUGE_PAGE | PageTableFlags::USER_ACCESSIBLE | PageTableFlags::NO_EXECUTE);
+        //page_table[258].set_addr(b.0.start_address(), PageTableFlags::PRESENT | PageTableFlags::HUGE_PAGE | PageTableFlags::NO_EXECUTE);
+
+        // User Code (variable)
+        //page_table[259].set_addr(b.0.start_address(), PageTableFlags::PRESENT | PageTableFlags::HUGE_PAGE | PageTableFlags::USER_ACCESSIBLE);
+
+        let a = Cr3::read_raw();
+        unsafe {
+            Cr3::write_raw(a.0, a.1);
+        }
+
+        for (i, entry) in page_table.iter().enumerate() {
+            if !entry.flags().contains(PageTableFlags::PRESENT) {
+                continue;
+            }
+
+            logger.writer(|w| write!(w, "[{}] {:?}\n", i, entry));
+        }
+
+        logger.writer(|w| write!(w, "\n"));
+
+        for a in [256, 257, 258].iter() {
+            let user_stack_from = VirtAddr::new_truncate(
+                forge_address(
+                    511,
+                    511,
+                    *a,
+                    0,
+                    0,
+                )
+            );
+
+            let user_stack_to = VirtAddr::new_truncate(
+                forge_address(
+                    511,
+                    511,
+                    *a,
+                    (2i32.pow(9) - 1) as u16,
+                    (2i32.pow(12) - 1) as u16,
+                )
+            );
+
+            logger.writer(|w| write!(w, "\n{:?} -> {:?}\n", user_stack_from, user_stack_to));
+        }
+
+        loop {}
+
+        let address = VirtAddr::new_truncate(
+            forge_address(
+                511,
+                0,
+                511,
+                511,
+                0,
+            )
+        );
+
+        logger.writer(|w| write!(w, "\n{:?}\n", address));
+
+        let mut current_table = this.active_page_table();
+
+        for (i, index) in [address.p4_index(), address.p3_index(), address.p2_index(), address.p1_index()].iter().enumerate() {
+            logger.writer(|w| write!(w, "{:?}; ", index));
+        }
+
+        logger.writer(|w| write!(w, "\n"));
+
+        for (i, index) in [address.p4_index(), address.p3_index(), address.p2_index(), address.p1_index()].iter().enumerate() {
+            let entry = current_table[*index].clone();
+
+            logger.writer(|w| write!(w, "[{:?}] {:?}\n", index, entry));
+
+            if !entry.flags().contains(PageTableFlags::PRESENT) {
+                break;
+            }
+        }
+
+        loop {}*/
 
         let mut mapper = this.page_table_mapper();
 
@@ -167,7 +288,7 @@ impl KernelMemoryManager {
             current_address += frame_manager.frame_byte_size().r#as();
         }
 
-        let mut allocator = GLOBAL_ALLOCATOR.inner().lock();
+        let mut allocator = KERNEL_GLOBAL_ALLOCATOR.inner().lock();
 
         unsafe {
             allocator.init(
@@ -186,6 +307,13 @@ impl KernelMemoryManager {
                 self.physical_memory_size_in_bytes.r#as(),
             )
         }
+    }
+
+    pub fn kernel_image_virtual_memory_region(&self) -> VirtualMemoryRegion {
+        VirtualMemoryRegion::new(
+            self.kernel_image_start_virtual_memory_address,
+            self.kernel_image_length.r#as(),
+        )
     }
 
     pub fn translate_virtual_memory_address(
@@ -222,6 +350,26 @@ impl KernelMemoryManager {
             .as_u64();
 
         unsafe { &mut *(pointer as *mut PageTable) }
+    }
+
+    fn active_root_page_table(&self) -> &'static mut PageTable {
+        let pointer = self
+            .translate_physical_memory_address(PhysicalMemoryAddress::from(
+                Cr3::read().0.start_address().as_u64(),
+            ))
+            .as_u64();
+
+        unsafe { &mut *(pointer as *mut PageTable) }
+    }
+
+    fn active_execution_page_table(&self) -> &'static mut PageTable {
+        unsafe {
+            self
+                .translate_physical_memory_address(PhysicalMemoryAddress::from(
+                    self.active_root_page_table()[EXECUTION_PAGE_TABLE_INDEX].addr().as_u64()
+                ))
+                .cast_mut::<PageTable>().as_mut().unwrap()
+        }
     }
 
     fn page_table_mapper(&self) -> OffsetPageTable<'static> {

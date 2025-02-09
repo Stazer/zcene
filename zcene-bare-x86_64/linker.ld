@@ -46,4 +46,14 @@ SECTIONS {
         *(.bss)
         *(.bss.*)
     }
+
+    USER_SECTIONS_START = ADDR(.user_sections);
+
+    .user_sections : ALIGN(0x100000) {
+        *(.user_sections)
+        *(.user_sections.*)
+    }
+
+    USER_SECTIONS_END = ADDR(.user_sections) + SIZEOF(.user_sections);
+    USER_SECTIONS_SIZE = SIZEOF(.user_sections);
 }

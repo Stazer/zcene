@@ -18,11 +18,13 @@ pub trait ActorHandler: ActorCommonBounds + Sized {
     where
         M: ActorMessage;
 
-    type Specification: Default = ();
+    type SpawnSpecification<A>: ActorCommonBounds
+    where
+        A: Actor<Self>;
 
     fn allocator(&self) -> &Self::Allocator;
 
-    fn spawn<A>(&self, actor: A) -> Result<ActorAddressReference<A, Self>, ActorSpawnError>
+    fn spawn<A>(&self, specification: Self::SpawnSpecification<A>) -> Result<ActorAddressReference<A, Self>, ActorSpawnError>
     where
         A: Actor<Self>;
 

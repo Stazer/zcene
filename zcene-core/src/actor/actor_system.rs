@@ -27,11 +27,11 @@ where
             .map_err(ActorSystemCreateError::from)
     }
 
-    pub fn spawn<A>(&self, actor: A) -> Result<ActorAddressReference<A, H>, ActorSpawnError>
+    pub fn spawn<A>(&self, specification: H::SpawnSpecification<A>) -> Result<ActorAddressReference<A, H>, ActorSpawnError>
     where
         A: Actor<H>,
     {
-        self.handler.spawn(actor)
+        self.handler.spawn(specification)
     }
 
     pub fn enter(&self) -> Result<(), ActorEnterError> {

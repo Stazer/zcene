@@ -34,11 +34,15 @@ where
         M: ActorMessage;
     type DestroyContext = ();
 
+    type SpawnSpecification<A> = A
+    where
+        A: Actor<Self>;
+
     fn allocator(&self) -> &Self::Allocator {
         self.future_runtime.handler().allocator()
     }
 
-    fn spawn<A>(&self, mut actor: A) -> Result<ActorAddressReference<A, Self>, ActorSpawnError>
+    fn spawn<A>(&self, mut actor: Self::SpawnSpecification<A>) -> Result<ActorAddressReference<A, Self>, ActorSpawnError>
     where
         A: Actor<Self>,
     {

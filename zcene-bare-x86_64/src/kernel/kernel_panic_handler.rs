@@ -5,10 +5,10 @@ use core::panic::PanicInfo;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[panic_handler]
-fn panic_handler(panic_info: &PanicInfo) -> ! {
+fn kernel_panic_handler(panic_info: &PanicInfo) -> ! {
     let _ = Kernel::get()
         .logger()
-        .writer(|w| write!(w, "Error: {:?}", panic_info));
+        .writer(|w| write!(w, "Panic: {:?}", panic_info));
 
     loop {}
 }

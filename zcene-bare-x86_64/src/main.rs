@@ -16,6 +16,6 @@ extern crate alloc;
 
 pub mod architecture;
 pub mod driver;
-mod global_allocator;
 mod kernel;
-mod panic_handler;
+
+mod user;
