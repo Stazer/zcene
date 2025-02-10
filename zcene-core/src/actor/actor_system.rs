@@ -27,14 +27,24 @@ where
             .map_err(ActorSystemCreateError::from)
     }
 
-    pub fn spawn<A>(&self, specification: H::SpawnSpecification<A>) -> Result<ActorAddressReference<A, H>, ActorSpawnError>
+    pub fn spawn<A>(
+        &self,
+        specification: H::SpawnSpecification<A>,
+    ) -> Result<ActorAddressReference<A, H>, ActorSpawnError>
     where
         A: Actor<H>,
     {
         self.handler.spawn(specification)
     }
 
-    pub fn enter(&self) -> Result<(), ActorEnterError> {
-        self.handler.enter()
+    pub fn enter(&self, specification: H::EnterSpecification) -> Result<(), ActorEnterError> {
+        self.handler.enter(specification)
+    }
+
+    pub fn enter_default(&self) -> Result<(), ActorEnterError>
+    where
+        H::EnterSpecification: Default,
+    {
+        self.enter(H::EnterSpecification::default())
     }
 }

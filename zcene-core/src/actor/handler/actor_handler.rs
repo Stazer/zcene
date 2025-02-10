@@ -21,12 +21,16 @@ pub trait ActorHandler: ActorCommonBounds + Sized {
     type SpawnSpecification<A>: ActorCommonBounds
     where
         A: Actor<Self>;
+    type EnterSpecification: ActorCommonBounds;
 
     fn allocator(&self) -> &Self::Allocator;
 
-    fn spawn<A>(&self, specification: Self::SpawnSpecification<A>) -> Result<ActorAddressReference<A, Self>, ActorSpawnError>
+    fn spawn<A>(
+        &self,
+        specification: Self::SpawnSpecification<A>,
+    ) -> Result<ActorAddressReference<A, Self>, ActorSpawnError>
     where
         A: Actor<Self>;
 
-    fn enter(&self) -> Result<(), ActorEnterError>;
+    fn enter(&self, specification: Self::EnterSpecification) -> Result<(), ActorEnterError>;
 }

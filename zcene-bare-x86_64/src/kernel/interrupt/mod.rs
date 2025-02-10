@@ -249,7 +249,7 @@ impl LocalInterruptManager {
         }
     }
 
-    pub fn signal_end_of_interrupt(&self) {
+    pub fn notify_end_of_interrupt(&self) {
         match self.r#type {
             LocalInterruptManagerType::XAPIC { base } => unsafe {
                 let mut xapic = XApic::new((base as *mut XApicRegisters).as_mut().unwrap());
@@ -277,5 +277,9 @@ impl KernelInterruptManager {
     ) {
         let mut local_interrupt_managers = self.local_interrupt_managers.lock();
         local_interrupt_managers.insert(0, local_interrupt_manager);
+    }
+
+    pub fn notify_local_end_of_interrupt(&self) {
+        self.local_interrupt_managers.lock().get(&0).unwrap().notify_end_of_interrupt();
     }
 }

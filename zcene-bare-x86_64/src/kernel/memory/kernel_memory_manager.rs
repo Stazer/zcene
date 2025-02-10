@@ -8,6 +8,8 @@ use core::alloc::Allocator;
 use core::iter::once;
 use core::slice::from_raw_parts_mut;
 use x86_64::registers::control::Cr3;
+use x86_64::structures::paging::page_table::PageTableLevel;
+use x86_64::structures::paging::page_table::PageTableEntry;
 use x86_64::structures::paging::mapper::MapToError;
 use x86_64::structures::paging::page::AddressNotAligned;
 use x86_64::structures::paging::FrameAllocator;
@@ -108,7 +110,9 @@ impl KernelMemoryManager {
             physical_memory_offset: VirtualMemoryAddress::from(physical_memory_offset),
             physical_memory_size_in_bytes,
             kernel_image_length: boot_info.kernel_len,
-            kernel_image_start_virtual_memory_address: VirtualMemoryAddress::from(physical_memory_offset + boot_info.kernel_addr),
+            kernel_image_start_virtual_memory_address: VirtualMemoryAddress::from(
+                physical_memory_offset + boot_info.kernel_addr,
+            ),
         };
 
         let mut frame_manager = this.frame_manager();
@@ -263,6 +267,67 @@ impl KernelMemoryManager {
 
         let mut current_address = start_address;
 
+        let page_table = this.active_page_table();
+
+        for entry in page_table.iter_mut() {
+            if !entry.flags().contains(PageTableFlags::PRESENT) {
+                continue;
+            }
+
+            entry.set_flags(entry.flags() | PageTableFlags::USER_ACCESSIBLE);
+
+            let l2 = unsafe { this.translate_physical_memory_address(PhysicalMemoryAddress::from(entry.addr().as_u64())).cast_mut::<PageTable>().as_mut().unwrap() };
+            use core::fmt::Write;
+            logger.writer(|w| write!(w, "{:?}\n", entry));
+
+            for entry2 in l2.iter_mut() {
+                if !entry2.flags().contains(PageTableFlags::PRESENT)  || entry2.flags().contains(PageTableFlags::HUGE_PAGE) {
+                    continue;
+                }
+
+                entry2.set_flags(entry2.flags() | PageTableFlags::USER_ACCESSIBLE);
+
+                let l3 = unsafe { this.translate_physical_memory_address(PhysicalMemoryAddress::from(entry2.addr().as_u64())).cast_mut::<PageTable>().as_mut().unwrap() };
+                        use core::fmt::Write;
+                        logger.writer(|w| write!(w, "{:?}\n", entry2));
+
+                for entry3 in l3.iter_mut() {
+                    if !entry3.flags().contains(PageTableFlags::PRESENT) || entry3.flags().contains(PageTableFlags::HUGE_PAGE) {
+                        continue;
+                    }
+
+                    entry3.set_flags(entry3.flags() | PageTableFlags::USER_ACCESSIBLE);
+                        use core::fmt::Write;
+                        logger.writer(|w| write!(w, "{:?}\n", entry3));
+
+
+
+                    let l4 = unsafe { this.translate_physical_memory_address(PhysicalMemoryAddress::from(entry3.addr().as_u64())).cast_mut::<PageTable>().as_mut().unwrap() };
+
+                    for entry4 in l4.iter_mut() {
+                        if !entry4.flags().contains(PageTableFlags::PRESENT) {
+                            continue;
+                        }
+
+                        use core::fmt::Write;
+                        logger.writer(|w| write!(w, "{:?}\n", entry4));
+
+
+
+                        entry4.set_flags(entry4.flags() | PageTableFlags::USER_ACCESSIBLE);
+                    }
+                }
+            }
+        }
+
+        use core::fmt::Write;
+        logger.writer(|w| write!(w, "HELLO"));
+
+        let a = Cr3::read_raw();
+        unsafe {
+            Cr3::write_raw(a.0, a.1);
+        }
+
         for (i, heap_frame_identifier) in frame_manager
             .unallocated_frame_identifiers()
             .take(frame_count)
@@ -270,7 +335,9 @@ impl KernelMemoryManager {
         {
             let physical_address = frame_manager.translate_frame_identifier(heap_frame_identifier);
 
-            this.frame_manager().allocate_frames(once(heap_frame_identifier)).unwrap();
+            this.frame_manager()
+                .allocate_frames(once(heap_frame_identifier))
+                .unwrap();
 
             unsafe {
                 mapper
@@ -364,11 +431,14 @@ impl KernelMemoryManager {
 
     fn active_execution_page_table(&self) -> &'static mut PageTable {
         unsafe {
-            self
-                .translate_physical_memory_address(PhysicalMemoryAddress::from(
-                    self.active_root_page_table()[EXECUTION_PAGE_TABLE_INDEX].addr().as_u64()
-                ))
-                .cast_mut::<PageTable>().as_mut().unwrap()
+            self.translate_physical_memory_address(PhysicalMemoryAddress::from(
+                self.active_root_page_table()[EXECUTION_PAGE_TABLE_INDEX]
+                    .addr()
+                    .as_u64(),
+            ))
+            .cast_mut::<PageTable>()
+            .as_mut()
+            .unwrap()
         }
     }
 
@@ -379,6 +449,49 @@ impl KernelMemoryManager {
                 VirtAddr::new(self.physical_memory_offset.as_usize().r#as()),
             )
         }
+    }
+
+    pub fn allocate_user_stack(&self) -> Option<Stack<VirtualMemoryAddressPerspective>> {
+        let stack_frame_count = 4;
+        let stack_size = stack_frame_count * FRAME_SIZE;
+
+        let mut first_address = 0;
+        let mut stack_address = 0;
+        let mut mapper = self.page_table_mapper();
+
+        for stack_frame_identifier in self.frame_manager().allocate_window(4).unwrap() {
+            stack_address = self
+                .frame_manager()
+                .translate_frame_identifier(stack_frame_identifier)
+                .as_usize();
+
+            let page = Page::<Size4KiB>::containing_address(VirtAddr::new(
+                (stack_address).try_into().unwrap(),
+            ));
+
+            if first_address == 0 {
+                first_address = page.start_address().as_u64() + stack_size as u64;
+            }
+
+            unsafe {
+                mapper
+                    .map_to(
+                        page,
+                        PhysFrame::from_start_address(PhysAddr::new(
+                            stack_address.try_into().unwrap(),
+                        ))
+                        .unwrap(),
+                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
+                        &mut KernelMemoryManagerFrameAllocator::new(self),
+                    )
+                    .expect("Hello World")
+                    .flush();
+            }
+        }
+
+        let first_address = VirtualMemoryAddress::from(first_address);
+
+        Some(Stack::new(first_address, stack_size))
     }
 
     pub fn allocate_stack(&self) -> Option<Stack<VirtualMemoryAddressPerspective>> {
