@@ -2,8 +2,8 @@
 pub enum KernelActorExecutionMode {
     Privileged,
     Unprivileged,
-    InternPrivileged,
-    InternUnprivileged,
-    ExternPrivileged,
-    ExternUnprivileged,
+    //InternPrivileged,
+    //InternUnprivileged,
+    //ExternPrivileged,
+    //ExternUnprivileged,
 }

@@ -73,6 +73,28 @@ where
 {
     type Message = usize;
 
+    fn create(
+        &mut self,
+        context: H::CreateContext,
+    ) -> impl ActorFuture<'_, Result<(), ActorCreateError>> {
+        async move {
+            println!("Application::create");
+
+            Ok(())
+        }
+    }
+
+    fn destroy(
+        self,
+        context: H::DestroyContext,
+    ) -> impl ActorFuture<'static, Result<(), ActorDestroyError>> {
+        async move {
+            println!("Application::destroy");
+
+            Ok(())
+        }
+    }
+
     fn handle(
         &mut self,
         context: H::HandleContext<Self::Message>,
@@ -91,6 +113,44 @@ where
                 feature_info.initial_local_apic_id()
             );
 
+            Ok(())
+        }
+    }
+}
+
+#[derive(Constructor, Default)]
+pub struct UserActor;
+
+impl<H> Actor<H> for UserActor
+where
+    H: ActorHandler,
+    H::HandleContext<usize>: ActorContextMessageProvider<usize>,
+{
+    type Message = usize;
+
+    fn create(
+        &mut self,
+        context: H::CreateContext,
+    ) -> impl ActorFuture<'_, Result<(), ActorCreateError>> {
+        async move {
+            Ok(())
+        }
+    }
+
+    fn destroy(
+        self,
+        context: H::DestroyContext,
+    ) -> impl ActorFuture<'static, Result<(), ActorDestroyError>> {
+        async move {
+            Ok(())
+        }
+    }
+
+    fn handle(
+        &mut self,
+        context: H::HandleContext<Self::Message>,
+    ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
+        async move {
             Ok(())
         }
     }
@@ -162,6 +222,8 @@ where
         _context: H::CreateContext,
     ) -> impl ActorFuture<'_, Result<(), ActorCreateError>> {
         async move {
+            println!("Timer::create");
+
             Ok(())
         }
     }
@@ -171,7 +233,7 @@ where
         context: H::HandleContext<Self::Message>,
     ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
         async move {
-            println!("HELLO");
+            println!("Timer::hello");
 
             match context.message() {
                 Self::Message::Tick => {
@@ -189,6 +251,18 @@ where
             Ok(())
         }
     }
+
+    fn destroy(
+        self,
+        _context: H::DestroyContext,
+    ) -> impl ActorFuture<'static, Result<(), ActorDestroyError>> {
+        async move {
+            println!("Timer::destroy");
+
+            Ok(())
+        }
+    }
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -237,7 +311,25 @@ impl Kernel {
         Kernel::get()
             .actor_system()
             .spawn(KernelActorSpawnSpecification::new(
-                MainActor,
+                ApplicationActor::default(),
+                KernelActorExecutionMode::Privileged,
+                KernelActorInstructionRegion::new(
+                    VirtualMemoryAddress::new(
+                        Kernel::get()
+                            .memory_manager()
+                            .kernel_image_virtual_memory_region()
+                            .start()
+                            .as_usize()
+                            + unsafe { linker_value(&USER_SECTIONS_START) },
+                    ),
+                    unsafe { linker_value(&USER_SECTIONS_SIZE) },
+                ),
+            ));
+
+        Kernel::get()
+            .actor_system()
+            .spawn(KernelActorSpawnSpecification::new(
+                UserActor::default(),
                 KernelActorExecutionMode::Unprivileged,
                 KernelActorInstructionRegion::new(
                     VirtualMemoryAddress::new(

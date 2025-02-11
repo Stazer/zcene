@@ -277,8 +277,6 @@ impl KernelMemoryManager {
             entry.set_flags(entry.flags() | PageTableFlags::USER_ACCESSIBLE);
 
             let l2 = unsafe { this.translate_physical_memory_address(PhysicalMemoryAddress::from(entry.addr().as_u64())).cast_mut::<PageTable>().as_mut().unwrap() };
-            use core::fmt::Write;
-            logger.writer(|w| write!(w, "{:?}\n", entry));
 
             for entry2 in l2.iter_mut() {
                 if !entry2.flags().contains(PageTableFlags::PRESENT)  || entry2.flags().contains(PageTableFlags::HUGE_PAGE) {
@@ -288,8 +286,6 @@ impl KernelMemoryManager {
                 entry2.set_flags(entry2.flags() | PageTableFlags::USER_ACCESSIBLE);
 
                 let l3 = unsafe { this.translate_physical_memory_address(PhysicalMemoryAddress::from(entry2.addr().as_u64())).cast_mut::<PageTable>().as_mut().unwrap() };
-                        use core::fmt::Write;
-                        logger.writer(|w| write!(w, "{:?}\n", entry2));
 
                 for entry3 in l3.iter_mut() {
                     if !entry3.flags().contains(PageTableFlags::PRESENT) || entry3.flags().contains(PageTableFlags::HUGE_PAGE) {
@@ -297,9 +293,6 @@ impl KernelMemoryManager {
                     }
 
                     entry3.set_flags(entry3.flags() | PageTableFlags::USER_ACCESSIBLE);
-                        use core::fmt::Write;
-                        logger.writer(|w| write!(w, "{:?}\n", entry3));
-
 
 
                     let l4 = unsafe { this.translate_physical_memory_address(PhysicalMemoryAddress::from(entry3.addr().as_u64())).cast_mut::<PageTable>().as_mut().unwrap() };
@@ -308,11 +301,6 @@ impl KernelMemoryManager {
                         if !entry4.flags().contains(PageTableFlags::PRESENT) {
                             continue;
                         }
-
-                        use core::fmt::Write;
-                        logger.writer(|w| write!(w, "{:?}\n", entry4));
-
-
 
                         entry4.set_flags(entry4.flags() | PageTableFlags::USER_ACCESSIBLE);
                     }
