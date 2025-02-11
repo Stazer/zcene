@@ -7,6 +7,7 @@ use crate::kernel::Kernel;
 use crate::kernel::TimerActorMessage;
 use alloc::sync::Arc;
 use core::marker::PhantomData;
+use core::mem::replace;
 use x86_64::instructions::interrupts::without_interrupts;
 use zcene_bare::memory::address::PhysicalMemoryAddress;
 use zcene_bare::memory::address::VirtualMemoryAddress;
@@ -158,10 +159,13 @@ where
     }
 }
 
+use core::task::Waker;
+
 pub enum Thread {
     Privileged {
     },
     Unprivileged {
+        waker: Waker,
     },
 }
 
@@ -194,19 +198,88 @@ where
     state: State<A>,
 }
 
-struct PollContext {
-}
-
-use core::mem::replace;
-
 impl<A> ActorExecutor<A>
 where
     A: Actor<KernelActorHandler>,
 {
-    fn poll_privileged(&mut self, context: &mut Context<'_>) -> Poll<<Self as Future>::Output> {
+    #[naked]
+    unsafe fn run() -> !{
+        naked_asm!(
+            "syscall",
+        )
+    }
+
+    unsafe fn execute(sp: u64) -> ! {
+        asm!(
+            "mov rsp, rdi",
+            "mov rcx, {instruction_pointer}",
+            "sysretq",
+
+            instruction_pointer = in(reg) Self::run as u64,
+            options(noreturn),
+        )
+    }
+
+    unsafe fn syscall_entry() {
+        crate::kernel::logger::println!("syscall");
+        loop {}
+    }
+
+    #[no_mangle]
+    fn hello() {
+        unsafe {
+            asm!(
+                "2:",
+                "mov rax, 0x1339",
+                "jmp 2b",
+            )
+        }
+
+        loop {}
+    }
+
+    fn poll_unprivileged(&mut self, context: &mut Context<'_>) -> Poll<<Self as Future>::Output> {
         loop {
             match replace(&mut self.state, State::Unknown) {
                 State::Created(mut state) => {
+                    crate::kernel::logger::println!("before");
+
+                    let user_stack = Kernel::get().memory_manager().allocate_user_stack().unwrap();
+
+                    unsafe {
+                        wrmsr(IA32_STAR, (0x08u64 << 32) | (0x1Bu64 << 48));
+                        wrmsr(IA32_LSTAR, Self::syscall_entry as u64);
+                        wrmsr(IA32_FMASK, 0);
+                    }
+
+                    /*unsafe {
+                        wrmsr(IA32_STAR, (0x08u64 << 32) | (0x1Bu64 << 48));
+                        wrmsr(IA32_LSTAR, syscall_entry as u64);
+                        wrmsr(IA32_FMASK, 0);
+
+                        // crate::kernel::logger::println!("{:X}", unsafe { rdmsr(IA32_STAR) });
+
+                        core::arch::asm!(
+                            "mov rsp, {stack_pointer}",
+                            "mov rcx, {instruction_pointer}",
+                            "sysretq",
+
+                            stack_pointer = in(reg) user_stack.initial_memory_address().as_u64(),
+                            instruction_pointer = in(reg) Self::run as u64,
+                        )
+                    }*/
+
+                    unsafe {
+                        asm!(
+                            "call {}",
+                            in(reg) Self::execute,
+                            in("rdi") user_stack.initial_memory_address().as_u64(),
+                            //in("rsi") context,
+                        );
+                    }
+
+                    crate::kernel::logger::println!("after");
+
                     let result = {
                         let mut pinned = pin!(state.create(()));
                         pinned.as_mut().poll(context)
@@ -282,7 +355,7 @@ where
         }
     }
 
-    fn poll_unprivileged(&mut self, context: &mut Context<'_>) -> Poll<<Self as Future>::Output> {
+    fn poll_privileged(&mut self, context: &mut Context<'_>) -> Poll<<Self as Future>::Output> {
         loop {
             match replace(&mut self.state, State::Unknown) {
                 State::Created(mut state) => {
@@ -623,18 +696,6 @@ use x86::msr::{rdmsr, wrmsr, IA32_STAR, IA32_LSTAR, IA32_FMASK};
 use x86_64::registers::segmentation::{CS, DS, ES, SS, SegmentSelector, Segment};
 use x86_64::PrivilegeLevel;
 use core::arch::asm;
-
-#[naked]
-fn syscall_entry() {
-    unsafe {
-        naked_asm!(
-            "2:",
-            "mov rbx, 0x1338",
-            "jmp 2b",
-            "syscall"
-        )
-    }
-}
 
 pub trait UnprivilegedWrapper {
     fn run(&mut self);
