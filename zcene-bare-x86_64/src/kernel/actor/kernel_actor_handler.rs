@@ -182,6 +182,14 @@ where
     }
 }
 
+#[repr(u64)]
+#[derive(Copy, Clone, Debug)]
+pub enum ActorExecutorStageResult {
+    Ready,
+    Pending,
+    Preempted,
+}
+
 use core::task::Waker;
 use alloc::boxed::Box;
 
@@ -315,7 +323,7 @@ where
     }
 
     #[naked]
-    unsafe extern "C" fn syscall(x0: u64) {
+    unsafe extern "C" fn system_call(x0: u64) {
         naked_asm!(
             "mov rcx, 0xC0000102",
             "rdmsr",
@@ -325,13 +333,13 @@ where
 
             "mov rsp, rsi",
 
+            "mov rax, 0",
+
             "ret",
         )
     }
 
-    unsafe extern "C" fn sysret(actor: &mut A, context: &mut Context<'_>) {
-        crate::kernel::logger::println!("sysret");
-
+    unsafe extern "C" fn system_return(actor: &mut A, context: &mut Context<'_>) {
         let mut pinned = pin!(actor.create(()));
         pinned.as_mut().poll(context);
 
@@ -344,7 +352,7 @@ where
         function: u64,
         actor: &mut A,
         context: &mut Context<'_>,
-    ) {
+    ) -> ActorExecutorStageResult {
         naked_asm!(
             "mov rcx, 0xC0000102",
             "mov rax, rsp",
@@ -368,7 +376,7 @@ where
                 ActorExecutorState::Created(mut actor) => {
                     unsafe {
                         wrmsr(IA32_STAR, (0x08u64 << 32) | (0x1Bu64 << 48));
-                        wrmsr(IA32_LSTAR, Self::syscall as u64);
+                        wrmsr(IA32_LSTAR, Self::system_call as u64);
                         wrmsr(IA32_FMASK, 0);
                     }
 
@@ -376,16 +384,16 @@ where
 
                     crate::kernel::logger::println!("before {:X}", user_stack);
 
-                    unsafe {
+                    let result = unsafe {
                         Self::execute(
                             user_stack,
-                            Self::sysret as _,
+                            Self::system_return as _,
                             &mut *actor,
                             context,
-                        );
-                    }
+                        )
+                    };
 
-                    crate::kernel::logger::println!("after call");
+                    crate::kernel::logger::println!("after call {:?}", result);
 
                     /*let result = {
                         let mut pinned = pin!(actor.create(()));
