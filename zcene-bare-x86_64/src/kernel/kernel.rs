@@ -133,6 +133,19 @@ where
         context: H::CreateContext,
     ) -> impl ActorFuture<'_, Result<(), ActorCreateError>> {
         async move {
+            crate::kernel::logger::println!("poll from ring 3");
+
+            crate::kernel::logger::println!("preempt...");
+
+            unsafe {
+                core::arch::asm!(
+                    "mov rax, 0",
+                    "syscall",
+                )
+            }
+
+            crate::kernel::logger::println!("resume...");
+
             Ok(())
         }
     }
@@ -141,18 +154,14 @@ where
         self,
         context: H::DestroyContext,
     ) -> impl ActorFuture<'static, Result<(), ActorDestroyError>> {
-        async move {
-            Ok(())
-        }
+        async move { Ok(()) }
     }
 
     fn handle(
         &mut self,
         context: H::HandleContext<Self::Message>,
     ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
-        async move {
-            Ok(())
-        }
+        async move { Ok(()) }
     }
 }
 
@@ -262,7 +271,6 @@ where
             Ok(())
         }
     }
-
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

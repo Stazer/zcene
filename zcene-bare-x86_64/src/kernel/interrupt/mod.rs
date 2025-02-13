@@ -280,6 +280,10 @@ impl KernelInterruptManager {
     }
 
     pub fn notify_local_end_of_interrupt(&self) {
-        self.local_interrupt_managers.lock().get(&0).unwrap().notify_end_of_interrupt();
+        self.local_interrupt_managers
+            .lock()
+            .get(&0)
+            .unwrap()
+            .notify_end_of_interrupt();
     }
 }

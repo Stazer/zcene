@@ -8,6 +8,7 @@ use crate::kernel::TimerActorMessage;
 use alloc::sync::Arc;
 use core::marker::PhantomData;
 use core::mem::replace;
+use x86::current::registers::rsp;
 use x86_64::instructions::interrupts::without_interrupts;
 use zcene_bare::memory::address::PhysicalMemoryAddress;
 use zcene_bare::memory::address::VirtualMemoryAddress;
@@ -105,11 +106,33 @@ impl ActorHandler for KernelActorHandler {
     where
         A: Actor<Self>,
     {
-        match specification.execution_mode {
+        let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
+
+        let reference = ActorAddressReference::<A, Self>::try_new_in(
+            <Self as ActorHandler>::Address::new(sender, PhantomData),
+            self.allocator().clone(),
+        )?;
+
+        self.future_runtime.spawn(ActorExecutor2 {
+            scheduler: Arc::default(),
+            r#type: match specification.execution_mode {
+                KernelActorExecutionMode::Privileged => ActorExecutorType::InternalPrivileged {
+                    state: ActorExecutorState::Created(specification.actor),
+                },
+                KernelActorExecutionMode::Unprivileged => ActorExecutorType::InternalUnprivileged {
+                    state: ActorExecutorState::Created(Box::new(specification.actor)),
+                },
+            },
+            receiver,
+        });
+
+        Ok(reference)
+
+        /*match specification.execution_mode {
             KernelActorExecutionMode::Privileged => self.spawn_privileged(specification),
             KernelActorExecutionMode::Unprivileged => self.spawn_unprivileged(specification),
             //_ => todo!(),
-        }
+        }*/
     }
 
     fn enter(&self, specification: Self::EnterSpecification) -> Result<(), ActorEnterError> {
@@ -120,9 +143,9 @@ impl ActorHandler for KernelActorHandler {
 }
 
 use core::future::Future;
+use core::pin::{pin, Pin};
 use core::task::{Context, Poll};
 use zcene_core::actor::ActorMessageChannelReceiver;
-use core::pin::{pin, Pin};
 
 use zcene_core::actor::ActorCreateError;
 
@@ -160,18 +183,317 @@ where
 }
 
 use core::task::Waker;
+use alloc::boxed::Box;
 
-pub enum Thread {
-    Privileged {
-    },
-    Unprivileged {
-        waker: Waker,
-    },
+pub struct ActorThread {
+    waker: Waker,
+    return_address: u64,
 }
 
 #[derive(Default)]
 pub struct Scheduler {
-    threads: BTreeMap<usize, Thread>,
+    threads: BTreeMap<usize, Mutex<ActorThread>>,
+}
+
+enum ActorExecutorState<A, M> {
+    Created(A),
+    RunningReceive(A),
+    RunningHandle(A, M),
+    Destroy(A),
+    Destroyed,
+    Unknown,
+}
+
+pub enum ActorExecutorType<A>
+where
+    A: Actor<KernelActorHandler>,
+{
+    InternalPrivileged {
+        state: ActorExecutorState<A, A::Message>,
+    },
+    InternalUnprivileged {
+        state: ActorExecutorState<Box<A>, A::Message>,
+    },
+}
+
+#[pin_project::pin_project]
+pub struct ActorExecutor2<A>
+where
+    A: Actor<KernelActorHandler>,
+{
+    r#type: ActorExecutorType<A>,
+    scheduler: Arc<Mutex<Scheduler>>,
+    receiver: ActorMessageChannelReceiver<A::Message>,
+}
+
+impl<A> ActorExecutor2<A>
+where
+    A: Actor<KernelActorHandler>,
+{
+    fn poll_internal_privileged(
+        state: &mut ActorExecutorState<A, A::Message>,
+        context: &mut Context<'_>,
+        receiver: &mut ActorMessageChannelReceiver<A::Message>,
+    ) -> Poll<<Self as Future>::Output> {
+        loop {
+            match replace(state, ActorExecutorState::Unknown) {
+                ActorExecutorState::Created(mut actor) => {
+                    let result = {
+                        let mut pinned = pin!(actor.create(()));
+                        pinned.as_mut().poll(context)
+                    };
+
+                    match result {
+                        Poll::Pending => {
+                            *state = ActorExecutorState::Created(actor);
+                            return Poll::Pending;
+                        }
+                        // TODO: handle result
+                        Poll::Ready(_result) => {
+                            *state = ActorExecutorState::RunningReceive(actor);
+                        }
+                    }
+                }
+                ActorExecutorState::RunningReceive(mut actor) => {
+                    let result = {
+                        let mut pinned = pin!(receiver.receive());
+                        pinned.as_mut().poll(context)
+                    };
+
+                    match result {
+                        Poll::Pending => {
+                            *state = ActorExecutorState::RunningReceive(actor);
+                            return Poll::Pending;
+                        }
+                        Poll::Ready(Some(message)) => {
+                            *state = ActorExecutorState::RunningHandle(actor, message);
+                        }
+                        Poll::Ready(None) => {
+                            *state = ActorExecutorState::Destroy(actor);
+                        }
+                    }
+                }
+                ActorExecutorState::RunningHandle(mut actor, message) => {
+                    let result = {
+                        let mut pinned =
+                            pin!(actor.handle(ActorCommonHandleContext::new(message.clone()),));
+                        pinned.as_mut().poll(context)
+                    };
+
+                    match result {
+                        Poll::Pending => {
+                            *state = ActorExecutorState::RunningHandle(actor, message);
+                            return Poll::Pending;
+                        }
+                        Poll::Ready(message) => {
+                            *state = ActorExecutorState::RunningReceive(actor);
+                        }
+                    }
+                }
+                ActorExecutorState::Destroy(mut actor) => {
+                    let mut pinned = pin!(actor.destroy(()));
+
+                    loop {
+                        // TODO
+                        if let Poll::Ready(_) = pinned.as_mut().poll(context) {
+                            break;
+                        }
+                    }
+
+                    *state = ActorExecutorState::Destroyed;
+                }
+                ActorExecutorState::Destroyed => return Poll::Ready(()),
+                ActorExecutorState::Unknown => return Poll::Ready(()),
+            }
+        }
+
+        Poll::Ready(())
+    }
+
+    unsafe fn preempt() {
+        loop {}
+    }
+
+    #[naked]
+    unsafe extern "C" fn syscall(x0: u64) {
+        naked_asm!(
+            "mov rcx, 0xC0000102",
+            "rdmsr",
+            "mov rsi, rax",
+            "shl rdx, 32",
+            "or rsi, rdx",
+
+            "mov rsp, rsi",
+
+            "ret",
+        )
+    }
+
+    unsafe extern "C" fn sysret(actor: &mut A, context: &mut Context<'_>) {
+        crate::kernel::logger::println!("sysret");
+
+        let mut pinned = pin!(actor.create(()));
+        pinned.as_mut().poll(context);
+
+        loop {}
+    }
+
+    #[naked]
+    unsafe extern "C" fn execute(
+        user_stack: u64,
+        function: u64,
+        actor: &mut A,
+        context: &mut Context<'_>,
+    ) {
+        naked_asm!(
+            "mov rcx, 0xC0000102",
+            "mov rax, rsp",
+            "mov rdx, rax",
+            "shr rdx, 32",
+            "wrmsr",
+
+            "mov rsp, rdi",
+            "mov rcx, rsi",
+            "sysretq",
+        )
+    }
+
+    fn poll_internal_unprivileged(
+        state: &mut ActorExecutorState<Box<A>, A::Message>,
+        context: &mut Context<'_>,
+        receiver: &mut ActorMessageChannelReceiver<A::Message>,
+    ) -> Poll<<Self as Future>::Output> {
+        loop {
+            match replace(state, ActorExecutorState::Unknown) {
+                ActorExecutorState::Created(mut actor) => {
+                    unsafe {
+                        wrmsr(IA32_STAR, (0x08u64 << 32) | (0x1Bu64 << 48));
+                        wrmsr(IA32_LSTAR, Self::syscall as u64);
+                        wrmsr(IA32_FMASK, 0);
+                    }
+
+                    let user_stack = Kernel::get().memory_manager().allocate_user_stack().unwrap().initial_memory_address().as_u64();
+
+                    crate::kernel::logger::println!("before {:X}", user_stack);
+
+                    unsafe {
+                        Self::execute(
+                            user_stack,
+                            Self::sysret as _,
+                            &mut *actor,
+                            context,
+                        );
+                    }
+
+                    crate::kernel::logger::println!("after call");
+
+                    /*let result = {
+                        let mut pinned = pin!(actor.create(()));
+                        pinned.as_mut().poll(context)
+                    };*/
+
+                    /*match result {
+                        Poll::Pending => {
+                            *state = ActorExecutorState::Created(actor);
+                            return Poll::Pending;
+                        }
+                        // TODO: handle result
+                        Poll::Ready(_result) => {
+                            *state = ActorExecutorState::RunningReceive(actor);
+                        }
+                    }*/
+
+                    loop {}
+                }
+                ActorExecutorState::RunningReceive(mut actor) => {
+                    let result = {
+                        let mut pinned = pin!(receiver.receive());
+                        pinned.as_mut().poll(context)
+                    };
+
+                    match result {
+                        Poll::Pending => {
+                            *state = ActorExecutorState::RunningReceive(actor);
+                            return Poll::Pending;
+                        }
+                        Poll::Ready(Some(message)) => {
+                            *state = ActorExecutorState::RunningHandle(actor, message);
+                        }
+                        Poll::Ready(None) => {
+                            *state = ActorExecutorState::Destroy(actor);
+                        }
+                    }
+                }
+                ActorExecutorState::RunningHandle(mut actor, message) => {
+                    let result = {
+                        let mut pinned =
+                            pin!(actor.handle(ActorCommonHandleContext::new(message.clone()),));
+                        pinned.as_mut().poll(context)
+                    };
+
+                    match result {
+                        Poll::Pending => {
+                            *state = ActorExecutorState::RunningHandle(actor, message);
+                            return Poll::Pending;
+                        }
+                        Poll::Ready(message) => {
+                            *state = ActorExecutorState::RunningReceive(actor);
+                        }
+                    }
+                }
+                ActorExecutorState::Destroy(mut actor) => {
+                    let mut pinned = pin!(actor.destroy(()));
+
+                    loop {
+                        // TODO
+                        if let Poll::Ready(_) = pinned.as_mut().poll(context) {
+                            break;
+                        }
+                    }
+
+                    *state = ActorExecutorState::Destroyed;
+                }
+                ActorExecutorState::Destroyed => return Poll::Ready(()),
+                ActorExecutorState::Unknown => return Poll::Ready(()),
+            }
+        }
+
+        Poll::Ready(())
+    }
+}
+
+impl<A> Future for ActorExecutor2<A>
+where
+    A: Actor<KernelActorHandler>,
+{
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
+        let Self {
+            receiver, r#type, ..
+        } = &mut *self;
+
+        match r#type {
+            ActorExecutorType::InternalPrivileged { state } => {
+                Self::poll_internal_privileged(state, context, receiver)
+            }
+            ActorExecutorType::InternalUnprivileged { state } => {
+                Self::poll_internal_unprivileged(state, context, receiver)
+            }
+        }
+    }
+}
+
+enum State2<A>
+where
+    A: Actor<KernelActorHandler>,
+{
+    Created(Box<A>),
+    RunningReceive(Box<A>),
+    RunningHandle(Box<A>, A::Message),
+    Destroy(Box<A>),
+    Destroyed,
+    Unknown,
 }
 
 enum State<A>
@@ -203,16 +525,15 @@ where
     A: Actor<KernelActorHandler>,
 {
     #[naked]
-    unsafe fn run() -> !{
-        naked_asm!(
-            "syscall",
-        )
+    unsafe fn run() -> ! {
+        naked_asm!("syscall")
     }
 
     unsafe fn execute(sp: u64) -> ! {
         asm!(
-            "mov rsp, rdi",
+            //"mov rsp, rdi",
             "mov rcx, {instruction_pointer}",
+
             "sysretq",
 
             instruction_pointer = in(reg) Self::run as u64,
@@ -221,21 +542,9 @@ where
     }
 
     unsafe fn syscall_entry() {
+        asm!("pop rax",);
+
         crate::kernel::logger::println!("syscall");
-        loop {}
-    }
-
-    #[no_mangle]
-    fn hello() {
-        unsafe {
-            asm!(
-                "2:",
-                "mov rax, 0x1339",
-                "jmp 2b",
-            )
-        }
-
-        loop {}
     }
 
     fn poll_unprivileged(&mut self, context: &mut Context<'_>) -> Poll<<Self as Future>::Output> {
@@ -244,30 +553,16 @@ where
                 State::Created(mut state) => {
                     crate::kernel::logger::println!("before");
 
-                    let user_stack = Kernel::get().memory_manager().allocate_user_stack().unwrap();
+                    let user_stack = Kernel::get()
+                        .memory_manager()
+                        .allocate_user_stack()
+                        .unwrap();
 
                     unsafe {
                         wrmsr(IA32_STAR, (0x08u64 << 32) | (0x1Bu64 << 48));
                         wrmsr(IA32_LSTAR, Self::syscall_entry as u64);
                         wrmsr(IA32_FMASK, 0);
                     }
-
-                    /*unsafe {
-                        wrmsr(IA32_STAR, (0x08u64 << 32) | (0x1Bu64 << 48));
-                        wrmsr(IA32_LSTAR, syscall_entry as u64);
-                        wrmsr(IA32_FMASK, 0);
-
-                        // crate::kernel::logger::println!("{:X}", unsafe { rdmsr(IA32_STAR) });
-
-                        core::arch::asm!(
-                            "mov rsp, {stack_pointer}",
-                            "mov rcx, {instruction_pointer}",
-                            "sysretq",
-
-                            stack_pointer = in(reg) user_stack.initial_memory_address().as_u64(),
-                            instruction_pointer = in(reg) Self::run as u64,
-                        )
-                    }*/
 
                     unsafe {
                         asm!(
@@ -295,7 +590,7 @@ where
                             self.state = State::RunningReceive(state);
                         }
                     }
-                },
+                }
                 State::RunningReceive(mut state) => {
                     let result = {
                         let mut pinned = pin!(self.receiver.receive());
@@ -314,12 +609,11 @@ where
                             self.state = State::Destroy(state);
                         }
                     }
-                },
+                }
                 State::RunningHandle(mut state, message) => {
                     let result = {
-                        let mut pinned = pin!(state.handle(
-                            ActorCommonHandleContext::new(message.clone()),
-                        ));
+                        let mut pinned =
+                            pin!(state.handle(ActorCommonHandleContext::new(message.clone()),));
                         pinned.as_mut().poll(context)
                     };
 
@@ -332,25 +626,21 @@ where
                             self.state = State::RunningReceive(state);
                         }
                     }
-                },
+                }
                 State::Destroy(mut state) => {
                     let mut pinned = pin!(state.destroy(()));
 
                     loop {
                         // TODO
                         if let Poll::Ready(_) = pinned.as_mut().poll(context) {
-                            break
+                            break;
                         }
                     }
 
                     self.state = State::Destroyed;
-                },
-                State::Destroyed => {
-                    return Poll::Ready(())
                 }
-                State::Unknown => {
-                    return Poll::Ready(())
-                }
+                State::Destroyed => return Poll::Ready(()),
+                State::Unknown => return Poll::Ready(()),
             }
         }
     }
@@ -374,7 +664,7 @@ where
                             self.state = State::RunningReceive(state);
                         }
                     }
-                },
+                }
                 State::RunningReceive(mut state) => {
                     let result = {
                         let mut pinned = pin!(self.receiver.receive());
@@ -393,12 +683,11 @@ where
                             self.state = State::Destroy(state);
                         }
                     }
-                },
+                }
                 State::RunningHandle(mut state, message) => {
                     let result = {
-                        let mut pinned = pin!(state.handle(
-                            ActorCommonHandleContext::new(message.clone()),
-                        ));
+                        let mut pinned =
+                            pin!(state.handle(ActorCommonHandleContext::new(message.clone()),));
                         pinned.as_mut().poll(context)
                     };
 
@@ -411,94 +700,24 @@ where
                             self.state = State::RunningReceive(state);
                         }
                     }
-                },
+                }
                 State::Destroy(mut state) => {
                     let mut pinned = pin!(state.destroy(()));
 
                     loop {
                         // TODO
                         if let Poll::Ready(_) = pinned.as_mut().poll(context) {
-                            break
+                            break;
                         }
                     }
 
                     self.state = State::Destroyed;
-                },
-                State::Destroyed => {
-                    return Poll::Ready(())
                 }
-                State::Unknown => {
-                    return Poll::Ready(())
-                }
+                State::Destroyed => return Poll::Ready(()),
+                State::Unknown => return Poll::Ready(()),
             }
         }
     }
-
-        /*if let State::Created(state) =  {
-            self.state = State::Running(state);
-        }*/
-        /*let mut pinned = pin!(self.actor.create(()));
-        pinned.as_mut().poll(context);*/
-
-        /*unsafe {
-            asm!(
-                "mov rsp, rbp",
-                "pop rbp",
-                "ret",
-                options(noreturn),
-            );
-        }*/
-
-                    /*unsafe {
-                        asm!(
-                            "call {}",
-                            in(reg) Self::poll_created,
-                            in("rdi") Pin::get_unchecked_mut(self),
-                            in("rsi") context,
-                        );
-                    }
-
-                    loop {}
-
-        /*
-        let user_stack = Kernel::get().memory_manager().allocate_user_stack().unwrap();
-
-        unsafe {
-            wrmsr(IA32_STAR, (0x08u64 << 32) | (0x1Bu64 << 48));
-            wrmsr(IA32_LSTAR, syscall_entry as u64);
-            wrmsr(IA32_FMASK, 0);
-
-            // crate::kernel::logger::println!("{:X}", unsafe { rdmsr(IA32_STAR) });
-
-            core::arch::asm!(
-                "mov rsp, {stack_pointer}",
-                "mov rcx, {instruction_pointer}",
-                "sysretq",
-
-                stack_pointer = in(reg) user_stack.initial_memory_address().as_u64(),
-                instruction_pointer = in(reg) Self::run as u64,
-            )
-        }*/
-
-        /*self.scheduler.lock().threads.insert(
-            0,
-            Thread::Privileged {
-            }
-        );*/
-
-        unsafe {
-            asm!(
-                "call {}",
-                in(reg) Self::poll,
-                in("rdi") Pin::get_unchecked_mut(self),
-                in("rsi") context,
-            );
-        }
-
-        Poll::Ready(())
-
-    }*/
-
 }
 
 impl<A> Future for ActorExecutor<A>
@@ -532,57 +751,17 @@ impl KernelActorHandler {
 
         let scheduler = self.scheduler.clone();
 
-        self.future_runtime.spawn(
-            ActorExecutor {
-                state: State::Created(specification.actor),
+        /*self.future_runtime.spawn(
+            ActorExecutor2 {
+                state: State2::Created(Box::new(specification.actor)),
                 scheduler: Arc::default(),
                 execution_mode: KernelActorExecutionMode::Privileged,
                 scheduler2: scheduler,
                 receiver,
             }
-        );
+        );*/
 
         return Ok(reference);
-
-        /*self.future_runtime.spawn(async move {
-            let mut actor = specification.actor;
-
-            let executor = KernelActorCreateExecutor {
-                actor: &mut actor,
-                scheduler: scheduler.clone(),
-            };
-
-            executor.await;
-
-            loop {
-                let message = match receiver.receive().await {
-                    Some(message) => message,
-                    None => break,
-                };
-
-                without_interrupts(|| {
-                    scheduler.lock().begin(current_execution_unit_identifier());
-                });
-
-                actor.handle(ActorCommonHandleContext::new(message)).await;
-
-                without_interrupts(|| {
-                    scheduler.lock().end(current_execution_unit_identifier());
-                });
-            }
-
-            without_interrupts(|| {
-                scheduler.lock().begin(current_execution_unit_identifier());
-            });
-
-            actor.destroy(()).await;
-
-            without_interrupts(|| {
-                scheduler.lock().end(current_execution_unit_identifier());
-            });
-        });
-
-        Ok(reference)*/
     }
 
     fn spawn_unprivileged<A>(
@@ -601,15 +780,15 @@ impl KernelActorHandler {
 
         let scheduler = self.scheduler.clone();
 
-        self.future_runtime.spawn(
-            ActorExecutor {
-                state: State::Created(specification.actor),
+        /*self.future_runtime.spawn(
+            ActorExecutor2 {
+                state: State2::Created(Box::new(specification.actor)),
                 scheduler: Arc::default(),
                 execution_mode: KernelActorExecutionMode::Unprivileged,
                 scheduler2: scheduler,
                 receiver,
             }
-        );
+        );*/
 
         Ok(reference)
 
@@ -682,20 +861,12 @@ impl KernelActorHandler {
 
         scheduler.r#continue(current_execution_unit_identifier(), next_thread)
     }
-
-    #[naked]
-    unsafe fn run() {
-        naked_asm!(
-            "mov rax, 0x1337",
-            "syscall"
-        )
-    }
 }
 
-use x86::msr::{rdmsr, wrmsr, IA32_STAR, IA32_LSTAR, IA32_FMASK};
-use x86_64::registers::segmentation::{CS, DS, ES, SS, SegmentSelector, Segment};
-use x86_64::PrivilegeLevel;
 use core::arch::asm;
+use x86::msr::{rdmsr, wrmsr, IA32_FMASK, IA32_LSTAR, IA32_STAR};
+use x86_64::registers::segmentation::{Segment, SegmentSelector, CS, DS, ES, SS};
+use x86_64::PrivilegeLevel;
 
 pub trait UnprivilegedWrapper {
     fn run(&mut self);
@@ -715,8 +886,7 @@ where
     A: Actor<H>,
     H: ActorHandler,
 {
-    fn run(&mut self) {
-    }
+    fn run(&mut self) {}
 }
 
 impl ActorDiscoveryHandler for KernelActorHandler {
@@ -740,22 +910,24 @@ pub fn hello() -> ! {
 
 #[no_mangle]
 pub unsafe extern "C" fn handle_preemption(stack_pointer: u64) -> u64 {
-    Kernel::get().interrupt_manager().notify_local_end_of_interrupt();
+    Kernel::get()
+        .interrupt_manager()
+        .notify_local_end_of_interrupt();
 
-    if let Err(error) = Kernel::get()
+    /*if let Err(error) = Kernel::get()
         .timer_actor()
         .send(TimerActorMessage::Tick)
         .complete()
     {
         println!("{}", error);
-    }
+    }*/
 
-    let stack_pointer = Kernel::get()
+    /*let stack_pointer = Kernel::get()
         .actor_system()
         .handler()
-        .reschedule(stack_pointer.into());
+        .reschedule(stack_pointer.into());*/
 
-    stack_pointer.as_u64()
+    stack_pointer
 }
 
 use core::arch::naked_asm;
