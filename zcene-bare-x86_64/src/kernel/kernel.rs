@@ -135,18 +135,9 @@ where
         async move {
             crate::kernel::logger::println!("poll from ring 3");
 
-            crate::kernel::logger::println!("preempt...");
+            loop {}
 
-            unsafe {
-                core::arch::asm!(
-                    "mov rax, 0",
-                    "syscall",
-                )
-            }
-
-            crate::kernel::logger::println!("resume...");
-
-            Ok(())
+            Err(ActorCreateError::Custom)
         }
     }
 
@@ -404,13 +395,17 @@ impl Kernel {
         let mut interrupt_manager = KernelInterruptManager::new();
         interrupt_manager.bootstrap_local_interrupt_manager({
             let mut local_interrupt_manager =
-                crate::kernel::interrupt::LocalInterruptManager::new(&memory_manager);
-            local_interrupt_manager.enable_timer(
-                &timer,
+                crate::kernel::interrupt::LocalInterruptManager::new(
+                    &timer,
+                    &memory_manager,
+                );
+
+            local_interrupt_manager.enable_oneshot(
                 unsafe {
-                    core::mem::transmute(crate::kernel::actor::timer_entry_point as *const u8)
+                    core::mem::transmute(crate::kernel::actor::actor_deadline_entry_point as *const u8)
                 },
-                core::time::Duration::from_millis(100),
+                core::time::Duration::from_millis(1000000),
+                &logger,
             );
 
             local_interrupt_manager
@@ -478,8 +473,6 @@ impl Kernel {
 
     pub fn run(&self) -> ! {
         self.logger().writer(|w| write!(w, "zcene\n"));
-
-        x86_64::instructions::interrupts::enable();
 
         self.actor_system().enter_default().unwrap();
 

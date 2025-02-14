@@ -2,7 +2,7 @@ use ztd::{Display, Error, From};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, Display, Error, From)]
+#[derive(Clone, Debug, Display, Error, From)]
 #[From(all)]
 pub enum ActorHandleError {
     Unknown,

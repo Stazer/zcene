@@ -22,6 +22,7 @@ use zcene_core::actor::{
 use zcene_core::future::runtime::FutureRuntimeHandler;
 use zcene_core::future::FutureExt;
 use ztd::Constructor;
+use x86::current::rflags::RFlags;
 
 pub use super::*;
 
@@ -127,12 +128,6 @@ impl ActorHandler for KernelActorHandler {
         });
 
         Ok(reference)
-
-        /*match specification.execution_mode {
-            KernelActorExecutionMode::Privileged => self.spawn_privileged(specification),
-            KernelActorExecutionMode::Unprivileged => self.spawn_unprivileged(specification),
-            //_ => todo!(),
-        }*/
     }
 
     fn enter(&self, specification: Self::EnterSpecification) -> Result<(), ActorEnterError> {
@@ -149,45 +144,124 @@ use zcene_core::actor::ActorMessageChannelReceiver;
 
 use zcene_core::actor::ActorCreateError;
 
-#[pin_project::pin_project]
-pub struct KernelActorCreateExecutor<'a, A>
-where
-    A: Actor<KernelActorHandler>,
-{
-    actor: &'a mut A,
-    scheduler: Arc<Mutex<KernelActorThreadScheduler>>,
+#[naked]
+unsafe extern "C" fn actor_system_call_entry_point() {
+    naked_asm!(
+        "mov rcx, 0xC0000102",
+        "rdmsr",
+        "mov rsi, rax",
+        "shl rdx, 32",
+        "or rsi, rdx",
+
+        "mov rsp, rsi",
+
+        "pop rsi",
+
+        "jmp actor_system_call_restore",
+    )
 }
 
-impl<'a, A> Future for KernelActorCreateExecutor<'a, A>
+#[no_mangle]
+unsafe extern "C" fn actor_system_call_restore(
+    // TODO: check size
+    system_call: &ActorExecutorStageSystemCall<Result<(), ActorCreateError>>,
+    event: &mut ActorExecutorStageEvent<Result<(), ActorCreateError>>,
+) {
+    *event = ActorExecutorStageEvent::SystemCall(system_call.clone());
+}
+
+#[naked]
+pub unsafe extern "C" fn actor_deadline_entry_point() {
+    naked_asm!(
+        "mov rcx, 0xC0000102",
+        "rdmsr",
+        "mov rsi, rax",
+        "shl rdx, 32",
+        "or rsi, rdx",
+
+        "mov rsp, rsi",
+
+        "pop rdi",
+
+        "jmp actor_deadline_restore",
+    )
+}
+
+#[no_mangle]
+unsafe extern "C" fn actor_deadline_restore(
+    event: &mut ActorExecutorStageEvent<Result<(), ActorCreateError>>,
+) {
+    *event = ActorExecutorStageEvent::Preemption {
+    };
+}
+
+#[naked]
+unsafe extern "C" fn actor_deadline() {
+    naked_asm!(
+        "push rax",
+        "push rcx",
+        "push rdx",
+        "push rbx",
+        "push rbp",
+        "push rsi",
+        "push rdi",
+        "push r8",
+        "push r9",
+        "push r10",
+        "push r11",
+        "push r12",
+        "push r13",
+        "push r14",
+        "push r15",
+        "pushfq",
+    )
+}
+
+#[naked]
+unsafe extern "C" fn actor_deadline2() {
+    naked_asm!(
+        "popfq",
+        "pop r15",
+        "pop r14",
+        "pop r13",
+        "pop r12",
+        "pop r11",
+        "pop r10",
+        "pop r9",
+        "pop r8",
+        "pop rdi",
+        "pop rsi",
+        "pop rbp",
+        "pop rbx",
+        "pop rdx",
+        "pop rcx",
+        "pop rax",
+
+        "ireqt",
+    )
+}
+
+#[derive(Debug)]
+pub enum ActorExecutorStageSystemCall<T> {
+    Poll(Poll<T>),
+}
+
+impl<T> Clone for ActorExecutorStageSystemCall<T>
 where
-    A: Actor<KernelActorHandler>,
+    T: Clone,
 {
-    type Output = Result<(), ActorCreateError>;
-
-    fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
-        let scheduler = self.scheduler.clone();
-
-        without_interrupts(|| {
-            scheduler.lock().begin(current_execution_unit_identifier());
-        });
-
-        let mut pinned = pin!(self.actor.create(()));
-        let result = pinned.as_mut().poll(context);
-
-        without_interrupts(|| {
-            scheduler.lock().end(current_execution_unit_identifier());
-        });
-
-        result
+    fn clone(&self) -> Self {
+        match self {
+            Self::Poll(poll) => Self::Poll(poll.clone()),
+        }
     }
 }
 
-#[repr(u64)]
-#[derive(Copy, Clone, Debug)]
-pub enum ActorExecutorStageResult {
-    Ready,
-    Pending,
-    Preempted,
+#[derive(Debug)]
+pub enum ActorExecutorStageEvent<T> {
+    SystemCall(ActorExecutorStageSystemCall<T>),
+    Preemption {
+    },
 }
 
 use core::task::Waker;
@@ -318,42 +392,44 @@ where
         Poll::Ready(())
     }
 
-    unsafe fn preempt() {
-        loop {}
-    }
+    extern "C" fn execute(actor: &mut A) -> ! {
+        let mut context = Context::from_waker(Waker::noop());
 
-    #[naked]
-    unsafe extern "C" fn system_call(x0: u64) {
-        naked_asm!(
-            "mov rcx, 0xC0000102",
-            "rdmsr",
-            "mov rsi, rax",
-            "shl rdx, 32",
-            "or rsi, rdx",
-
-            "mov rsp, rsi",
-
-            "mov rax, 0",
-
-            "ret",
-        )
-    }
-
-    unsafe extern "C" fn system_return(actor: &mut A, context: &mut Context<'_>) {
         let mut pinned = pin!(actor.create(()));
-        pinned.as_mut().poll(context);
 
-        loop {}
+        let result = match pinned.as_mut().poll(&mut context) {
+            Poll::Pending => {
+                ActorExecutorStageSystemCall::Poll(Poll::Pending)
+            },
+            Poll::Ready(result) => {
+                ActorExecutorStageSystemCall::Poll(Poll::Ready(result))
+            }
+        };
+
+        unsafe {
+            asm!(
+                "mov rdi, {}",
+                "syscall",
+
+                in(reg) &result,
+
+                options(noreturn),
+            )
+        }
     }
 
     #[naked]
-    unsafe extern "C" fn execute(
-        user_stack: u64,
-        function: u64,
-        actor: &mut A,
-        context: &mut Context<'_>,
-    ) -> ActorExecutorStageResult {
+    unsafe extern "C" fn system_return<T>(
+        user_stack: u64, // rdi
+        function: u64, // rsi
+        actor: &mut A, // rdx
+        result: &mut ActorExecutorStageEvent<T>, // rcx
+        size: u64, // r8
+        //rflags: RFlags, // r9
+    ) {
         naked_asm!(
+            "push rcx",
+
             "mov rcx, 0xC0000102",
             "mov rax, rsp",
             "mov rdx, rax",
@@ -362,6 +438,8 @@ where
 
             "mov rsp, rdi",
             "mov rcx, rsi",
+            "or r11, 0x200",
+
             "sysretq",
         )
     }
@@ -374,42 +452,67 @@ where
         loop {
             match replace(state, ActorExecutorState::Unknown) {
                 ActorExecutorState::Created(mut actor) => {
+                    use x86_64::structures::gdt::GlobalDescriptorTable;
+                    use x86_64::structures::gdt::Descriptor;
+                    use x86_64::VirtAddr;
+                    use x86_64::structures::tss::TaskStateSegment;
+                    use x86_64::instructions::tables::load_tss;
+
+                    let mut gdt = GlobalDescriptorTable::new();
+
+                    let mut tss = TaskStateSegment::new();
+                    tss.privilege_stack_table[0] = VirtAddr::new(rsp() - 0x1000);
+
+                    let kernel_code = gdt.append(Descriptor::kernel_code_segment());
+                    let kernel_data = gdt.append(Descriptor::kernel_data_segment());
+                    let user_code = gdt.append(Descriptor::user_code_segment());
+                    gdt.append(Descriptor::user_data_segment());
+
+                    let tss_descriptor = unsafe {
+                        gdt.append(Descriptor::tss_segment_unchecked(&tss))
+                    };
+                    //RDI=000000000362bfd8;
+                    // RCX=0000010000004837 <---
+                    // RSP=0000010000004820
+
                     unsafe {
-                        wrmsr(IA32_STAR, (0x08u64 << 32) | (0x1Bu64 << 48));
-                        wrmsr(IA32_LSTAR, Self::system_call as u64);
+                        gdt.load_unsafe();
+
+                        CS::set_reg(kernel_code);
+                        DS::set_reg(kernel_data);
+
+                        load_tss(tss_descriptor);
+
+                        wrmsr(IA32_STAR, (u64::from(kernel_code.0) << 32) | (u64::from(user_code.0) << 48));
+                        wrmsr(IA32_LSTAR, actor_system_call_entry_point as u64);
                         wrmsr(IA32_FMASK, 0);
                     }
 
-                    let user_stack = Kernel::get().memory_manager().allocate_user_stack().unwrap().initial_memory_address().as_u64();
+                    let user_stack = Kernel::get()
+                        .memory_manager()
+                        .allocate_user_stack()
+                        .unwrap()
+                        .initial_memory_address()
+                        .as_u64();
+
+                    Kernel::get().interrupt_manager().reset_oneshot(core::time::Duration::from_millis(100));
 
                     crate::kernel::logger::println!("before {:X}", user_stack);
 
-                    let result = unsafe {
-                        Self::execute(
+                    let mut result = ActorExecutorStageEvent::Preemption {};
+
+                    unsafe {
+                        Self::system_return::<Result<(), ActorCreateError>>(
                             user_stack,
-                            Self::system_return as _,
+                            Self::execute as _,
                             &mut *actor,
-                            context,
-                        )
+                            &mut result,
+                            size_of::<ActorExecutorStageEvent<Result<(), ActorCreateError>>>() as u64,
+                            //RFlags::empty() | RFlags::FLAGS_IF,
+                        );
                     };
 
                     crate::kernel::logger::println!("after call {:?}", result);
-
-                    /*let result = {
-                        let mut pinned = pin!(actor.create(()));
-                        pinned.as_mut().poll(context)
-                    };*/
-
-                    /*match result {
-                        Poll::Pending => {
-                            *state = ActorExecutorState::Created(actor);
-                            return Poll::Pending;
-                        }
-                        // TODO: handle result
-                        Poll::Ready(_result) => {
-                            *state = ActorExecutorState::RunningReceive(actor);
-                        }
-                    }*/
 
                     loop {}
                 }
@@ -435,7 +538,8 @@ where
                 ActorExecutorState::RunningHandle(mut actor, message) => {
                     let result = {
                         let mut pinned =
-                            pin!(actor.handle(ActorCommonHandleContext::new(message.clone()),));
+                            pin!(actor.handle(ActorCommonHandleContext::new(message.clone())));
+
                         pinned.as_mut().poll(context)
                     };
 
@@ -492,372 +596,8 @@ where
     }
 }
 
-enum State2<A>
-where
-    A: Actor<KernelActorHandler>,
-{
-    Created(Box<A>),
-    RunningReceive(Box<A>),
-    RunningHandle(Box<A>, A::Message),
-    Destroy(Box<A>),
-    Destroyed,
-    Unknown,
-}
-
-enum State<A>
-where
-    A: Actor<KernelActorHandler>,
-{
-    Created(A),
-    RunningReceive(A),
-    RunningHandle(A, A::Message),
-    Destroy(A),
-    Destroyed,
-    Unknown,
-}
-
-#[pin_project::pin_project]
-pub struct ActorExecutor<A>
-where
-    A: Actor<KernelActorHandler>,
-{
-    scheduler: Arc<Mutex<Scheduler>>,
-    execution_mode: KernelActorExecutionMode,
-    scheduler2: Arc<Mutex<KernelActorThreadScheduler>>,
-    receiver: ActorMessageChannelReceiver<A::Message>,
-    state: State<A>,
-}
-
-impl<A> ActorExecutor<A>
-where
-    A: Actor<KernelActorHandler>,
-{
-    #[naked]
-    unsafe fn run() -> ! {
-        naked_asm!("syscall")
-    }
-
-    unsafe fn execute(sp: u64) -> ! {
-        asm!(
-            //"mov rsp, rdi",
-            "mov rcx, {instruction_pointer}",
-
-            "sysretq",
-
-            instruction_pointer = in(reg) Self::run as u64,
-            options(noreturn),
-        )
-    }
-
-    unsafe fn syscall_entry() {
-        asm!("pop rax",);
-
-        crate::kernel::logger::println!("syscall");
-    }
-
-    fn poll_unprivileged(&mut self, context: &mut Context<'_>) -> Poll<<Self as Future>::Output> {
-        loop {
-            match replace(&mut self.state, State::Unknown) {
-                State::Created(mut state) => {
-                    crate::kernel::logger::println!("before");
-
-                    let user_stack = Kernel::get()
-                        .memory_manager()
-                        .allocate_user_stack()
-                        .unwrap();
-
-                    unsafe {
-                        wrmsr(IA32_STAR, (0x08u64 << 32) | (0x1Bu64 << 48));
-                        wrmsr(IA32_LSTAR, Self::syscall_entry as u64);
-                        wrmsr(IA32_FMASK, 0);
-                    }
-
-                    unsafe {
-                        asm!(
-                            "call {}",
-                            in(reg) Self::execute,
-                            in("rdi") user_stack.initial_memory_address().as_u64(),
-                            //in("rsi") context,
-                        );
-                    }
-
-                    crate::kernel::logger::println!("after");
-
-                    let result = {
-                        let mut pinned = pin!(state.create(()));
-                        pinned.as_mut().poll(context)
-                    };
-
-                    match result {
-                        Poll::Pending => {
-                            self.state = State::Created(state);
-                            return Poll::Pending;
-                        }
-                        // TODO
-                        Poll::Ready(_result) => {
-                            self.state = State::RunningReceive(state);
-                        }
-                    }
-                }
-                State::RunningReceive(mut state) => {
-                    let result = {
-                        let mut pinned = pin!(self.receiver.receive());
-                        pinned.as_mut().poll(context)
-                    };
-
-                    match result {
-                        Poll::Pending => {
-                            self.state = State::RunningReceive(state);
-                            return Poll::Pending;
-                        }
-                        Poll::Ready(Some(message)) => {
-                            self.state = State::RunningHandle(state, message);
-                        }
-                        Poll::Ready(None) => {
-                            self.state = State::Destroy(state);
-                        }
-                    }
-                }
-                State::RunningHandle(mut state, message) => {
-                    let result = {
-                        let mut pinned =
-                            pin!(state.handle(ActorCommonHandleContext::new(message.clone()),));
-                        pinned.as_mut().poll(context)
-                    };
-
-                    match result {
-                        Poll::Pending => {
-                            self.state = State::RunningHandle(state, message);
-                            return Poll::Pending;
-                        }
-                        Poll::Ready(message) => {
-                            self.state = State::RunningReceive(state);
-                        }
-                    }
-                }
-                State::Destroy(mut state) => {
-                    let mut pinned = pin!(state.destroy(()));
-
-                    loop {
-                        // TODO
-                        if let Poll::Ready(_) = pinned.as_mut().poll(context) {
-                            break;
-                        }
-                    }
-
-                    self.state = State::Destroyed;
-                }
-                State::Destroyed => return Poll::Ready(()),
-                State::Unknown => return Poll::Ready(()),
-            }
-        }
-    }
-
-    fn poll_privileged(&mut self, context: &mut Context<'_>) -> Poll<<Self as Future>::Output> {
-        loop {
-            match replace(&mut self.state, State::Unknown) {
-                State::Created(mut state) => {
-                    let result = {
-                        let mut pinned = pin!(state.create(()));
-                        pinned.as_mut().poll(context)
-                    };
-
-                    match result {
-                        Poll::Pending => {
-                            self.state = State::Created(state);
-                            return Poll::Pending;
-                        }
-                        // TODO
-                        Poll::Ready(_result) => {
-                            self.state = State::RunningReceive(state);
-                        }
-                    }
-                }
-                State::RunningReceive(mut state) => {
-                    let result = {
-                        let mut pinned = pin!(self.receiver.receive());
-                        pinned.as_mut().poll(context)
-                    };
-
-                    match result {
-                        Poll::Pending => {
-                            self.state = State::RunningReceive(state);
-                            return Poll::Pending;
-                        }
-                        Poll::Ready(Some(message)) => {
-                            self.state = State::RunningHandle(state, message);
-                        }
-                        Poll::Ready(None) => {
-                            self.state = State::Destroy(state);
-                        }
-                    }
-                }
-                State::RunningHandle(mut state, message) => {
-                    let result = {
-                        let mut pinned =
-                            pin!(state.handle(ActorCommonHandleContext::new(message.clone()),));
-                        pinned.as_mut().poll(context)
-                    };
-
-                    match result {
-                        Poll::Pending => {
-                            self.state = State::RunningHandle(state, message);
-                            return Poll::Pending;
-                        }
-                        Poll::Ready(message) => {
-                            self.state = State::RunningReceive(state);
-                        }
-                    }
-                }
-                State::Destroy(mut state) => {
-                    let mut pinned = pin!(state.destroy(()));
-
-                    loop {
-                        // TODO
-                        if let Poll::Ready(_) = pinned.as_mut().poll(context) {
-                            break;
-                        }
-                    }
-
-                    self.state = State::Destroyed;
-                }
-                State::Destroyed => return Poll::Ready(()),
-                State::Unknown => return Poll::Ready(()),
-            }
-        }
-    }
-}
-
-impl<A> Future for ActorExecutor<A>
-where
-    A: Actor<KernelActorHandler>,
-{
-    type Output = ();
-
-    fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
-        match self.execution_mode {
-            KernelActorExecutionMode::Privileged => self.poll_privileged(context),
-            KernelActorExecutionMode::Unprivileged => self.poll_unprivileged(context),
-        }
-    }
-}
-
 impl KernelActorHandler {
-    fn spawn_privileged<A>(
-        &self,
-        specification: <Self as ActorHandler>::SpawnSpecification<A>,
-    ) -> Result<ActorAddressReference<A, Self>, ActorSpawnError>
-    where
-        A: Actor<Self>,
-    {
-        let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
-
-        let reference = ActorAddressReference::<A, Self>::try_new_in(
-            <Self as ActorHandler>::Address::new(sender, PhantomData),
-            self.allocator().clone(),
-        )?;
-
-        let scheduler = self.scheduler.clone();
-
-        /*self.future_runtime.spawn(
-            ActorExecutor2 {
-                state: State2::Created(Box::new(specification.actor)),
-                scheduler: Arc::default(),
-                execution_mode: KernelActorExecutionMode::Privileged,
-                scheduler2: scheduler,
-                receiver,
-            }
-        );*/
-
-        return Ok(reference);
-    }
-
-    fn spawn_unprivileged<A>(
-        &self,
-        specification: <Self as ActorHandler>::SpawnSpecification<A>,
-    ) -> Result<ActorAddressReference<A, Self>, ActorSpawnError>
-    where
-        A: Actor<Self>,
-    {
-        let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
-
-        let reference = ActorAddressReference::<A, Self>::try_new_in(
-            <Self as ActorHandler>::Address::new(sender, PhantomData),
-            self.allocator().clone(),
-        )?;
-
-        let scheduler = self.scheduler.clone();
-
-        /*self.future_runtime.spawn(
-            ActorExecutor2 {
-                state: State2::Created(Box::new(specification.actor)),
-                scheduler: Arc::default(),
-                execution_mode: KernelActorExecutionMode::Unprivileged,
-                scheduler2: scheduler,
-                receiver,
-            }
-        );*/
-
-        Ok(reference)
-
-        /*unsafe {
-            Arc::increment_strong_count(&reference);
-        }
-
-        return Ok(reference);
-
-
-        let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
-
-        let reference = ActorAddressReference::<A, Self>::try_new_in(
-            <Self as ActorHandler>::Address::new(sender, PhantomData),
-            self.allocator().clone(),
-        )?;
-
-        let scheduler = self.scheduler.clone();
-
-        use alloc::boxed::Box;
-
-        self.future_runtime.spawn(async move {
-            let wrapper = Box::<dyn UnprivilegedWrapper>::from(Box::new(Wrapper {
-                actor: specification.actor,
-                handler: PhantomData::<Self>,
-            }));
-
-            //let create = (wrapper.create) as *const ();
-
-            let wrapper = Box::into_raw(wrapper);
-
-            let mut a = unsafe { Box::<dyn UnprivilegedWrapper>::from_raw(wrapper) };
-
-            let user_stack = Kernel::get().memory_manager().allocate_user_stack().unwrap();
-
-            unsafe {
-                wrmsr(IA32_STAR, (0x08u64 << 32) | (0x1Bu64 << 48));
-                wrmsr(IA32_LSTAR, syscall_entry as u64);
-                wrmsr(IA32_FMASK, 0);
-
-                // crate::kernel::logger::println!("{:X}", unsafe { rdmsr(IA32_STAR) });
-
-                core::arch::asm!(
-                    "mov rsp, {stack_pointer}",
-                    "mov rcx, {instruction_pointer}",
-                    "sysretq",
-
-                    stack_pointer = in(reg) user_stack.initial_memory_address().as_u64(),
-                    instruction_pointer = in(reg) Self::run as u64,
-                )
-            }
-
-            //a.run();
-
-            //let create = (*wrapper).create as u64;
-        });
-
-        Ok(reference)*/
-    }
-
-    pub fn reschedule(&self, stack_pointer: VirtualMemoryAddress) -> VirtualMemoryAddress {
+    /*pub fn reschedule(&self, stack_pointer: VirtualMemoryAddress) -> VirtualMemoryAddress {
         let mut scheduler = self.scheduler.lock();
 
         let next_thread = scheduler.queue_mut().pop_front();
@@ -868,34 +608,13 @@ impl KernelActorHandler {
         );
 
         scheduler.r#continue(current_execution_unit_identifier(), next_thread)
-    }
+    }*/
 }
 
 use core::arch::asm;
 use x86::msr::{rdmsr, wrmsr, IA32_FMASK, IA32_LSTAR, IA32_STAR};
 use x86_64::registers::segmentation::{Segment, SegmentSelector, CS, DS, ES, SS};
 use x86_64::PrivilegeLevel;
-
-pub trait UnprivilegedWrapper {
-    fn run(&mut self);
-}
-
-pub struct Wrapper<A, H>
-where
-    A: Actor<H>,
-    H: ActorHandler,
-{
-    actor: A,
-    handler: PhantomData<H>,
-}
-
-impl<A, H> UnprivilegedWrapper for Wrapper<A, H>
-where
-    A: Actor<H>,
-    H: ActorHandler,
-{
-    fn run(&mut self) {}
-}
 
 impl ActorDiscoveryHandler for KernelActorHandler {
     fn discover<M>(&self) -> Option<ActorMailbox<M, Self>>
@@ -906,7 +625,7 @@ impl ActorDiscoveryHandler for KernelActorHandler {
     }
 }
 
-pub fn hello() -> ! {
+/*pub fn hello() -> ! {
     x86_64::instructions::interrupts::enable();
 
     if Kernel::get().actor_system().enter_default().is_err() {
@@ -922,25 +641,12 @@ pub unsafe extern "C" fn handle_preemption(stack_pointer: u64) -> u64 {
         .interrupt_manager()
         .notify_local_end_of_interrupt();
 
-    /*if let Err(error) = Kernel::get()
-        .timer_actor()
-        .send(TimerActorMessage::Tick)
-        .complete()
-    {
-        println!("{}", error);
-    }*/
-
-    /*let stack_pointer = Kernel::get()
-        .actor_system()
-        .handler()
-        .reschedule(stack_pointer.into());*/
-
     stack_pointer
-}
+}*/
 
 use core::arch::naked_asm;
 
-#[naked]
+/*#[naked]
 #[no_mangle]
 pub unsafe fn timer_entry_point() {
     naked_asm!(
@@ -980,4 +686,4 @@ pub unsafe fn timer_entry_point() {
         "pop rax",
         "iretq",
     );
-}
+}*/

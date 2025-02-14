@@ -2,8 +2,8 @@ use ztd::{Display, Error, From};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, Display, Error, From)]
-#[From(all)]
+#[derive(Clone, Debug, Display, Error)]
 pub enum ActorCreateError {
     Unknown,
+    Custom,
 }

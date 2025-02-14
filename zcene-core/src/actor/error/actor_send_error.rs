@@ -2,7 +2,7 @@ use ztd::{Display, Error};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, Display, Error)]
+#[derive(Clone, Debug, Display, Error)]
 pub enum ActorSendError {
     Unknown,
     Closed,

@@ -48,21 +48,27 @@ impl<'a> XApic<'a> {
         self.registers.timer_initial_count_mut().write(ticks);
         self.registers.timer_divide_mut().write(0b1011);
 
-        let mode_periodic = 0x20000;
-        let mask = 0;
-        let value = mode_periodic | vector as u32 | mask;
-
-        self.registers.lvt_timer_mut().write(value);
+        self.registers.lvt_timer_mut().write(0x20000 | (vector as u32));
     }
 
-    pub fn enable_deadline(&mut self, vector: u8, ticks: u32) {
+    pub fn enable_oneshot(
+        &mut self,
+        vector: u8,
+        ticks: u32,
+        logger: &crate::kernel::logger::KernelLogger,
+    ) {
         self.registers.timer_initial_count_mut().write(ticks);
-        self.registers.timer_divide_mut().write(0b1011);
+        self.registers.timer_divide_mut().write(0);
+        //0b1011);
 
-        let mode_periodic = 0x20000;
-        let mask = 0;
-        let value = mode_periodic | vector as u32 | mask;
+        self.registers.lvt_timer_mut().write(0x40000 | (vector as u32));
+    }
 
-        self.registers.lvt_timer_mut().write(value);
+    pub fn reset_oneshot(&mut self, ticks: u32) {
+        self.registers.timer_initial_count_mut().write(ticks);
+    }
+
+    pub fn reset_deadline(&mut self) {
+
     }
 }

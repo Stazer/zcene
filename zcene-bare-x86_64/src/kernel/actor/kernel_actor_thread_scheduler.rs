@@ -50,7 +50,8 @@ impl KernelActorThreadScheduler {
         execution_unit_identifier: ExecutionUnitIdentifier,
         next_thread: Option<KernelActorThread>,
     ) -> VirtualMemoryAddress {
-        let stack_pointer = match next_thread {
+        todo!()
+        /*let stack_pointer = match next_thread {
             Some(thread) => {
                 let stack_pointer = *thread.stack_pointer();
                 self.threads.insert(execution_unit_identifier, thread);
@@ -74,7 +75,7 @@ impl KernelActorThreadScheduler {
 
                 *stack.current_memory_address()
             }
-        }
+        }*/
     }
 
     pub fn begin(&mut self, execution_unit_identifier: ExecutionUnitIdentifier) {
