@@ -223,7 +223,10 @@ pub unsafe extern "C" fn actor_deadline_entry_point() {
         "mov rsi, [rsp+32]", // SS: 0x23
         "iretq",*/
 
-        "hlt",
+        //"hlt",
+
+        //"mov ax, 0x23",
+        //"mov ss, ax",
 
         "iretq",
 

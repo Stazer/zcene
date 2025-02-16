@@ -398,6 +398,67 @@ impl Kernel {
                 .map(PhysicalMemoryAddress::from),
         );
 
+        use x86_64::structures::gdt::GlobalDescriptorTable;
+        use x86_64::structures::gdt::Descriptor;
+        use x86_64::VirtAddr;
+        use x86_64::structures::tss::TaskStateSegment;
+        use x86_64::instructions::tables::load_tss;
+        use x86::msr::wrmsr;
+        use x86::msr::{IA32_FMASK, IA32_STAR, IA32_LSTAR};
+        use x86_64::registers::segmentation::{DS, CS, SS};
+        use x86_64::instructions::segmentation::Segment;
+        use crate::kernel::actor::actor_system_call_entry_point;
+
+        let ring0_stack =
+            memory_manager
+            .allocate_stack()
+            .unwrap()
+            .initial_memory_address()
+            .as_u64();
+
+        use alloc::boxed::Box;
+
+        let mut gdt = Box::new(GlobalDescriptorTable::new());
+
+        let kernel_code = gdt.append(Descriptor::kernel_code_segment());
+        let kernel_data = gdt.append(Descriptor::kernel_data_segment());
+        let mut user_code = gdt.append(Descriptor::user_code_segment());
+        let mut user_data = gdt.append(Descriptor::user_data_segment());
+
+        let mut tss = Box::new(TaskStateSegment::new());
+        tss.privilege_stack_table[0] = VirtAddr::new(ring0_stack);
+        tss.interrupt_stack_table[0] = VirtAddr::new(ring0_stack);
+        tss.iomap_base = 0;
+
+        let mut tss_descriptor = unsafe {
+            let mut descr = Descriptor::tss_segment_unchecked(Box::into_raw(tss));
+            gdt.append(descr)
+        };
+
+        unsafe {
+            gdt.load_unsafe();
+
+            CS::set_reg(kernel_code);
+            //DS::set_reg(kernel_data);
+            //SS::set_reg(kernel_data);
+
+            load_tss(tss_descriptor);
+
+            wrmsr(IA32_STAR, (u64::from(kernel_code.0) << 32) | (u64::from(user_code.0) << 48));
+            wrmsr(IA32_LSTAR, actor_system_call_entry_point as u64);
+            wrmsr(IA32_FMASK, 0);
+        }
+
+
+        logger.writer(|w| write!(w, "{:X?} {:X?} {:X?}\n", ring0_stack, gdt, [
+            kernel_code,
+            kernel_data,
+            user_code,
+            user_data,
+        ]));
+
+        Box::into_raw(gdt);
+
         let mut interrupt_manager = KernelInterruptManager::new();
         interrupt_manager.bootstrap_local_interrupt_manager({
             let mut local_interrupt_manager =
@@ -478,61 +539,6 @@ impl Kernel {
     }
 
     pub fn run(&self) -> ! {
-        use x86_64::structures::gdt::GlobalDescriptorTable;
-        use x86_64::structures::gdt::Descriptor;
-        use x86_64::VirtAddr;
-        use x86_64::structures::tss::TaskStateSegment;
-        use x86_64::instructions::tables::load_tss;
-        use x86::msr::wrmsr;
-        use x86::msr::{IA32_FMASK, IA32_STAR, IA32_LSTAR};
-        use x86_64::registers::segmentation::{DS, CS, SS};
-        use x86_64::instructions::segmentation::Segment;
-        use crate::kernel::actor::actor_system_call_entry_point;
-
-        let ring0_stack = Kernel::get()
-            .memory_manager()
-            .allocate_stack()
-            .unwrap()
-            .initial_memory_address()
-            .as_u64();
-
-        let mut gdt = GlobalDescriptorTable::new();
-
-        let kernel_code = gdt.append(Descriptor::kernel_code_segment());
-        let kernel_data = gdt.append(Descriptor::kernel_data_segment());
-        let user_code = gdt.append(Descriptor::user_code_segment());
-        let user_data = gdt.append(Descriptor::user_data_segment());
-
-        let mut tss = TaskStateSegment::new();
-        tss.privilege_stack_table[0] = VirtAddr::new(ring0_stack);
-        tss.interrupt_stack_table[0] = VirtAddr::new(ring0_stack);
-
-        let tss_descriptor = unsafe {
-            gdt.append(Descriptor::tss_segment_unchecked(&tss))
-        };
-
-        unsafe {
-            gdt.load_unsafe();
-
-            CS::set_reg(kernel_code);
-            DS::set_reg(kernel_data);
-
-            load_tss(tss_descriptor);
-
-            wrmsr(IA32_STAR, (u64::from(kernel_code.0) << 32) | (u64::from(user_code.0) << 48));
-            wrmsr(IA32_LSTAR, actor_system_call_entry_point as u64);
-            wrmsr(IA32_FMASK, 0);
-        }
-
-        println!("TSS rsp0 = {:?}", tss);
-
-        self.logger().writer(|w| write!(w, "{:X?} {:X?} {:X?}\n", ring0_stack, gdt, [
-            kernel_code,
-            kernel_data,
-            user_code,
-            user_data,
-        ]));
-
         self.logger().writer(|w| write!(w, "zcene\n"));
 
         crate::kernel::logger::println!("{:X}", x86::current::registers::rsp());
