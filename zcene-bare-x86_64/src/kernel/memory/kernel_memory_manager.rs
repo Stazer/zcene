@@ -564,14 +564,14 @@ impl KernelMemoryManager {
     }
 
     pub fn allocate_user_stack(&self) -> Option<Stack<VirtualMemoryAddressPerspective>> {
-        let stack_frame_count = 4;
+        let stack_frame_count = 8;
         let stack_size = stack_frame_count * FRAME_SIZE;
 
         let mut first_address = 0;
         let mut stack_address = 0;
         let mut mapper = self.page_table_mapper();
 
-        for stack_frame_identifier in self.frame_manager().allocate_window(4).unwrap() {
+        for stack_frame_identifier in self.frame_manager().allocate_window(8).unwrap() {
             stack_address = self
                 .frame_manager()
                 .translate_frame_identifier(stack_frame_identifier)
@@ -610,14 +610,14 @@ impl KernelMemoryManager {
     }
 
     pub fn allocate_stack(&self) -> Option<Stack<VirtualMemoryAddressPerspective>> {
-        let stack_frame_count = 4;
+        let stack_frame_count = 8;
         let stack_size = stack_frame_count * FRAME_SIZE;
 
         let mut first_address = 0;
         let mut stack_address = 0;
         let mut mapper = self.page_table_mapper();
 
-        for stack_frame_identifier in self.frame_manager().allocate_window(4).unwrap() {
+        for stack_frame_identifier in self.frame_manager().allocate_window(8).unwrap() {
             stack_address = self
                 .frame_manager()
                 .translate_frame_identifier(stack_frame_identifier)

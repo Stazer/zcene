@@ -74,7 +74,7 @@ extern "x86-interrupt" fn unhandled_interrupt_entry_point_with_error_code<
     E: Debug,
 {
     println!(
-        "unhandled interrupt {} ({:?})\n{:?}",
+        "unhandled interrupt {} (0x{:X?})\n{:X?}",
         N, error_code, stack_frame
     );
 
@@ -244,8 +244,21 @@ impl LocalInterruptManager {
         use x86::Ring;
         use x86_64::structures::gdt::SegmentSelector;
 
-        let mut entry = self.descriptor_table[free_vector].set_handler_fn(entry_point);
+        unsafe {
+        let mut entry = self.descriptor_table[free_vector]
+            .set_handler_fn(entry_point)
+            //.set_privilege_level(x86_64::PrivilegeLevel::Ring3) // Erlaubt User Mode
+            //.set_code_selector(SegmentSelector::new(1, PrivilegeLevel::Ring0))
+            //.set_present(true)
+            //.set_stack_index(0)
+                ;
 
+
+                //.set_privilege_level(PrivilegeLevel::Ring3)
+            //.set_code_selector(SegmentSelector::new(4, PrivilegeLevel::Ring3));
+
+            ;
+        }
         //entry.set_privilege_level(PrivilegeLevel::Ring3);
 
         unsafe {
