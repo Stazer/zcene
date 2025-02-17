@@ -430,8 +430,9 @@ impl Kernel {
         tss.interrupt_stack_table[0] = VirtAddr::new(ring0_stack);
         tss.iomap_base = 0;
 
-        let mut tss_descriptor = unsafe {
-            let mut descr = Descriptor::tss_segment_unchecked(Box::into_raw(tss));
+        let mut tss_selector = unsafe {
+            let mut descr = Descriptor::tss_segment_unchecked(Box::as_ptr(&tss));
+
             gdt.append(descr)
         };
 
@@ -439,23 +440,33 @@ impl Kernel {
             gdt.load_unsafe();
 
             CS::set_reg(kernel_code);
+
+            load_tss(tss_selector);
+
             //DS::set_reg(kernel_data);
             //SS::set_reg(kernel_data);
-
-            load_tss(tss_descriptor);
 
             wrmsr(IA32_STAR, (u64::from(kernel_code.0) << 32) | (u64::from(user_code.0) << 48));
             wrmsr(IA32_LSTAR, actor_system_call_entry_point as u64);
             wrmsr(IA32_FMASK, 0);
         }
 
-
-        logger.writer(|w| write!(w, "{:X?} {:X?} {:X?}\n", ring0_stack, gdt, [
+        logger.writer(|w| write!(w, "{:X?} {:X?} {:X?} {:X?} {:X?}\n", ring0_stack, gdt, tss, [
             kernel_code,
             kernel_data,
             user_code,
             user_data,
+            tss_selector,
+        ], [
+
+            kernel_code.0,
+            kernel_data.0,
+            user_code.0,
+            user_data.0,
         ]));
+
+        Box::into_raw(tss);
+
 
         Box::into_raw(gdt);
 

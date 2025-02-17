@@ -228,6 +228,8 @@ pub unsafe extern "C" fn actor_deadline_entry_point() {
         //"mov ax, 0x23",
         //"mov ss, ax",
 
+        //"hlt",
+
         "iretq",
 
         // Save context
@@ -446,6 +448,8 @@ where
     }
 
     extern "C" fn execute(actor: &mut A) -> ! {
+        crate::kernel::logger::println!("execute");
+
         loop {}
 
         let mut context = Context::from_waker(Waker::noop());
@@ -486,6 +490,7 @@ where
         //rflags: RFlags, // r9
     ) {
         naked_asm!(
+            /*
             // Save callee-saved registers
             "push rbx",
             "push r12",
@@ -507,7 +512,22 @@ where
             "mov rsp, rdi",
             "mov rcx, rsi",
             "or r11, 0x200",
-            "sysretq",
+            "sysretq",*/
+
+            "push rsi",
+
+            "mov rax, 0x1b",
+            "push rax",
+
+            "mov rax, 0x202",
+            "push rax",
+
+            "push rdi",
+
+            "mov rax, 0x23",
+            "push rax",
+
+            "iretq",
         )
     }
 
