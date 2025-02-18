@@ -133,15 +133,14 @@ where
         context: H::CreateContext,
     ) -> impl ActorFuture<'_, Result<(), ActorCreateError>> {
         async move {
-            crate::kernel::logger::println!("before");
+            //crate::kernel::logger::println!("before");
 
             for i in 0..100000000 {
                 core::hint::black_box(());
                 x86_64::instructions::nop();
             }
 
-
-            crate::kernel::logger::println!("after");
+            //crate::kernel::logger::println!("after");
 
             Ok(())
         }
@@ -399,7 +398,7 @@ impl Kernel {
         );
 
         use x86_64::structures::gdt::GlobalDescriptorTable;
-        use x86_64::structures::gdt::Descriptor;
+        use x86_64::structures::gdt::{Descriptor, DescriptorFlags};
         use x86_64::VirtAddr;
         use x86_64::structures::tss::TaskStateSegment;
         use x86_64::instructions::tables::load_tss;
@@ -420,15 +419,15 @@ impl Kernel {
 
         let mut gdt = Box::new(GlobalDescriptorTable::new());
 
-        let kernel_code = gdt.append(Descriptor::kernel_code_segment());
-        let kernel_data = gdt.append(Descriptor::kernel_data_segment());
-        let mut user_code = gdt.append(Descriptor::user_code_segment());
-        let mut user_data = gdt.append(Descriptor::user_data_segment());
+        let kernel_code = gdt.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_CODE64.bits()));
+        let kernel_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_DATA.bits()));
+        let mut user_code = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits()));
+        let mut user_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_DATA.bits()));
 
         let mut tss = Box::new(TaskStateSegment::new());
         tss.privilege_stack_table[0] = VirtAddr::new(ring0_stack);
-        tss.interrupt_stack_table[0] = VirtAddr::new(ring0_stack);
-        tss.iomap_base = 0;
+        //tss.interrupt_stack_table[0] = VirtAddr::new(ring0_stack);
+        tss.iomap_base = 0xFFFF;
 
         let mut tss_selector = unsafe {
             let mut descr = Descriptor::tss_segment_unchecked(Box::as_ptr(&tss));
@@ -446,9 +445,9 @@ impl Kernel {
             //DS::set_reg(kernel_data);
             //SS::set_reg(kernel_data);
 
-            wrmsr(IA32_STAR, (u64::from(kernel_code.0) << 32) | (u64::from(user_code.0) << 48));
+            wrmsr(IA32_STAR, (u64::from(kernel_code.0) << 48) | (u64::from(user_code.0) << 32));
             wrmsr(IA32_LSTAR, actor_system_call_entry_point as u64);
-            wrmsr(IA32_FMASK, 0);
+            wrmsr(IA32_FMASK, 0x200);
         }
 
         logger.writer(|w| write!(w, "{:X?} {:X?} {:X?} {:X?} {:X?}\n", ring0_stack, gdt, tss, [
@@ -469,6 +468,8 @@ impl Kernel {
 
 
         Box::into_raw(gdt);
+
+        logger.writer(|w| write!(w, "{:X?} {:X?}\n", DescriptorFlags::USER_CODE64, DescriptorFlags::USER_DATA));
 
         let mut interrupt_manager = KernelInterruptManager::new();
         interrupt_manager.bootstrap_local_interrupt_manager({
