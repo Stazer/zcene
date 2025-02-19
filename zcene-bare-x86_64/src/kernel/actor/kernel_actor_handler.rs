@@ -1,5 +1,4 @@
 use crate::architecture::current_execution_unit_identifier;
-use crate::kernel::actor::KernelActorThreadScheduler;
 use crate::kernel::future::runtime::KernelFutureRuntimeHandler;
 use crate::kernel::future::runtime::KernelFutureRuntimeReference;
 use crate::kernel::logger::println;
@@ -10,10 +9,15 @@ use core::marker::PhantomData;
 use core::mem::replace;
 use x86::current::registers::rsp;
 use x86_64::instructions::interrupts::without_interrupts;
+use alloc::collections::BTreeMap;
 use zcene_bare::memory::address::PhysicalMemoryAddress;
 use zcene_bare::memory::address::VirtualMemoryAddress;
-use zcene_bare::synchronization::Mutex;
 use zcene_core::actor::ActorMessageSender;
+use core::arch::asm;
+use x86::msr::{rdmsr, wrmsr, IA32_FMASK, IA32_LSTAR, IA32_STAR};
+use x86_64::registers::segmentation::{Segment, SegmentSelector, CS, DS, ES, SS};
+use x86_64::PrivilegeLevel;
+use core::arch::naked_asm;
 use zcene_core::actor::{
     Actor, ActorAddressReference, ActorCommonHandleContext, ActorDiscoveryHandler, ActorEnterError,
     ActorHandler, ActorMailbox, ActorMessage, ActorMessageChannel, ActorMessageChannelAddress,
@@ -91,13 +95,9 @@ where
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use alloc::collections::BTreeMap;
-
 #[derive(Constructor)]
 pub struct KernelActorHandler {
     future_runtime: KernelFutureRuntimeReference,
-    scheduler: Arc<Mutex<KernelActorThreadScheduler>>,
-    tests: Mutex<BTreeMap<usize, usize>>,
 }
 
 impl ActorHandler for KernelActorHandler {
@@ -141,7 +141,6 @@ impl ActorHandler for KernelActorHandler {
         )?;
 
         self.future_runtime.spawn(ActorExecutor {
-            scheduler: Arc::default(),
             r#type: match specification.execution_mode {
                 KernelActorExecutionMode::Privileged => ActorExecutorType::InternalPrivileged {
                     state: ActorExecutorState::Created(specification.actor),
@@ -210,24 +209,6 @@ unsafe extern "C" fn actor_system_call_restore(
 #[naked]
 pub unsafe extern "C" fn actor_deadline_entry_point() {
     naked_asm!(
-        // 10 8 10 10
-
-        //"hlt",
-
-        //"iretq",
-
-        /*"mov rax, [rsp]",
-        "mov rbx, [rsp+8]", // CS: 0x2b
-        "mov rcx, [rsp+16]",
-        "mov rdx, [rsp+24]",
-        "mov rsi, [rsp+32]", // SS: 0x23
-        "iretq",*/
-
-        //"hlt",
-
-        //"mov ax, 0x23",
-        //"mov ss, ax",
-
         // Save context
         "push r15",
         "push r14",
@@ -310,16 +291,6 @@ pub enum ActorExecutorStageEvent<T> {
 use core::task::Waker;
 use alloc::boxed::Box;
 
-pub struct ActorThread {
-    waker: Waker,
-    return_address: u64,
-}
-
-#[derive(Default)]
-pub struct Scheduler {
-    threads: BTreeMap<usize, Mutex<ActorThread>>,
-}
-
 enum ActorExecutorState<A, M> {
     Created(A),
     CreatedPreempted {
@@ -345,13 +316,13 @@ where
     },
 }
 
+#[derive(Constructor)]
 #[pin_project::pin_project]
 pub struct ActorExecutor<A>
 where
     A: Actor<KernelActorHandler>,
 {
     r#type: ActorExecutorType<A>,
-    scheduler: Arc<Mutex<Scheduler>>,
     receiver: ActorMessageChannelReceiver<A::Message>,
 }
 
@@ -497,12 +468,6 @@ where
             "wrmsr",
 
             // Perform system return
-
-            /*"mov rsp, rdi",
-            "mov rcx, rsi",
-            "mov r11, 0x200",
-            "sysretq",*/
-
             "push 32 | 3",
             "push rdi",
             "push 0x200",
@@ -554,8 +519,6 @@ where
             "pop r13",
             "pop r14",
             "pop r15",
-
-            "mov rax, [rsp]",
 
             "iretq",
         )
@@ -729,11 +692,6 @@ where
     }
 }
 
-use core::arch::asm;
-use x86::msr::{rdmsr, wrmsr, IA32_FMASK, IA32_LSTAR, IA32_STAR};
-use x86_64::registers::segmentation::{Segment, SegmentSelector, CS, DS, ES, SS};
-use x86_64::PrivilegeLevel;
-
 impl ActorDiscoveryHandler for KernelActorHandler {
     fn discover<M>(&self) -> Option<ActorMailbox<M, Self>>
     where
@@ -743,4 +701,3 @@ impl ActorDiscoveryHandler for KernelActorHandler {
     }
 }
 
-use core::arch::naked_asm;

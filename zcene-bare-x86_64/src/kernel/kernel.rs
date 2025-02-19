@@ -133,14 +133,10 @@ where
         context: H::CreateContext,
     ) -> impl ActorFuture<'_, Result<(), ActorCreateError>> {
         async move {
-            //crate::kernel::logger::println!("before");
-
             for i in 0..100000000 {
                 core::hint::black_box(());
                 x86_64::instructions::nop();
             }
-
-            //crate::kernel::logger::println!("after");
 
             Ok(())
         }
@@ -384,8 +380,6 @@ impl Kernel {
 
         let actor_system = KernelActorSystem::try_new(KernelActorHandler::new(
             KernelFutureRuntime::new(KernelFutureRuntimeHandler::default()).unwrap(),
-            Arc::default(),
-            zcene_bare::synchronization::Mutex::default(),
         ))
         .unwrap();
 
