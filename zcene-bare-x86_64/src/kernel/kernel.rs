@@ -1,6 +1,3 @@
-use crate::kernel::actor::{
-    KernelActorAddressReference, KernelActorHandler, KernelActorSystem, KernelActorSystemReference,
-};
 use crate::kernel::future::runtime::{KernelFutureRuntime, KernelFutureRuntimeHandler};
 use crate::kernel::interrupt::KernelInterruptManager;
 use crate::kernel::logger::println;
@@ -20,12 +17,15 @@ use zcene_bare::memory::address::PhysicalMemoryAddress;
 use zcene_bare::memory::frame::FrameManagerAllocationError;
 use zcene_core::actor::ActorAddressExt;
 use zcene_core::actor::ActorSpawnError;
-use zcene_core::actor::{Actor, ActorFuture, ActorHandleError, ActorHandler};
+use zcene_core::actor::{self, Actor, ActorFuture, ActorHandleError, ActorSystemCreateError};
 use zcene_core::future::FutureExt;
+use zcene_core::future::runtime::{FutureRuntimeCreateError};
+use ztd::From;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug)]
+#[derive(Debug, From)]
+#[From(unnamed)]
 pub enum KernelInitializeError {
     FrameBufferUnavailable,
     PhysicalMemoryOffsetUnvailable,
@@ -34,30 +34,8 @@ pub enum KernelInitializeError {
     BuildLocalApic(&'static str),
     KernelMemoryManagerInitialize(KernelMemoryManagerInitializeError),
     ActorSpawn(ActorSpawnError),
-}
-
-impl From<fmt::Error> for KernelInitializeError {
-    fn from(error: fmt::Error) -> Self {
-        Self::Fmt(error)
-    }
-}
-
-impl From<ActorSpawnError> for KernelInitializeError {
-    fn from(error: ActorSpawnError) -> Self {
-        Self::ActorSpawn(error)
-    }
-}
-
-impl From<FrameManagerAllocationError> for KernelInitializeError {
-    fn from(error: FrameManagerAllocationError) -> Self {
-        Self::FrameAllocation(error)
-    }
-}
-
-impl From<KernelMemoryManagerInitializeError> for KernelInitializeError {
-    fn from(error: KernelMemoryManagerInitializeError) -> Self {
-        Self::KernelMemoryManagerInitialize(error)
-    }
+    FutureRuntimeCreate(FutureRuntimeCreateError),
+    ActorSystemCreate(ActorSystemCreateError),
 }
 
 #[derive(Constructor, Default)]
@@ -68,7 +46,7 @@ pub struct ApplicationActor {
 
 impl<H> Actor<H> for ApplicationActor
 where
-    H: ActorHandler,
+    H: actor::ActorHandler,
     H::HandleContext<usize>: ActorContextMessageProvider<usize>,
 {
     type Message = usize;
@@ -123,7 +101,7 @@ pub struct UserActor;
 
 impl<H> Actor<H> for UserActor
 where
-    H: ActorHandler,
+    H: actor::ActorHandler,
     H::HandleContext<usize>: ActorContextMessageProvider<usize>,
 {
     type Message = usize;
@@ -133,7 +111,7 @@ where
         context: H::CreateContext,
     ) -> impl ActorFuture<'_, Result<(), ActorCreateError>> {
         async move {
-            for i in 0..100000000 {
+            for i in 0..1000000000 {
                 core::hint::black_box(());
                 x86_64::instructions::nop();
             }
@@ -163,7 +141,7 @@ use zcene_core::actor::{ActorCreateError, ActorDestroyError};
 pub struct UnprivilegedActor<A, H>
 where
     A: Actor<H>,
-    H: ActorHandler,
+    H: actor::ActorHandler,
 {
     actor: A,
     handler: PhantomData<H>,
@@ -172,7 +150,7 @@ where
 impl<A, H> Actor<H> for UnprivilegedActor<A, H>
 where
     A: Actor<H>,
-    H: ActorHandler,
+    H: actor::ActorHandler,
 {
     type Message = ();
 
@@ -199,9 +177,12 @@ use zcene_core::actor::ActorContextMessageProvider;
 use zcene_core::actor::{ActorMailbox, ActorMessageSender};
 use ztd::Constructor;
 
-#[derive(Default, Constructor)]
-pub struct TimerActor {
-    subscriptions: Vec<ActorMailbox<usize, KernelActorHandler>>,
+/*#[derive(Default, Constructor)]
+pub struct TimerActor<H>
+where
+    H: ActorHandler,
+{
+    subscriptions: Vec<ActorMailbox<usize, H>>,
     total_ticks: usize,
 }
 
@@ -213,7 +194,7 @@ pub enum TimerActorMessage {
 
 impl<H> Actor<H> for TimerActor
 where
-    H: ActorHandler,
+    H: actor::ActorHandler,
     H::HandleContext<TimerActorMessage>: ActorContextMessageProvider<TimerActorMessage>,
 {
     type Message = TimerActorMessage;
@@ -263,17 +244,20 @@ where
             Ok(())
         }
     }
-}
+}*/
+
+use crate::actor::ActorHandler;
+use zcene_core::actor::{ActorSystem, ActorSystemReference};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct Kernel {
     logger: KernelLogger,
     memory_manager: KernelMemoryManager,
-    actor_system: KernelActorSystemReference,
+    actor_system: ActorSystemReference<ActorHandler<KernelFutureRuntimeHandler>>,
     interrupt_manager: KernelInterruptManager,
     timer: KernelTimer<'static>,
-    timer_actor: KernelActorAddressReference<TimerActor>,
+    //timer_actor: KernelActorAddressReference<TimerActor>,
 }
 
 impl Kernel {
@@ -292,23 +276,28 @@ impl Kernel {
             wrmsr(IA32_EFER, rdmsr(IA32_EFER) | 1);
         }
 
-        use crate::kernel::actor::KernelActorExecutionMode;
-        use crate::kernel::actor::KernelActorInstructionRegion;
-        use crate::kernel::actor::KernelActorSpawnSpecification;
-        use crate::user::MainActor;
-        use zcene_bare::memory::address::VirtualMemoryAddress;
-
-        use crate::user::USER_SECTIONS_SIZE;
-        use crate::user::USER_SECTIONS_START;
-
-        /*println!(
-            "{} {} {}",
-            <MainActor as Actor<KernelActorHandler>>::create as u64,
-            <MainActor as Actor<KernelActorHandler>>::handle as u64,
-            <MainActor as Actor<KernelActorHandler>>::destroy as u64
-        );*/
+        use crate::actor::ActorSpawnSpecification;
+        use crate::actor::ActorInlineSpawnSpecification;
 
         Kernel::get()
+            .actor_system()
+            .spawn(
+                ActorSpawnSpecification::new(
+                    ApplicationActor::default(),
+                    ActorInlineSpawnSpecification::new().into(),
+                )
+            );
+
+        Kernel::get()
+            .actor_system()
+            .spawn(
+                ActorSpawnSpecification::new(
+                    ApplicationActor::default(),
+                    ActorInlineSpawnSpecification::new().into(),
+                )
+            );
+
+        /*Kernel::get()
             .actor_system()
             .spawn(KernelActorSpawnSpecification::new(
                 ApplicationActor::default(),
@@ -342,7 +331,7 @@ impl Kernel {
                     ),
                     unsafe { linker_value(&USER_SECTIONS_SIZE) },
                 ),
-            ));
+            ));*/
 
         use zcene_bare::common::linker_value;
 
@@ -353,11 +342,6 @@ impl Kernel {
 
     pub fn application_processor_entry_point() -> ! {
         loop {}
-    }
-
-    #[naked]
-    pub unsafe fn system_call() {
-        core::arch::naked_asm!("nop",)
     }
 
     pub fn new(boot_info: &'static mut BootInfo) -> Result<Self, KernelInitializeError> {
@@ -378,10 +362,9 @@ impl Kernel {
             }
         };
 
-        let actor_system = KernelActorSystem::try_new(KernelActorHandler::new(
-            KernelFutureRuntime::new(KernelFutureRuntimeHandler::default()).unwrap(),
-        ))
-        .unwrap();
+        let actor_system = ActorSystem::try_new(ActorHandler::new(
+            KernelFutureRuntime::new(KernelFutureRuntimeHandler::default())?
+        ))?;
 
         let timer = KernelTimer::new(
             &memory_manager,
@@ -391,7 +374,7 @@ impl Kernel {
                 .map(PhysicalMemoryAddress::from),
         );
 
-        use crate::kernel::actor::actor_system_call_entry_point;
+        //use crate::kernel::actor::actor_system_call_entry_point;
         use x86::msr::wrmsr;
         use x86::msr::{IA32_FMASK, IA32_LSTAR, IA32_STAR};
         use x86_64::instructions::segmentation::Segment;
@@ -445,11 +428,11 @@ impl Kernel {
                 IA32_STAR,
                 (u64::from(kernel_code.0) << 48) | (u64::from(user_code.0) << 32),
             );
-            wrmsr(IA32_LSTAR, actor_system_call_entry_point as u64);
+            wrmsr(IA32_LSTAR, crate::actor::actor_system_call_entry_point as u64);
             wrmsr(IA32_FMASK, 0x200);
         }
 
-        logger.writer(|w| {
+        /*logger.writer(|w| {
             write!(
                 w,
                 "{:X?} {:X?} {:X?} {:X?} {:X?}\n",
@@ -459,20 +442,20 @@ impl Kernel {
                 [kernel_code, kernel_data, user_code, user_data, tss_selector,],
                 [kernel_code.0, kernel_data.0, user_code.0, user_data.0,]
             )
-        });
+        });*/
 
         Box::into_raw(tss);
 
         Box::into_raw(gdt);
 
-        logger.writer(|w| {
+        /*logger.writer(|w| {
             write!(
                 w,
                 "{:X?} {:X?}\n",
                 DescriptorFlags::USER_CODE64,
                 DescriptorFlags::USER_DATA
             )
-        });
+        });*/
 
         let mut interrupt_manager = KernelInterruptManager::new();
         interrupt_manager.bootstrap_local_interrupt_manager({
@@ -482,7 +465,7 @@ impl Kernel {
             local_interrupt_manager.enable_oneshot(
                 unsafe {
                     core::mem::transmute(
-                        crate::kernel::actor::actor_deadline_entry_point as *const u8,
+                        crate::actor::actor_deadline_entry_point as *const u8,
                     )
                 },
                 core::time::Duration::from_millis(1000000),
@@ -492,12 +475,7 @@ impl Kernel {
             local_interrupt_manager
         });
 
-        use crate::kernel::actor::KernelActorExecutionMode;
-        use crate::kernel::actor::KernelActorInstructionRegion;
-        use crate::kernel::actor::KernelActorSpawnSpecification;
-        use zcene_bare::memory::address::VirtualMemoryAddress;
-
-        let spawn_result = actor_system.spawn(KernelActorSpawnSpecification::new(
+        /*let spawn_result = actor_system.spawn(KernelActorSpawnSpecification::new(
             TimerActor::default(),
             KernelActorExecutionMode::Privileged,
             memory_manager.kernel_image_virtual_memory_region(),
@@ -510,12 +488,11 @@ impl Kernel {
 
                 return Err(error.into());
             }
-        };
+        };*/
 
         let this = Self {
             logger,
             actor_system,
-            timer_actor,
             memory_manager,
             timer,
             interrupt_manager,
@@ -532,15 +509,11 @@ impl Kernel {
         &self.memory_manager
     }
 
-    pub fn timer_actor(&self) -> &KernelActorAddressReference<TimerActor> {
-        &self.timer_actor
-    }
-
     pub fn logger(&self) -> &KernelLogger {
         &self.logger
     }
 
-    pub fn actor_system(&self) -> &KernelActorSystemReference {
+    pub fn actor_system(&self) -> &ActorSystemReference<ActorHandler<KernelFutureRuntimeHandler>> {
         &self.actor_system
     }
 
@@ -554,8 +527,6 @@ impl Kernel {
 
     pub fn run(&self) -> ! {
         self.logger().writer(|w| write!(w, "zcene\n"));
-
-        crate::kernel::logger::println!("{:X}", x86::current::registers::rsp());
 
         self.actor_system().enter_default().unwrap();
 
