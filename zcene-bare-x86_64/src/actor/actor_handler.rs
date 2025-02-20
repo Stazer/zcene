@@ -9,6 +9,7 @@ use zcene_core::actor::{
     ActorSpawnError,
 };
 use zcene_core::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
+use alloc::boxed::Box;
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -84,7 +85,7 @@ where
             }
             ActorSpawnSpecificationType::Unprivileged(_) => {
                 self.future_runtime.spawn(ActorUnprivilegedExecutor::new(
-                    Some(ActorUnprivilegedExecutorCreateState::new(actor).into()),
+                    Some(ActorUnprivilegedExecutorCreateState::new(Box::new(actor)).into()),
                     receiver,
                     ActorCommonContextBuilder::default(),
                     None,

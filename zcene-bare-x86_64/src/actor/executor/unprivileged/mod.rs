@@ -3,19 +3,23 @@ mod actor_unprivileged_executor_create_state;
 mod actor_unprivileged_executor_destroy_state;
 mod actor_unprivileged_executor_handle_state;
 mod actor_unprivileged_executor_receive_state;
+mod actor_unprivileged_executor_stage_event;
 mod actor_unprivileged_executor_state;
+mod actor_unprivileged_executor_system_call;
 
 pub use actor_unprivileged_executor::*;
 pub use actor_unprivileged_executor_create_state::*;
 pub use actor_unprivileged_executor_destroy_state::*;
 pub use actor_unprivileged_executor_handle_state::*;
 pub use actor_unprivileged_executor_receive_state::*;
+pub use actor_unprivileged_executor_stage_event::*;
 pub use actor_unprivileged_executor_state::*;
+pub use actor_unprivileged_executor_system_call::*;
 
 use core::arch::naked_asm;
 
 #[naked]
-pub unsafe extern "C" fn actor_deadline_entry_point() {
+pub unsafe extern "C" fn actor_preemption_entry_point() {
     naked_asm!(
         // Save context
         "push r15",
@@ -64,7 +68,7 @@ pub unsafe extern "C" fn actor_system_call_entry_point() {
         "shl rdx, 32",
         "or rax, rdx",
         "mov rsp, rax",
-        // First argument is passed from system call itself
+        // First argument is passed from the system call itself
         // Prepare second argument
         "pop rsi",
         // Restore callee-saved registers
@@ -75,6 +79,30 @@ pub unsafe extern "C" fn actor_system_call_entry_point() {
         "pop rbx",
         // At this stage it looks like we execute from within the future
         "cld",
-        //"jmp actor_system_call_restore",
+        "ret",
+    )
+}
+
+#[naked]
+pub unsafe extern "C" fn actor_exception_entry_point() {
+    naked_asm!(
+        // Load kernel stack pointer
+        "mov rcx, 0xC0000102",
+        "rdmsr",
+        "shl rdx, 32",
+        "or rax, rdx",
+        "mov rsp, rax",
+        // First argument is passed from the system call itself
+        // Prepare second argument
+        "pop rsi",
+        // Restore callee-saved registers
+        "pop r15",
+        "pop r14",
+        "pop r13",
+        "pop r12",
+        "pop rbx",
+        // At this stage it looks like we execute from within the future
+        "cld",
+        "ret",
     )
 }

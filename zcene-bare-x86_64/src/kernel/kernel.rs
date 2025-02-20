@@ -134,18 +134,11 @@ where
 use core::marker::PhantomData;
 use zcene_core::actor::{ActorCreateError, ActorDestroyError};
 
-pub struct UnprivilegedActor<A, H>
-where
-    A: Actor<H>,
-    H: actor::ActorHandler,
-{
-    actor: A,
-    handler: PhantomData<H>,
-}
+#[derive(Debug, Constructor, Default)]
+pub struct UnprivilegedActor;
 
-impl<A, H> Actor<H> for UnprivilegedActor<A, H>
+impl<H> Actor<H> for UnprivilegedActor
 where
-    A: Actor<H>,
     H: actor::ActorHandler,
 {
     type Message = ();
@@ -156,7 +149,7 @@ where
 
     async fn handle(
         &mut self,
-        context: H::HandleContext<Self::Message>,
+        _context: H::HandleContext<Self::Message>,
     ) -> Result<(), ActorHandleError> {
         Ok(())
     }
@@ -271,7 +264,7 @@ impl Kernel {
         }
 
         use crate::actor::ActorSpawnSpecification;
-        use crate::actor::ActorInlineSpawnSpecification;
+        use crate::actor::{ActorUnprivilegedSpawnSpecification, ActorInlineSpawnSpecification};
 
         Kernel::get()
             .actor_system()
@@ -288,6 +281,15 @@ impl Kernel {
                 ActorSpawnSpecification::new(
                     ApplicationActor::default(),
                     ActorInlineSpawnSpecification::new().into(),
+                )
+            );
+
+        Kernel::get()
+            .actor_system()
+            .spawn(
+                ActorSpawnSpecification::new(
+                    UnprivilegedActor::default(),
+                    ActorUnprivilegedSpawnSpecification::new().into(),
                 )
             );
 
@@ -459,7 +461,7 @@ impl Kernel {
             local_interrupt_manager.enable_oneshot(
                 unsafe {
                     core::mem::transmute(
-                        crate::actor::actor_deadline_entry_point as *const u8,
+                        crate::actor::actor_exception_entry_point as *const u8,
                     )
                 },
                 core::time::Duration::from_millis(1000000),
