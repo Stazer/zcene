@@ -237,12 +237,12 @@ impl LocalInterruptManager {
     ) -> Option<InterruptVectorIdentifier> {
         let free_vector = self.free_vectors.pop_first()?;
 
-        use x86::Ring;
-        use x86_64::structures::gdt::SegmentSelector;
-        use x86_64::PrivilegeLevel;
+        
+        
+        
 
         unsafe {
-            let mut entry = self.descriptor_table[free_vector]
+            let entry = self.descriptor_table[free_vector]
             .set_handler_fn(entry_point)
             //.set_privilege_level(x86_64::PrivilegeLevel::Ring3) // Erlaubt User Mode
             //.set_code_selector(SegmentSelector::new(1, PrivilegeLevel::Ring0))

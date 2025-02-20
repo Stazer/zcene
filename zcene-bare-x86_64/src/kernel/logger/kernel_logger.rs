@@ -1,7 +1,7 @@
 use crate::kernel::logger::KernelLoggerWriter;
 use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
 use bootloader_x86_64_common::serial::SerialPort;
-use core::fmt::{Error, Result, Write};
+use core::fmt::{Result, Write};
 use x86_64::instructions::interrupts::without_interrupts;
 use zcene_bare::synchronization::Mutex;
 

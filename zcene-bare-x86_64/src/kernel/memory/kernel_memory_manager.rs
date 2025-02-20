@@ -10,8 +10,6 @@ use core::slice::from_raw_parts_mut;
 use x86_64::registers::control::Cr3;
 use x86_64::structures::paging::mapper::MapToError;
 use x86_64::structures::paging::page::AddressNotAligned;
-use x86_64::structures::paging::page_table::PageTableEntry;
-use x86_64::structures::paging::page_table::PageTableLevel;
 use x86_64::structures::paging::FrameAllocator;
 use x86_64::structures::paging::OffsetPageTable;
 use x86_64::structures::paging::Page;
@@ -33,7 +31,6 @@ use ztd::Method;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use zcene_bare::memory::address::{MemoryAddress, MemoryAddressPerspective};
 
 pub const EXECUTION_PAGE_TABLE_INDEX: usize = 256;
 

@@ -4,8 +4,6 @@ use crate::kernel::logger::println;
 use crate::kernel::logger::KernelLogger;
 use crate::kernel::memory::{KernelMemoryManager, KernelMemoryManagerInitializeError};
 use crate::kernel::KernelTimer;
-use alloc::alloc::Global;
-use alloc::sync::Arc;
 use bootloader_api::BootInfo;
 use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
 use bootloader_x86_64_common::serial::SerialPort;
@@ -15,10 +13,8 @@ use core::mem::MaybeUninit;
 use x86::cpuid::CpuId;
 use zcene_bare::memory::address::PhysicalMemoryAddress;
 use zcene_bare::memory::frame::FrameManagerAllocationError;
-use zcene_core::actor::ActorAddressExt;
 use zcene_core::actor::ActorSpawnError;
 use zcene_core::actor::{self, Actor, ActorFuture, ActorHandleError, ActorSystemCreateError};
-use zcene_core::future::FutureExt;
 use zcene_core::future::runtime::{FutureRuntimeCreateError};
 use ztd::From;
 
@@ -172,9 +168,7 @@ where
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use alloc::vec::Vec;
 use zcene_core::actor::ActorContextMessageProvider;
-use zcene_core::actor::{ActorMailbox, ActorMessageSender};
 use ztd::Constructor;
 
 /*#[derive(Default, Constructor)]
@@ -333,7 +327,7 @@ impl Kernel {
                 ),
             ));*/
 
-        use zcene_bare::common::linker_value;
+        
 
         Kernel::get().run();
 
@@ -379,7 +373,7 @@ impl Kernel {
         use x86::msr::{IA32_FMASK, IA32_LSTAR, IA32_STAR};
         use x86_64::instructions::segmentation::Segment;
         use x86_64::instructions::tables::load_tss;
-        use x86_64::registers::segmentation::{CS, DS, SS};
+        use x86_64::registers::segmentation::CS;
         use x86_64::structures::gdt::GlobalDescriptorTable;
         use x86_64::structures::gdt::{Descriptor, DescriptorFlags};
         use x86_64::structures::tss::TaskStateSegment;
@@ -399,17 +393,17 @@ impl Kernel {
             DescriptorFlags::KERNEL_CODE64.bits(),
         ));
         let kernel_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_DATA.bits()));
-        let mut user_code =
+        let user_code =
             gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits()));
-        let mut user_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_DATA.bits()));
+        let user_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_DATA.bits()));
 
         let mut tss = Box::new(TaskStateSegment::new());
         tss.privilege_stack_table[0] = VirtAddr::new(ring0_stack);
         //tss.interrupt_stack_table[0] = VirtAddr::new(ring0_stack);
         tss.iomap_base = 0xFFFF;
 
-        let mut tss_selector = unsafe {
-            let mut descr = Descriptor::tss_segment_unchecked(Box::as_ptr(&tss));
+        let tss_selector = unsafe {
+            let descr = Descriptor::tss_segment_unchecked(Box::as_ptr(&tss));
 
             gdt.append(descr)
         };

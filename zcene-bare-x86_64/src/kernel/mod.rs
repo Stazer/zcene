@@ -11,5 +11,4 @@ mod kernel_timer;
 
 pub use kernel::*;
 pub use kernel_global_allocator::*;
-pub use kernel_panic_handler::*;
 pub use kernel_timer::*;
