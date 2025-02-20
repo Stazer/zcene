@@ -4,20 +4,25 @@ use crate::kernel::future::runtime::KernelFutureRuntimeReference;
 use crate::kernel::logger::println;
 use crate::kernel::Kernel;
 use crate::kernel::TimerActorMessage;
+use alloc::boxed::Box;
+use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
+use core::arch::asm;
+use core::arch::naked_asm;
 use core::marker::PhantomData;
 use core::mem::replace;
+use core::task::Waker;
 use x86::current::registers::rsp;
-use x86_64::instructions::interrupts::without_interrupts;
-use alloc::collections::BTreeMap;
-use zcene_bare::memory::address::PhysicalMemoryAddress;
-use zcene_bare::memory::address::VirtualMemoryAddress;
-use zcene_core::actor::ActorMessageSender;
-use core::arch::asm;
+use x86::current::rflags::RFlags;
 use x86::msr::{rdmsr, wrmsr, IA32_FMASK, IA32_LSTAR, IA32_STAR};
+use x86_64::instructions::interrupts::without_interrupts;
 use x86_64::registers::segmentation::{Segment, SegmentSelector, CS, DS, ES, SS};
 use x86_64::PrivilegeLevel;
-use core::arch::naked_asm;
+use zcene_bare::memory::address::PhysicalMemoryAddress;
+use zcene_bare::memory::address::VirtualMemoryAddress;
+use zcene_bare::memory::address::VirtualMemoryAddressPerspective;
+use zcene_bare::memory::region::VirtualMemoryRegion;
+use zcene_core::actor::ActorMessageSender;
 use zcene_core::actor::{
     Actor, ActorAddressReference, ActorCommonHandleContext, ActorDiscoveryHandler, ActorEnterError,
     ActorHandler, ActorMailbox, ActorMessage, ActorMessageChannel, ActorMessageChannelAddress,
@@ -26,7 +31,6 @@ use zcene_core::actor::{
 use zcene_core::future::runtime::FutureRuntimeHandler;
 use zcene_core::future::FutureExt;
 use ztd::Constructor;
-use x86::current::rflags::RFlags;
 
 pub use super::*;
 
@@ -57,9 +61,6 @@ pub struct ActorDeadlineStackFrame {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-
-use zcene_bare::memory::address::VirtualMemoryAddressPerspective;
-use zcene_bare::memory::region::VirtualMemoryRegion;
 
 pub type KernelActorInstructionRegion = VirtualMemoryRegion;
 
@@ -136,7 +137,7 @@ impl ActorHandler for KernelActorHandler {
         let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
 
         let reference = ActorAddressReference::<A, Self>::try_new_in(
-            <Self as ActorHandler>::Address::new(sender, PhantomData),
+            <Self as ActorHandler>::Address::new(sender),
             self.allocator().clone(),
         )?;
 
@@ -178,18 +179,15 @@ pub unsafe extern "C" fn actor_system_call_entry_point() {
         "shl rdx, 32",
         "or rax, rdx",
         "mov rsp, rax",
-
         // First argument is passed from system call itself
         // Prepare second argument
         "pop rsi",
-
         // Restore callee-saved registers
         "pop r15",
         "pop r14",
         "pop r13",
         "pop r12",
         "pop rbx",
-
         // At this stage it looks like we execute from within the future
         "cld",
         "jmp actor_system_call_restore",
@@ -225,27 +223,22 @@ pub unsafe extern "C" fn actor_deadline_entry_point() {
         "push rcx",
         "push rbx",
         "push rax",
-
         // Prepare first argument
         "mov rdi, rsp",
-
         // Load kernel stack pointer
         "mov rcx, 0xC0000102",
         "rdmsr",
         "shl rdx, 32",
         "or rax, rdx",
         "mov rsp, rax",
-
         // Prepare second argument
         "pop rsi",
-
         // Restore callee-saved registers
         "pop r15",
         "pop r14",
         "pop r13",
         "pop r12",
         "pop rbx",
-
         // At this stage it looks like we execute from within the future
         "cld",
         "jmp actor_deadline_restore",
@@ -283,13 +276,8 @@ where
 pub enum ActorExecutorStageEvent<T> {
     Ready,
     SystemCall(ActorExecutorStageSystemCall<T>),
-    Preemption {
-        stack: ActorDeadlineStackFrame,
-    },
+    Preemption { stack: ActorDeadlineStackFrame },
 }
-
-use core::task::Waker;
-use alloc::boxed::Box;
 
 enum ActorExecutorState<A, M> {
     Created(A),
@@ -420,12 +408,8 @@ where
         let mut pinned = pin!(actor.create(()));
 
         let result = match pinned.as_mut().poll(&mut context) {
-            Poll::Pending => {
-                ActorExecutorStageSystemCall::Poll(Poll::Pending)
-            },
-            Poll::Ready(result) => {
-                ActorExecutorStageSystemCall::Poll(Poll::Ready(result))
-            }
+            Poll::Pending => ActorExecutorStageSystemCall::Poll(Poll::Pending),
+            Poll::Ready(result) => ActorExecutorStageSystemCall::Poll(Poll::Ready(result)),
         };
 
         unsafe {
@@ -442,12 +426,12 @@ where
 
     #[naked]
     unsafe fn system_return<T>(
-        user_stack: u64, // rdi
-        function: u64, // rsi
-        actor: &mut A, // rdx
+        user_stack: u64,                         // rdi
+        function: u64,                           // rsi
+        actor: &mut A,                           // rdx
         result: &mut ActorExecutorStageEvent<T>, // rcx
-        size: u64, // r8
-        //rflags: RFlags, // r9
+        size: u64,                               // r8
+                                                 //rflags: RFlags, // r9
     ) {
         naked_asm!(
             // Save callee-saved registers
@@ -456,17 +440,14 @@ where
             "push r13",
             "push r14",
             "push r15",
-
             // Save stage event address
             "push rcx",
-
             // Store kernel stack pointer
             "mov rcx, 0xC0000102",
             "mov rax, rsp",
             "mov rdx, rax",
             "shr rdx, 32",
             "wrmsr",
-
             // Perform system return
             "push 32 | 3",
             "push rdi",
@@ -489,20 +470,16 @@ where
             "push r13",
             "push r14",
             "push r15",
-
             // Save stage event address
             "push rdi",
-
             // Store kernel stack pointer
             "mov rcx, 0xC0000102",
             "mov rax, rsp",
             "mov rdx, rax",
             "shr rdx, 32",
             "wrmsr",
-
             // Load preempted stack frame
             "mov rsp, rsi",
-
             // Restore context
             "pop rax",
             "pop rbx",
@@ -519,7 +496,6 @@ where
             "pop r13",
             "pop r14",
             "pop r15",
-
             "iretq",
         )
     }
@@ -541,7 +517,9 @@ where
 
                     let mut result = ActorExecutorStageEvent::<Result<(), ActorCreateError>>::Ready;
 
-                    Kernel::get().interrupt_manager().reset_oneshot(core::time::Duration::from_millis(100));
+                    Kernel::get()
+                        .interrupt_manager()
+                        .reset_oneshot(core::time::Duration::from_millis(100));
 
                     unsafe {
                         Self::system_return::<Result<(), ActorCreateError>>(
@@ -549,7 +527,8 @@ where
                             Self::execute as _,
                             &mut actor,
                             &mut result,
-                            size_of::<ActorExecutorStageEvent<Result<(), ActorCreateError>>>() as u64,
+                            size_of::<ActorExecutorStageEvent<Result<(), ActorCreateError>>>()
+                                as u64,
                             //RFlags::empty() | RFlags::FLAGS_IF,
                         );
                     };
@@ -557,51 +536,50 @@ where
                     match result {
                         ActorExecutorStageEvent::Ready => {
                             return Poll::Pending;
-                        },
+                        }
                         ActorExecutorStageEvent::Preemption { mut stack } => {
                             //*state = ActorExecutorState::CreatedPreempted { actor, stack_frame: stack };
                             //context.waker().clone().wake_by_ref();
 
                             crate::kernel::logger::println!("preempt...!");
 
-                            Kernel::get().interrupt_manager().reset_oneshot(core::time::Duration::from_millis(100));
-                            Kernel::get().interrupt_manager().notify_local_end_of_interrupt();
+                            Kernel::get()
+                                .interrupt_manager()
+                                .reset_oneshot(core::time::Duration::from_millis(100));
+                            Kernel::get()
+                                .interrupt_manager()
+                                .notify_local_end_of_interrupt();
 
-                            let mut result2 = ActorExecutorStageEvent::<Result<(), ActorCreateError>>::Ready;
+                            let mut result2 =
+                                ActorExecutorStageEvent::<Result<(), ActorCreateError>>::Ready;
 
-                            unsafe {
-                                Self::r#continue(
-                                    &mut result2,
-                                    &mut stack,
-                                )
-                            }
+                            unsafe { Self::r#continue(&mut result2, &mut stack) }
 
                             crate::kernel::logger::println!("finish {:?}", result2);
 
                             loop {}
 
                             return Poll::Pending;
-                        },
+                        }
                         ActorExecutorStageEvent::SystemCall(_) => {
                             crate::kernel::logger::println!("syscall!");
 
                             *state = ActorExecutorState::RunningReceive(actor);
                             crate::kernel::logger::println!("syscall after!");
-                        },
+                        }
                     }
                 }
                 ActorExecutorState::CreatedPreempted { actor, stack_frame } => {
                     crate::kernel::logger::println!("continue... {:X?}", stack_frame);
 
-                    Kernel::get().interrupt_manager().reset_oneshot(core::time::Duration::from_millis(100));
+                    Kernel::get()
+                        .interrupt_manager()
+                        .reset_oneshot(core::time::Duration::from_millis(100));
 
                     let mut result = ActorExecutorStageEvent::<Result<(), ActorCreateError>>::Ready;
 
                     unsafe {
-                        Self::r#continue(
-                            &mut result,
-                            &stack_frame,
-                        );
+                        Self::r#continue(&mut result, &stack_frame);
                     }
 
                     crate::kernel::logger::println!("finished! {:?}", result);
@@ -661,8 +639,8 @@ where
                 ActorExecutorState::Unknown => {
                     println!("unknown!");
 
-                    return Poll::Ready(())
-                },
+                    return Poll::Ready(());
+                }
             }
         }
 
@@ -700,4 +678,3 @@ impl ActorDiscoveryHandler for KernelActorHandler {
         None
     }
 }
-

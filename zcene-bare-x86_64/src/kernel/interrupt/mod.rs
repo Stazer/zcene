@@ -96,10 +96,7 @@ where
 }
 
 impl LocalInterruptManager {
-    pub fn new(
-        timer: &KernelTimer,
-        memory_manager: &KernelMemoryManager,
-    ) -> Self {
+    pub fn new(timer: &KernelTimer, memory_manager: &KernelMemoryManager) -> Self {
         let mut table = Box::new(InterruptDescriptorTable::new());
 
         table
@@ -201,8 +198,8 @@ impl LocalInterruptManager {
             }
 
             let base = memory_manager
-                        .translate_physical_memory_address(XApic::base_address())
-                        .cast_mut::<u32>();
+                .translate_physical_memory_address(XApic::base_address())
+                .cast_mut::<u32>();
 
             let mut xapic = unsafe { XApic::new((base as *mut XApicRegisters).as_mut().unwrap()) };
 
@@ -240,24 +237,20 @@ impl LocalInterruptManager {
     ) -> Option<InterruptVectorIdentifier> {
         let free_vector = self.free_vectors.pop_first()?;
 
-        use x86_64::PrivilegeLevel;
         use x86::Ring;
         use x86_64::structures::gdt::SegmentSelector;
+        use x86_64::PrivilegeLevel;
 
         unsafe {
-        let mut entry = self.descriptor_table[free_vector]
+            let mut entry = self.descriptor_table[free_vector]
             .set_handler_fn(entry_point)
             //.set_privilege_level(x86_64::PrivilegeLevel::Ring3) // Erlaubt User Mode
             //.set_code_selector(SegmentSelector::new(1, PrivilegeLevel::Ring0))
             //.set_present(true)
             //.set_stack_index(0)
                 ;
-
-
-                //.set_privilege_level(PrivilegeLevel::Ring3)
+            //.set_privilege_level(PrivilegeLevel::Ring3)
             //.set_code_selector(SegmentSelector::new(4, PrivilegeLevel::Ring3));
-
-            ;
         }
         //entry.set_privilege_level(PrivilegeLevel::Ring3);
 
@@ -272,13 +265,12 @@ impl LocalInterruptManager {
         Some(free_vector)
     }
 
-    pub fn enable_timer(
-        &mut self,
-        entry_point: InterruptEntryPoint,
-        duration: Duration,
-    ) {
+    pub fn enable_timer(&mut self, entry_point: InterruptEntryPoint, duration: Duration) {
         match self.r#type {
-            LocalInterruptManagerType::XAPIC { base, ticks_per_millisecond } => unsafe {
+            LocalInterruptManagerType::XAPIC {
+                base,
+                ticks_per_millisecond,
+            } => unsafe {
                 let vector = self.allocate(entry_point).unwrap();
 
                 let mut xapic = XApic::new((base as *mut XApicRegisters).as_mut().unwrap());
@@ -295,12 +287,19 @@ impl LocalInterruptManager {
         logger: &crate::kernel::logger::KernelLogger,
     ) {
         match self.r#type {
-            LocalInterruptManagerType::XAPIC { base, ticks_per_millisecond } => unsafe {
+            LocalInterruptManagerType::XAPIC {
+                base,
+                ticks_per_millisecond,
+            } => unsafe {
                 let vector = self.allocate(entry_point).unwrap();
 
                 let mut xapic = XApic::new((base as *mut XApicRegisters).as_mut().unwrap());
 
-                xapic.enable_oneshot(vector, (duration.as_millis() as u32) * ticks_per_millisecond, logger);
+                xapic.enable_oneshot(
+                    vector,
+                    (duration.as_millis() as u32) * ticks_per_millisecond,
+                    logger,
+                );
             },
             _ => todo!(),
         }
@@ -308,7 +307,10 @@ impl LocalInterruptManager {
 
     pub fn reset_oneshot(&self, duration: Duration) {
         match self.r#type {
-            LocalInterruptManagerType::XAPIC { base, ticks_per_millisecond } => unsafe {
+            LocalInterruptManagerType::XAPIC {
+                base,
+                ticks_per_millisecond,
+            } => unsafe {
                 let mut xapic = XApic::new((base as *mut XApicRegisters).as_mut().unwrap());
 
                 xapic.reset_oneshot((duration.as_millis() as u32) * ticks_per_millisecond);

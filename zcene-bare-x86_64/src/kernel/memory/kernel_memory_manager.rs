@@ -559,7 +559,6 @@ impl KernelMemoryManager {
 
         //Some(Stack::new(first_address, stack_size))
 
-
         todo!()
     }
 

@@ -48,7 +48,9 @@ impl<'a> XApic<'a> {
         self.registers.timer_initial_count_mut().write(ticks);
         self.registers.timer_divide_mut().write(0b1011);
 
-        self.registers.lvt_timer_mut().write(0x20000 | (vector as u32));
+        self.registers
+            .lvt_timer_mut()
+            .write(0x20000 | (vector as u32));
     }
 
     pub fn enable_oneshot(
@@ -61,14 +63,14 @@ impl<'a> XApic<'a> {
         self.registers.timer_divide_mut().write(0);
         //0b1011);
 
-        self.registers.lvt_timer_mut().write(0x40000 | (vector as u32));
+        self.registers
+            .lvt_timer_mut()
+            .write(0x40000 | (vector as u32));
     }
 
     pub fn reset_oneshot(&mut self, ticks: u32) {
         self.registers.timer_initial_count_mut().write(ticks);
     }
 
-    pub fn reset_deadline(&mut self) {
-
-    }
+    pub fn reset_deadline(&mut self) {}
 }

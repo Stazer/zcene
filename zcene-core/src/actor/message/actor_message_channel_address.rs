@@ -14,6 +14,7 @@ where
     H: ActorHandler,
 {
     sender: ActorMessageChannelSender<A::Message>,
+    #[Constructor(default)]
     handler_type: PhantomData<H>,
 }
 

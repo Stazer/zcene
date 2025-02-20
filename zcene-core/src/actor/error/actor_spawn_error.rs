@@ -1,3 +1,4 @@
+use crate::future::runtime::FutureRuntimeSpawnError;
 use core::alloc::AllocError;
 use ztd::{Display, Error, From};
 
@@ -8,4 +9,5 @@ use ztd::{Display, Error, From};
 pub enum ActorSpawnError {
     Unknown,
     MemoryAllocation(AllocError),
+    FutureRuntimeSpawn(FutureRuntimeSpawnError),
 }

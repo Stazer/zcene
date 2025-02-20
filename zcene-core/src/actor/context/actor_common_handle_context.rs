@@ -1,9 +1,9 @@
 use crate::actor::{ActorContextMessageProvider, ActorMessage};
-use ztd::Constructor;
+use ztd::{Constructor, Inner};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Constructor)]
+#[derive(Constructor, Inner)]
 pub struct ActorCommonHandleContext<M>
 where
     M: ActorMessage,

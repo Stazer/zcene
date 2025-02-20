@@ -391,19 +391,18 @@ impl Kernel {
                 .map(PhysicalMemoryAddress::from),
         );
 
+        use crate::kernel::actor::actor_system_call_entry_point;
+        use x86::msr::wrmsr;
+        use x86::msr::{IA32_FMASK, IA32_LSTAR, IA32_STAR};
+        use x86_64::instructions::segmentation::Segment;
+        use x86_64::instructions::tables::load_tss;
+        use x86_64::registers::segmentation::{CS, DS, SS};
         use x86_64::structures::gdt::GlobalDescriptorTable;
         use x86_64::structures::gdt::{Descriptor, DescriptorFlags};
-        use x86_64::VirtAddr;
         use x86_64::structures::tss::TaskStateSegment;
-        use x86_64::instructions::tables::load_tss;
-        use x86::msr::wrmsr;
-        use x86::msr::{IA32_FMASK, IA32_STAR, IA32_LSTAR};
-        use x86_64::registers::segmentation::{DS, CS, SS};
-        use x86_64::instructions::segmentation::Segment;
-        use crate::kernel::actor::actor_system_call_entry_point;
+        use x86_64::VirtAddr;
 
-        let ring0_stack =
-            memory_manager
+        let ring0_stack = memory_manager
             .allocate_stack()
             .unwrap()
             .initial_memory_address()
@@ -413,9 +412,12 @@ impl Kernel {
 
         let mut gdt = Box::new(GlobalDescriptorTable::new());
 
-        let kernel_code = gdt.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_CODE64.bits()));
+        let kernel_code = gdt.append(Descriptor::UserSegment(
+            DescriptorFlags::KERNEL_CODE64.bits(),
+        ));
         let kernel_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_DATA.bits()));
-        let mut user_code = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits()));
+        let mut user_code =
+            gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits()));
         let mut user_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_DATA.bits()));
 
         let mut tss = Box::new(TaskStateSegment::new());
@@ -439,43 +441,49 @@ impl Kernel {
             //DS::set_reg(kernel_data);
             //SS::set_reg(kernel_data);
 
-            wrmsr(IA32_STAR, (u64::from(kernel_code.0) << 48) | (u64::from(user_code.0) << 32));
+            wrmsr(
+                IA32_STAR,
+                (u64::from(kernel_code.0) << 48) | (u64::from(user_code.0) << 32),
+            );
             wrmsr(IA32_LSTAR, actor_system_call_entry_point as u64);
             wrmsr(IA32_FMASK, 0x200);
         }
 
-        logger.writer(|w| write!(w, "{:X?} {:X?} {:X?} {:X?} {:X?}\n", ring0_stack, gdt, tss, [
-            kernel_code,
-            kernel_data,
-            user_code,
-            user_data,
-            tss_selector,
-        ], [
-
-            kernel_code.0,
-            kernel_data.0,
-            user_code.0,
-            user_data.0,
-        ]));
+        logger.writer(|w| {
+            write!(
+                w,
+                "{:X?} {:X?} {:X?} {:X?} {:X?}\n",
+                ring0_stack,
+                gdt,
+                tss,
+                [kernel_code, kernel_data, user_code, user_data, tss_selector,],
+                [kernel_code.0, kernel_data.0, user_code.0, user_data.0,]
+            )
+        });
 
         Box::into_raw(tss);
 
-
         Box::into_raw(gdt);
 
-        logger.writer(|w| write!(w, "{:X?} {:X?}\n", DescriptorFlags::USER_CODE64, DescriptorFlags::USER_DATA));
+        logger.writer(|w| {
+            write!(
+                w,
+                "{:X?} {:X?}\n",
+                DescriptorFlags::USER_CODE64,
+                DescriptorFlags::USER_DATA
+            )
+        });
 
         let mut interrupt_manager = KernelInterruptManager::new();
         interrupt_manager.bootstrap_local_interrupt_manager({
             let mut local_interrupt_manager =
-                crate::kernel::interrupt::LocalInterruptManager::new(
-                    &timer,
-                    &memory_manager,
-                );
+                crate::kernel::interrupt::LocalInterruptManager::new(&timer, &memory_manager);
 
             local_interrupt_manager.enable_oneshot(
                 unsafe {
-                    core::mem::transmute(crate::kernel::actor::actor_deadline_entry_point as *const u8)
+                    core::mem::transmute(
+                        crate::kernel::actor::actor_deadline_entry_point as *const u8,
+                    )
                 },
                 core::time::Duration::from_millis(1000000),
                 &logger,

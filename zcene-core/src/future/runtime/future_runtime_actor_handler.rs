@@ -3,7 +3,6 @@ use crate::actor::{
     ActorMessage, ActorMessageChannel, ActorMessageChannelAddress, ActorSpawnError,
 };
 use crate::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
-use core::marker::PhantomData;
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -55,11 +54,12 @@ where
         let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
 
         let reference = ActorAddressReference::<A, Self>::try_new_in(
-            Self::Address::new(sender, PhantomData),
+            Self::Address::new(sender),
             self.allocator().clone(),
         )?;
 
         self.future_runtime.spawn(async move {
+            // TODO: Handle result
             actor.create(()).await;
 
             loop {
@@ -68,11 +68,13 @@ where
                     None => break,
                 };
 
+                // TODO: Handle result
                 actor
                     .handle(Self::HandleContext::<A::Message>::new(message))
                     .await;
             }
 
+            // TODO: Handle result
             actor.destroy(()).await;
         });
 
