@@ -240,6 +240,7 @@ impl LocalInterruptManager {
         unsafe {
             let entry = self.descriptor_table[free_vector]
             .set_handler_fn(entry_point)
+            .set_stack_index(0)
             //.set_privilege_level(x86_64::PrivilegeLevel::Ring3) // Erlaubt User Mode
             //.set_code_selector(SegmentSelector::new(1, PrivilegeLevel::Ring0))
             //.set_present(true)

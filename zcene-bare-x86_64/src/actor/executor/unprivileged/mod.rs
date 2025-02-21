@@ -21,9 +21,11 @@ use core::arch::naked_asm;
 use core::task::Poll;
 
 #[naked]
-pub unsafe extern "C" fn actor_preemption_entry_point() {
+pub unsafe extern "C" fn actor_deadline_preemption_entry_point() {
     naked_asm!(
-        // Save context
+        //
+        // Save user context
+        //
         "push r15",
         "push r14",
         "push r13",
@@ -39,25 +41,46 @@ pub unsafe extern "C" fn actor_preemption_entry_point() {
         "push rcx",
         "push rbx",
         "push rax",
-        // Prepare first argument
+        //
+        // Save interrupt stack
+        //
         "mov rdi, rsp",
+        //
         // Load kernel stack
+        //
         "mov rcx, 0xC0000102",
         "rdmsr",
         "shl rdx, 32",
         "or rax, rdx",
         "mov rsp, rax",
-        // Prepare second argument
-        "pop rsi",
+        //
         // Restore callee-saved registers
+        //
         "pop r15",
         "pop r14",
         "pop r13",
         "pop r12",
         "pop rbx",
-        // Return into restore
+        //
+        // Perform restore
+        //
+        "pop rsi",
         "cld",
-        "ret",
+        "jmp actor_deadline_preemption_restore",
+        //
+        // Emergency halt
+        //
+        "hlt",
+    )
+}
+
+#[no_mangle]
+pub extern "C" fn actor_deadline_preemption_restore(
+    context: &mut ActorUnprivilegedStageExecutorDeadlinePreemptionContext,
+    event: &mut ActorUnprivilegedStageExecutorEvent,
+) {
+    *event = ActorUnprivilegedStageExecutorEvent::from(
+        ActorUnprivilegedStageExecutorDeadlinePreemption::new(context.clone()),
     )
 }
 
@@ -94,17 +117,17 @@ pub unsafe extern "C" fn actor_system_call_entry_point() {
         "pop r12",
         "pop rbx",
         //
-        // Prepare arguments. First argument (rdi) is passed from the system call itself
-        // Prepare second argument
+        // Perform restore
         //
         "mov rdx, r8",
         "mov rcx, r11",
         "pop r8",
-        //
-        // Perform restore
-        //
         "cld",
         "jmp actor_system_call_restore",
+        //
+        // Emergency halt
+        //
+        "hlt",
     )
 }
 
@@ -133,21 +156,9 @@ pub extern "C" fn actor_system_call_restore(
 #[naked]
 pub unsafe extern "C" fn actor_exception_entry_point() {
     naked_asm!(
-        // Load kernel stack
-        "mov rcx, 0xC0000102",
-        "rdmsr",
-        "shl rdx, 32",
-        "or rax, rdx",
-        "mov rsp, rax",
-        // First argument is passed from the system call itself
-        // Prepare second argument
-        "pop rsi",
-        // Restore callee-saved registers
-        "pop r15",
-        "pop r14",
-        "pop r13",
-        "pop r12",
-        "pop rbx",
-        "ret",
+        //
+        // Emergency halt
+        //
+        "hlt",
     )
 }

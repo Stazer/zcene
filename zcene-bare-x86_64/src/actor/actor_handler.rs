@@ -83,12 +83,12 @@ where
                     None,
                 ))?
             }
-            ActorSpawnSpecificationType::Unprivileged(_) => {
+            ActorSpawnSpecificationType::Unprivileged(specification) => {
                 self.future_runtime.spawn(ActorUnprivilegedExecutor::new(
                     Some(ActorUnprivilegedExecutorCreateState::new(Box::new(actor), None).into()),
                     receiver,
                     ActorCommonContextBuilder::default(),
-                    None,
+                    *specification.deadline_in_milliseconds(),
                 ))?
             }
         };
@@ -97,8 +97,6 @@ where
     }
 
     fn enter(&self, specification: Self::EnterSpecification) -> Result<(), ActorEnterError> {
-        self.future_runtime.run();
-
-        Ok(())
+        Ok(self.future_runtime.run())
     }
 }

@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::marker::PhantomData;
 use zcene_core::actor::{Actor, ActorHandler};
 use ztd::{Constructor, Inner};
@@ -10,7 +11,7 @@ where
     A: Actor<H>,
     H: ActorHandler,
 {
-    actor: A,
+    actor: Box<A>,
     message: A::Message,
     #[Constructor(default)]
     marker: PhantomData<H>,

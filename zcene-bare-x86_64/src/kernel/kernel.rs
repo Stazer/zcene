@@ -152,6 +152,11 @@ where
                     options(nostack),
                 );
 
+                for i in 0..100000000 {
+                    core::hint::black_box(());
+                    x86_64::instructions::nop();
+                }
+
                 core::arch::asm!(
                     "syscall",
                     in("rdi") 1,
@@ -179,75 +184,6 @@ where
 
 use zcene_core::actor::ActorContextMessageProvider;
 use ztd::Constructor;
-
-/*#[derive(Default, Constructor)]
-pub struct TimerActor<H>
-where
-    H: ActorHandler,
-{
-    subscriptions: Vec<ActorMailbox<usize, H>>,
-    total_ticks: usize,
-}
-
-#[derive(Clone)]
-pub enum TimerActorMessage {
-    Tick,
-    Subscription(ActorMailbox<usize, KernelActorHandler>),
-}
-
-impl<H> Actor<H> for TimerActor
-where
-    H: actor::ActorHandler,
-    H::HandleContext<TimerActorMessage>: ActorContextMessageProvider<TimerActorMessage>,
-{
-    type Message = TimerActorMessage;
-
-    fn create(
-        &mut self,
-        _context: H::CreateContext,
-    ) -> impl ActorFuture<'_, Result<(), ActorCreateError>> {
-        async move {
-            println!("Timer::create");
-
-            Ok(())
-        }
-    }
-
-    fn handle(
-        &mut self,
-        context: H::HandleContext<Self::Message>,
-    ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
-        async move {
-            println!("Timer::hello");
-
-            match context.message() {
-                Self::Message::Tick => {
-                    self.total_ticks += 1;
-
-                    for subscription in &self.subscriptions {
-                        subscription.send(self.total_ticks).await.unwrap();
-                    }
-                }
-                Self::Message::Subscription(mailbox) => {
-                    self.subscriptions.push(mailbox.clone());
-                }
-            }
-
-            Ok(())
-        }
-    }
-
-    fn destroy(
-        self,
-        _context: H::DestroyContext,
-    ) -> impl ActorFuture<'static, Result<(), ActorDestroyError>> {
-        async move {
-            println!("Timer::destroy");
-
-            Ok(())
-        }
-    }
-}*/
 
 use crate::actor::ActorHandler;
 use zcene_core::actor::{ActorSystem, ActorSystemReference};
@@ -282,7 +218,7 @@ impl Kernel {
         use crate::actor::ActorSpawnSpecification;
         use crate::actor::{ActorInlineSpawnSpecification, ActorUnprivilegedSpawnSpecification};
 
-        Kernel::get()
+        /*Kernel::get()
             .actor_system()
             .spawn(ActorSpawnSpecification::new(
                 ApplicationActor::default(),
@@ -294,13 +230,15 @@ impl Kernel {
             .spawn(ActorSpawnSpecification::new(
                 ApplicationActor::default(),
                 ActorInlineSpawnSpecification::new().into(),
-            ));
+            ));*/
+
+        use core::num::NonZero;
 
         Kernel::get()
             .actor_system()
             .spawn(ActorSpawnSpecification::new(
                 UnprivilegedActor::default(),
-                ActorUnprivilegedSpawnSpecification::new().into(),
+                ActorUnprivilegedSpawnSpecification::new(NonZero::new(5)).into(),
             ));
 
         /*Kernel::get()
@@ -395,6 +333,12 @@ impl Kernel {
             .initial_memory_address()
             .as_u64();
 
+        let timer_stack = memory_manager
+            .allocate_stack()
+            .unwrap()
+            .initial_memory_address()
+            .as_u64();
+
         use alloc::boxed::Box;
 
         let mut gdt = Box::new(GlobalDescriptorTable::new());
@@ -408,7 +352,7 @@ impl Kernel {
 
         let mut tss = Box::new(TaskStateSegment::new());
         tss.privilege_stack_table[0] = VirtAddr::new(ring0_stack);
-        //tss.interrupt_stack_table[0] = VirtAddr::new(ring0_stack);
+        tss.interrupt_stack_table[0] = VirtAddr::new(timer_stack);
         tss.iomap_base = 0xFFFF;
 
         let tss_selector = unsafe {
@@ -470,9 +414,11 @@ impl Kernel {
 
             local_interrupt_manager.enable_oneshot(
                 unsafe {
-                    core::mem::transmute(crate::actor::actor_exception_entry_point as *const u8)
+                    core::mem::transmute(
+                        crate::actor::actor_deadline_preemption_entry_point as *const u8,
+                    )
                 },
-                core::time::Duration::from_millis(1000000),
+                core::time::Duration::from_millis(0),
                 &logger,
             );
 
