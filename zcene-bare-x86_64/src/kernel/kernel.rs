@@ -15,7 +15,7 @@ use zcene_bare::memory::address::PhysicalMemoryAddress;
 use zcene_bare::memory::frame::FrameManagerAllocationError;
 use zcene_core::actor::ActorSpawnError;
 use zcene_core::actor::{self, Actor, ActorFuture, ActorHandleError, ActorSystemCreateError};
-use zcene_core::future::runtime::{FutureRuntimeCreateError};
+use zcene_core::future::runtime::FutureRuntimeCreateError;
 use ztd::From;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -144,6 +144,22 @@ where
     type Message = ();
 
     async fn create(&mut self, context: H::CreateContext) -> Result<(), ActorCreateError> {
+        for i in 0..5 {
+            unsafe {
+                core::arch::asm!(
+                    "syscall",
+                    in("rdi") 0,
+                    options(nostack),
+                );
+
+                core::arch::asm!(
+                    "syscall",
+                    in("rdi") 1,
+                    options(nostack),
+                );
+            }
+        }
+
         Ok(())
     }
 
@@ -264,34 +280,28 @@ impl Kernel {
         }
 
         use crate::actor::ActorSpawnSpecification;
-        use crate::actor::{ActorUnprivilegedSpawnSpecification, ActorInlineSpawnSpecification};
+        use crate::actor::{ActorInlineSpawnSpecification, ActorUnprivilegedSpawnSpecification};
 
         Kernel::get()
             .actor_system()
-            .spawn(
-                ActorSpawnSpecification::new(
-                    ApplicationActor::default(),
-                    ActorInlineSpawnSpecification::new().into(),
-                )
-            );
+            .spawn(ActorSpawnSpecification::new(
+                ApplicationActor::default(),
+                ActorInlineSpawnSpecification::new().into(),
+            ));
 
         Kernel::get()
             .actor_system()
-            .spawn(
-                ActorSpawnSpecification::new(
-                    ApplicationActor::default(),
-                    ActorInlineSpawnSpecification::new().into(),
-                )
-            );
+            .spawn(ActorSpawnSpecification::new(
+                ApplicationActor::default(),
+                ActorInlineSpawnSpecification::new().into(),
+            ));
 
         Kernel::get()
             .actor_system()
-            .spawn(
-                ActorSpawnSpecification::new(
-                    UnprivilegedActor::default(),
-                    ActorUnprivilegedSpawnSpecification::new().into(),
-                )
-            );
+            .spawn(ActorSpawnSpecification::new(
+                UnprivilegedActor::default(),
+                ActorUnprivilegedSpawnSpecification::new().into(),
+            ));
 
         /*Kernel::get()
             .actor_system()
@@ -329,8 +339,6 @@ impl Kernel {
                 ),
             ));*/
 
-        
-
         Kernel::get().run();
 
         loop {}
@@ -358,9 +366,9 @@ impl Kernel {
             }
         };
 
-        let actor_system = ActorSystem::try_new(ActorHandler::new(
-            KernelFutureRuntime::new(KernelFutureRuntimeHandler::default())?
-        ))?;
+        let actor_system = ActorSystem::try_new(ActorHandler::new(KernelFutureRuntime::new(
+            KernelFutureRuntimeHandler::default(),
+        )?))?;
 
         let timer = KernelTimer::new(
             &memory_manager,
@@ -395,8 +403,7 @@ impl Kernel {
             DescriptorFlags::KERNEL_CODE64.bits(),
         ));
         let kernel_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_DATA.bits()));
-        let user_code =
-            gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits()));
+        let user_code = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits()));
         let user_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_DATA.bits()));
 
         let mut tss = Box::new(TaskStateSegment::new());
@@ -424,7 +431,10 @@ impl Kernel {
                 IA32_STAR,
                 (u64::from(kernel_code.0) << 48) | (u64::from(user_code.0) << 32),
             );
-            wrmsr(IA32_LSTAR, crate::actor::actor_system_call_entry_point as u64);
+            wrmsr(
+                IA32_LSTAR,
+                crate::actor::actor_system_call_entry_point as u64,
+            );
             wrmsr(IA32_FMASK, 0x200);
         }
 
@@ -460,9 +470,7 @@ impl Kernel {
 
             local_interrupt_manager.enable_oneshot(
                 unsafe {
-                    core::mem::transmute(
-                        crate::actor::actor_exception_entry_point as *const u8,
-                    )
+                    core::mem::transmute(crate::actor::actor_exception_entry_point as *const u8)
                 },
                 core::time::Duration::from_millis(1000000),
                 &logger,

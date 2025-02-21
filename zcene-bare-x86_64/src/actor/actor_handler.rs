@@ -3,13 +3,13 @@ use crate::actor::{
     ActorPrivilegedExecutorCreateState, ActorSpawnSpecification, ActorSpawnSpecificationInner,
     ActorSpawnSpecificationType, ActorUnprivilegedExecutor, ActorUnprivilegedExecutorCreateState,
 };
+use alloc::boxed::Box;
 use zcene_core::actor::{
     self, Actor, ActorAddressReference, ActorCommonContextBuilder, ActorCommonHandleContext,
     ActorEnterError, ActorMessage, ActorMessageChannel, ActorMessageChannelAddress,
     ActorSpawnError,
 };
 use zcene_core::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
-use alloc::boxed::Box;
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -85,7 +85,7 @@ where
             }
             ActorSpawnSpecificationType::Unprivileged(_) => {
                 self.future_runtime.spawn(ActorUnprivilegedExecutor::new(
-                    Some(ActorUnprivilegedExecutorCreateState::new(Box::new(actor)).into()),
+                    Some(ActorUnprivilegedExecutorCreateState::new(Box::new(actor), None).into()),
                     receiver,
                     ActorCommonContextBuilder::default(),
                     None,

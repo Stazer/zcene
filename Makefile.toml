@@ -38,6 +38,8 @@ dependencies = [
 
 [tasks.run-bare-x86_64]
 args = [
+    "-d", "int",
+    "-no-reboot",
     "-nographic",
     "-cpu", "qemu64",
     "-drive", "format=raw,unit=1,file=target/x86_64/release/zcene-bare-x86_64-uefi.img",

@@ -237,10 +237,6 @@ impl LocalInterruptManager {
     ) -> Option<InterruptVectorIdentifier> {
         let free_vector = self.free_vectors.pop_first()?;
 
-        
-        
-        
-
         unsafe {
             let entry = self.descriptor_table[free_vector]
             .set_handler_fn(entry_point)

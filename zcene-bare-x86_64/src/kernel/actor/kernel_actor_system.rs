@@ -1,6 +1,0 @@
-use crate::kernel::actor::KernelActorHandler;
-use zcene_core::actor::ActorSystem;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-pub type KernelActorSystem = ActorSystem<KernelActorHandler>;
