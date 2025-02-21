@@ -157,11 +157,11 @@ where
                     x86_64::instructions::nop();
                 }
 
-                /*core::arch::asm!(
+                core::arch::asm!(
                     "syscall",
                     in("rdi") 1,
                     options(nostack),
-                );*/
+                );
             }
         }
 
@@ -239,6 +239,7 @@ impl Kernel {
             .spawn(ActorSpawnSpecification::new(
                 UnprivilegedActor::default(),
                 ActorUnprivilegedSpawnSpecification::new(NonZero::new(100)).into(),
+                //ActorUnprivilegedSpawnSpecification::new(None).into(),
             ));
 
         /*Kernel::get()
@@ -343,12 +344,12 @@ impl Kernel {
 
         let mut gdt = Box::new(GlobalDescriptorTable::new());
 
-        let kernel_code = gdt.append(Descriptor::UserSegment(
-            DescriptorFlags::KERNEL_CODE64.bits(),
-        ));
-        let kernel_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_DATA.bits()));
-        let user_code = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits()));
-        let user_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_DATA.bits()));
+        let kernel_code = gdt.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_CODE64.bits())); // 8
+        let kernel_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_DATA.bits())); // 16
+        // order is very important!
+        let user_code32 = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE32.bits())); // 24
+        let user_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_DATA.bits())); // 32
+        let user_code64 = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits())); // 40
 
         let mut tss = Box::new(TaskStateSegment::new());
         tss.privilege_stack_table[0] = VirtAddr::new(ring0_stack);
@@ -360,6 +361,9 @@ impl Kernel {
 
             gdt.append(descr)
         };
+
+        let selector = (u64::from(user_code32.0) << 48) | (u64::from(kernel_code.0) << 32);
+        logger.writer(|w| write!(w, "SEL: {:X}", selector));
 
         unsafe {
             gdt.load_unsafe();
@@ -373,7 +377,7 @@ impl Kernel {
 
             wrmsr(
                 IA32_STAR,
-                (u64::from(kernel_code.0) << 48) | (u64::from(user_code.0) << 32),
+                selector,
             );
             wrmsr(
                 IA32_LSTAR,
