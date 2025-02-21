@@ -81,18 +81,13 @@ where
                                 .initial_memory_address()
                                 .as_u64();
 
-                            println!("enter before");
-
                             unsafe {
                                 Self::enter(&mut actor, &mut event, user_stack, Self::create_main);
                             }
-
-                            println!("enter after");
                         }
                         Some(ActorUnprivilegedStageExecutorContext::SystemCall(
                             system_call_context,
                         )) => unsafe {
-                            println!("return before");
                             Self::system_return(
                                 &mut actor,
                                 &mut event,
@@ -100,24 +95,17 @@ where
                                 system_call_context.rip(),
                                 system_call_context.rflags(),
                             );
-                            println!("return after");
                         },
                         Some(ActorUnprivilegedStageExecutorContext::DeadlinePreemption(
                             deadline_preemption_context,
                         )) => {
-                            println!("continue before");
-
                             unsafe {
                                 Self::r#continue(&mut actor, &mut event, &deadline_preemption_context);
                             }
-
-                            println!("continue after");
                         },
                     }
 
                     loop {
-                        println!("{:?}", event);
-
                         match replace(&mut event, ActorUnprivilegedStageExecutorEvent::None) {
                             ActorUnprivilegedStageExecutorEvent::None => break,
                             ActorUnprivilegedStageExecutorEvent::SystemCall(system_call) => {
@@ -128,8 +116,6 @@ where
 
                                 match r#type {
                                     ActorUnprivilegedStageExecutorSystemCallType::Continue => unsafe {
-                                        println!("system return before");
-
                                         Self::system_return(
                                             &mut actor,
                                             &mut event,
@@ -137,8 +123,6 @@ where
                                             system_call_context.rip(),
                                             system_call_context.rflags(),
                                         );
-
-                                        println!("system return after");
                                     },
                                     ActorUnprivilegedStageExecutorSystemCallType::Preempt => {
                                         self.state = Some(
