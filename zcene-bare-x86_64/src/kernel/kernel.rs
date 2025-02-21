@@ -157,11 +157,11 @@ where
                     x86_64::instructions::nop();
                 }
 
-                core::arch::asm!(
+                /*core::arch::asm!(
                     "syscall",
                     in("rdi") 1,
                     options(nostack),
-                );
+                );*/
             }
         }
 
@@ -238,7 +238,7 @@ impl Kernel {
             .actor_system()
             .spawn(ActorSpawnSpecification::new(
                 UnprivilegedActor::default(),
-                ActorUnprivilegedSpawnSpecification::new(NonZero::new(5)).into(),
+                ActorUnprivilegedSpawnSpecification::new(NonZero::new(100)).into(),
             ));
 
         /*Kernel::get()

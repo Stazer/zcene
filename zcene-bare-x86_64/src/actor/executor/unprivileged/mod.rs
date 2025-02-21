@@ -20,6 +20,8 @@ use crate::kernel::logger::println;
 use core::arch::naked_asm;
 use core::task::Poll;
 
+// 0000000003637fd8
+
 #[naked]
 pub unsafe extern "C" fn actor_deadline_preemption_entry_point() {
     naked_asm!(

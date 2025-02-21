@@ -52,8 +52,6 @@ where
 {
     type Output = ();
 
-    // kernel 0000010000008a68
-    // user 3638000
     fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
         loop {
             match self.state.take() {
@@ -101,8 +99,6 @@ where
                         Some(ActorUnprivilegedStageExecutorContext::DeadlinePreemption(
                             deadline_preemption_context,
                         )) => unsafe {
-                            println!("continue! {:X?}", deadline_preemption_context);
-
                             if let Some(deadline_in_milliseconds) = self.deadline_in_milliseconds {
                                 crate::kernel::Kernel::get()
                                     .interrupt_manager()
@@ -162,6 +158,7 @@ where
                                         break;
                                     }
                                     ActorUnprivilegedStageExecutorSystemCallType::Unknown(_) => {
+                                        // error
                                         todo!()
                                     }
                                 }
@@ -181,11 +178,16 @@ where
                                     .into(),
                                 );
 
+                                crate::kernel::Kernel::get()
+                                    .interrupt_manager()
+                                    .notify_local_end_of_interrupt();
+
                                 context.waker().wake_by_ref();
 
                                 return Poll::Pending;
                             }
                             ActorUnprivilegedStageExecutorEvent::Exception => {
+                                // error
                                 todo!()
                             }
                         }
@@ -220,8 +222,12 @@ where
                         }
                     }
                 }
-                Some(ActorUnprivilegedExecutorState::Handle(state)) => {}
-                Some(ActorUnprivilegedExecutorState::Destroy(state)) => {}
+                Some(ActorUnprivilegedExecutorState::Handle(state)) => {
+                    println!("continue with handle");
+                }
+                Some(ActorUnprivilegedExecutorState::Destroy(state)) => {
+                    println!("continue with destroy");
+                }
                 None => return Poll::Ready(()),
             }
         }
@@ -405,6 +411,7 @@ where
             //
             // Store kernel stack
             //
+            "mov rax, rsp",
             "mov rdx, rsp",
             "shr rdx, 32",
             "mov rcx, 0xC0000102",
