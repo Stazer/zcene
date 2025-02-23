@@ -11,5 +11,5 @@
     "linker": "ld.lld",
     "panic-strategy": "abort",
     "disable-redzone": true,
-    "features": "-mmx"
+    "features": "-mmx,-avx"
 }
