@@ -81,9 +81,21 @@ where
                                 .initial_memory_address()
                                 .as_u64();
 
+                            crate::kernel::logger::println!(
+                                "before enter {:X?} {:X?}",
+                                x86::current::registers::rsp(),
+                                x86::current::registers::rbp()
+                            );
+
                             unsafe {
                                 Self::enter(&mut actor, &mut event, user_stack, Self::create_main);
                             }
+
+                            crate::kernel::logger::println!(
+                                "after enter{:X?} {:X?}",
+                                x86::current::registers::rsp(),
+                                x86::current::registers::rbp()
+                            );
                         }
                         Some(ActorUnprivilegedStageExecutorContext::SystemCall(
                             system_call_context,
@@ -117,12 +129,24 @@ where
 
                                 match r#type {
                                     ActorUnprivilegedStageExecutorSystemCallType::Continue => unsafe {
+                                        crate::kernel::logger::println!(
+                                            "before return {:X?} {:X?}",
+                                            x86::current::registers::rsp(),
+                                            x86::current::registers::rbp()
+                                        );
+
                                         Self::system_return(
                                             &mut actor,
                                             &mut event,
                                             system_call_context.rsp(),
                                             system_call_context.rip(),
                                             system_call_context.rflags(),
+                                        );
+
+                                        crate::kernel::logger::println!(
+                                            "after return {:X?} {:X?}",
+                                            x86::current::registers::rsp(),
+                                            x86::current::registers::rbp()
                                         );
                                     },
                                     ActorUnprivilegedStageExecutorSystemCallType::Preempt => {
