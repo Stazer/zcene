@@ -353,6 +353,7 @@ where
         main: extern "C" fn(&mut A) -> !,
     ) {
         asm!(
+            "push rbp",
             //
             // Save inline return address
             //
@@ -397,7 +398,7 @@ where
             // Inline label for return
             //
             "2:",
-
+            "pop rbp",
             in("rdi") actor,
             in("rsi") event,
             in("rdx") stack,
