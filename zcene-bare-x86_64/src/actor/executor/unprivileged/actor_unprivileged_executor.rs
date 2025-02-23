@@ -106,6 +106,7 @@ where
                     }
 
                     loop {
+                        println!("{:?}", event);
                         match replace(&mut event, ActorUnprivilegedStageExecutorEvent::None) {
                             ActorUnprivilegedStageExecutorEvent::None => break,
                             ActorUnprivilegedStageExecutorEvent::SystemCall(system_call) => {
@@ -270,7 +271,7 @@ where
         unsafe { asm!("mov rdi, 0x2", "syscall", options(noreturn)) }
     }
 
-    #[naked]
+    /*#[naked]
     unsafe extern "C" fn enter(
         actor: &mut A,
         event: &mut ActorUnprivilegedStageExecutorEvent,
@@ -318,9 +319,143 @@ where
             //
             "hlt",
         )
+    }*/
+
+    #[inline(never)]
+    unsafe extern "C" fn enter(
+        actor: &mut A,
+        mut event: &mut ActorUnprivilegedStageExecutorEvent,
+        stack: u64,
+        main: extern "C" fn(&mut A) -> !,
+    ) {
+        asm!(
+            //
+            // Save inline return address
+            //
+            "lea rax, [2f]",
+            "push rax",
+            //
+            // Save event address to kernel stack
+            //
+            "push rsi",
+            //
+            // Save callee-saved registers to kernel stack
+            //
+            "push rbx",
+            "push r12",
+            "push r13",
+            "push r14",
+            "push r15",
+            //
+            // Temporarily save current kernel stack
+            //
+            "mov rax, rsp",
+            //
+            // Create interrupt frame for returning into unprivileged mode
+            //
+            "push 32 | 3",
+            "push rdx",
+            "push 0x200",
+            "push 40 | 3",
+            "push rcx",
+            //
+            // Store previously temporarily saved kernel stack
+            //
+            "mov rdx, rax",
+            "shr rdx, 32",
+            "mov rcx, 0xC0000102",
+            "wrmsr",
+            //
+            // Perform return
+            //
+            "iretq",
+            //
+            // Inline label for return
+            //
+            "2:",
+
+            in("rdi") actor,
+            in("rsi") event,
+            in("rdx") stack,
+            in("rcx") main,
+
+            clobber_abi("C"),
+        )
     }
 
-    #[naked]
+    #[inline(never)]
+    unsafe extern "C" fn system_return(
+        actor: &mut A,
+        event: &mut ActorUnprivilegedStageExecutorEvent,
+        stack: u64,
+        rip: u64,
+        rflags: u64,
+    ) {
+        asm!(
+            //
+            // Save inline return address
+            //
+            "lea rax, [2f]",
+            "push rax",
+            //
+            // Save event address to kernel stack
+            //
+            "push rsi",
+            //
+            // Save callee-saved registers to kernel stack
+            //
+            "push rbx",
+            "push r12",
+            "push r13",
+            "push r14",
+            "push r15",
+            //
+            // Move arguments into temporary registers
+            //
+            "mov r9, rdx",
+            "mov r10, rcx",
+            //
+            // Store kernel stack
+            //
+            "mov rax, rsp",
+            "mov rdx, rsp",
+            "shr rdx, 32",
+            "mov rcx, 0xC0000102",
+            "wrmsr",
+            //
+            // Load user stack
+            //
+            "mov rsp, r9",
+            "mov rcx, r10",
+            "mov r11, r8",
+            //
+            // Restore callee-saved registers from user stack
+            //
+            "pop r15",
+            "pop r14",
+            "pop r13",
+            "pop r12",
+            "pop rbx",
+            //
+            // Perform return
+            //
+            "sysretq",
+            //
+            // Inline label for return
+            //
+            "2:",
+
+            in("rdi") actor,
+            in("rsi") event,
+            in("rdx") stack,
+            in("rcx") rip,
+            in("r8") rflags,
+
+            clobber_abi("C"),
+        )
+    }
+
+    /*#[naked]
     unsafe extern "C" fn system_return(
         actor: &mut A,
         event: &mut ActorUnprivilegedStageExecutorEvent,
@@ -377,7 +512,7 @@ where
             //
             "hlt",
         )
-    }
+    }*/
 
     #[naked]
     unsafe extern "C" fn r#continue(

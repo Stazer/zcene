@@ -144,7 +144,7 @@ where
     type Message = ();
 
     async fn create(&mut self, context: H::CreateContext) -> Result<(), ActorCreateError> {
-        for i in 0..5 {
+        for i in 0..1 {
             unsafe {
                 core::arch::asm!(
                     "syscall",
@@ -152,7 +152,7 @@ where
                     options(nostack),
                 );
 
-                for i in 0..100000000 {
+                /*for i in 0..100000000 {
                     core::hint::black_box(());
                     x86_64::instructions::nop();
                 }
@@ -161,7 +161,7 @@ where
                     "syscall",
                     in("rdi") 1,
                     options(nostack),
-                );
+                );*/
             }
         }
 
