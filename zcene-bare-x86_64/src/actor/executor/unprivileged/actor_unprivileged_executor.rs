@@ -44,6 +44,14 @@ where
     marker: PhantomData<H>,
 }
 
+impl<A, B, H> ActorUnprivilegedExecutor<A, B, H>
+where
+    A: Actor<H>,
+    B: ActorContextBuilder<A, H>,
+    H: ActorHandler<CreateContext = (), DestroyContext = ()>,
+{
+}
+
 impl<A, B, H> Future for ActorUnprivilegedExecutor<A, B, H>
 where
     A: Actor<H>,
@@ -81,21 +89,9 @@ where
                                 .initial_memory_address()
                                 .as_u64();
 
-                            crate::kernel::logger::println!(
-                                "before enter {:X?} {:X?}",
-                                x86::current::registers::rsp(),
-                                x86::current::registers::rbp()
-                            );
-
                             unsafe {
                                 Self::enter(&mut actor, &mut event, user_stack, Self::create_main);
                             }
-
-                            crate::kernel::logger::println!(
-                                "after enter{:X?} {:X?}",
-                                x86::current::registers::rsp(),
-                                x86::current::registers::rbp()
-                            );
                         }
                         Some(ActorUnprivilegedStageExecutorContext::SystemCall(
                             system_call_context,
@@ -118,7 +114,6 @@ where
                     }
 
                     loop {
-                        println!("{:?}", event);
                         match replace(&mut event, ActorUnprivilegedStageExecutorEvent::None) {
                             ActorUnprivilegedStageExecutorEvent::None => break,
                             ActorUnprivilegedStageExecutorEvent::SystemCall(system_call) => {
@@ -129,24 +124,12 @@ where
 
                                 match r#type {
                                     ActorUnprivilegedStageExecutorSystemCallType::Continue => unsafe {
-                                        crate::kernel::logger::println!(
-                                            "before return {:X?} {:X?}",
-                                            x86::current::registers::rsp(),
-                                            x86::current::registers::rbp()
-                                        );
-
                                         Self::system_return(
                                             &mut actor,
                                             &mut event,
                                             system_call_context.rsp(),
                                             system_call_context.rip(),
                                             system_call_context.rflags(),
-                                        );
-
-                                        crate::kernel::logger::println!(
-                                            "after return {:X?} {:X?}",
-                                            x86::current::registers::rsp(),
-                                            x86::current::registers::rbp()
                                         );
                                     },
                                     ActorUnprivilegedStageExecutorSystemCallType::Preempt => {
@@ -213,8 +196,6 @@ where
                     }
                 }
                 Some(ActorUnprivilegedExecutorState::Receive(state)) => {
-                    println!("continue with receive...");
-
                     let mut actor = state.into_inner().actor;
 
                     let result = {
@@ -242,10 +223,8 @@ where
                     }
                 }
                 Some(ActorUnprivilegedExecutorState::Handle(state)) => {
-                    println!("continue with handle");
                 }
                 Some(ActorUnprivilegedExecutorState::Destroy(state)) => {
-                    println!("continue with destroy");
                 }
                 None => return Poll::Ready(()),
             }
@@ -295,56 +274,7 @@ where
         unsafe { asm!("mov rdi, 0x2", "syscall", options(noreturn)) }
     }
 
-    /*#[naked]
-    unsafe extern "C" fn enter(
-        actor: &mut A,
-        event: &mut ActorUnprivilegedStageExecutorEvent,
-        stack: u64,
-        main: extern "C" fn(&mut A) -> !,
-    ) {
-        naked_asm!(
-            //
-            // Save event address to kernel stack
-            //
-            "push rsi",
-            //
-            // Save callee-saved registers to kernel stack
-            //
-            "push rbx",
-            "push r12",
-            "push r13",
-            "push r14",
-            "push r15",
-            //
-            // Temporarily save current kernel stack
-            //
-            "mov rax, rsp",
-            //
-            // Create interrupt frame for returning into unprivileged mode
-            //
-            "push 32 | 3",
-            "push rdx",
-            "push 0x200",
-            "push 40 | 3",
-            "push rcx",
-            //
-            // Store previously temporarily saved kernel stack
-            //
-            "mov rdx, rax",
-            "shr rdx, 32",
-            "mov rcx, 0xC0000102",
-            "wrmsr",
-            //
-            // Perform return
-            //
-            "iretq",
-            //
-            // Emergency halt
-            //
-            "hlt",
-        )
-    }*/
-
+    #[no_mangle]
     #[inline(never)]
     unsafe extern "C" fn enter(
         actor: &mut A,
@@ -353,7 +283,15 @@ where
         main: extern "C" fn(&mut A) -> !,
     ) {
         asm!(
+            //
+            // Save callee-saved registers to kernel stack
+            //
+            "push rbx",
             "push rbp",
+            "push r12",
+            "push r13",
+            "push r14",
+            "push r15",
             //
             // Save inline return address
             //
@@ -363,14 +301,6 @@ where
             // Save event address to kernel stack
             //
             "push rsi",
-            //
-            // Save callee-saved registers to kernel stack
-            //
-            "push rbx",
-            "push r12",
-            "push r13",
-            "push r14",
-            "push r15",
             //
             // Temporarily save current kernel stack
             //
@@ -398,16 +328,24 @@ where
             // Inline label for return
             //
             "2:",
+            //
+            // Restore callee-saved registers
+            //
+            "pop r15",
+            "pop r14",
+            "pop r13",
+            "pop r12",
             "pop rbp",
+            "pop rbx",
             in("rdi") actor,
             in("rsi") event,
             in("rdx") stack,
             in("rcx") main,
-
             clobber_abi("C"),
         )
     }
 
+    #[no_mangle]
     #[inline(never)]
     unsafe extern "C" fn system_return(
         actor: &mut A,
@@ -418,6 +356,15 @@ where
     ) {
         asm!(
             //
+            // Save callee-saved registers to kernel stack
+            //
+            "push rbx",
+            "push rbp",
+            "push r12",
+            "push r13",
+            "push r14",
+            "push r15",
+            //
             // Save inline return address
             //
             "lea rax, [2f]",
@@ -427,13 +374,9 @@ where
             //
             "push rsi",
             //
-            // Save callee-saved registers to kernel stack
+            // Temporarily save current kernel stack
             //
-            "push rbx",
-            "push r12",
-            "push r13",
-            "push r14",
-            "push r15",
+            "mov rax, rsp",
             //
             // Move arguments into temporary registers
             //
@@ -454,14 +397,6 @@ where
             "mov rcx, r10",
             "mov r11, r8",
             //
-            // Restore callee-saved registers from user stack
-            //
-            "pop r15",
-            "pop r14",
-            "pop r13",
-            "pop r12",
-            "pop rbx",
-            //
             // Perform return
             //
             "sysretq",
@@ -469,7 +404,15 @@ where
             // Inline label for return
             //
             "2:",
-
+            //
+            // Restore callee-saved registers
+            //
+            "pop r15",
+            "pop r14",
+            "pop r13",
+            "pop r12",
+            "pop rbp",
+            "pop rbx",
             in("rdi") actor,
             in("rsi") event,
             in("rdx") stack,
@@ -480,88 +423,31 @@ where
         )
     }
 
-    /*#[naked]
-    unsafe extern "C" fn system_return(
-        actor: &mut A,
-        event: &mut ActorUnprivilegedStageExecutorEvent,
-        stack: u64,
-        rip: u64,
-        rflags: u64,
-    ) {
-        naked_asm!(
-            //
-            // Save event address to kernel stack
-            //
-            "push rsi",
-            //
-            // Save callee-saved registers to kernel stack
-            //
-            "push rbx",
-            "push r12",
-            "push r13",
-            "push r14",
-            "push r15",
-            //
-            // Move arguments into temporary registers
-            //
-            "mov r9, rdx",
-            "mov r10, rcx",
-            //
-            // Store kernel stack
-            //
-            "mov rax, rsp",
-            "mov rdx, rsp",
-            "shr rdx, 32",
-            "mov rcx, 0xC0000102",
-            "wrmsr",
-            //
-            // Load user stack
-            //
-            "mov rsp, r9",
-            "mov rcx, r10",
-            "mov r11, r8",
-            //
-            // Restore callee-saved registers from user stack
-            //
-            "pop r15",
-            "pop r14",
-            "pop r13",
-            "pop r12",
-            "pop rbx",
-            //
-            // Perform return
-            //
-            "sysretq",
-            //
-            // Emergency halt
-            //
-            "hlt",
-        )
-    }*/
-
-    #[naked]
+    #[inline(never)]
     unsafe extern "C" fn r#continue(
         actor: &mut A,
         event: &mut ActorUnprivilegedStageExecutorEvent,
         context: &ActorUnprivilegedStageExecutorDeadlinePreemptionContext,
     ) {
-        naked_asm!(
-            //
-            // Save event address to kernel stack
-            //
-            "push rsi",
+        asm!(
             //
             // Save callee-saved registers to kernel stack
             //
             "push rbx",
+            "push rbp",
             "push r12",
             "push r13",
             "push r14",
             "push r15",
             //
-            // Temporarily save the context
+            // Save inline return address
             //
-            "mov r8, rdx",
+            "lea rax, [2f]",
+            "push rax",
+            //
+            // Save event address to kernel stack
+            //
+            "push rsi",
             //
             // Store kernel stack
             //
@@ -597,6 +483,20 @@ where
             // Emergency halt
             //
             "hlt",
+            //
+            // Restore callee-saved registers
+            //
+            "2:",
+            "pop r15",
+            "pop r14",
+            "pop r13",
+            "pop r12",
+            "pop rbp",
+            "pop rbx",
+            in("rdi") actor,
+            in("rsi") event,
+            in("r8") context,
+            clobber_abi("C"),
         )
     }
 }

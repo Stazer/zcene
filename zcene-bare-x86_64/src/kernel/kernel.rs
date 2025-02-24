@@ -144,24 +144,53 @@ where
     type Message = ();
 
     async fn create(&mut self, context: H::CreateContext) -> Result<(), ActorCreateError> {
-        for i in 0..1 {
+        for i in 0..5 {
             unsafe {
                 core::arch::asm!(
+                    "push rbx",
+                    "push rbp",
+                    "push r12",
+                    "push r13",
+                    "push r14",
+                    "push r15",
+                    "mov rdi, 0",
                     "syscall",
+                    "pop r15",
+                    "pop r14",
+                    "pop r13",
+                    "pop r12",
+                    "pop rbp",
+                    "pop rbx",
                     in("rdi") 0,
+                    clobber_abi("C"),
                     options(nostack),
                 );
 
-                /*for i in 0..100000000 {
+                for i in 0..100000000 {
                     core::hint::black_box(());
                     x86_64::instructions::nop();
                 }
 
                 core::arch::asm!(
+                    "push rbx",
+                    "push rbp",
+                    "push r12",
+                    "push r13",
+                    "push r14",
+                    "push r15",
+                    "mov rdi, 1",
                     "syscall",
+                    "pop r15",
+                    "pop r14",
+                    "pop r13",
+                    "pop r12",
+                    "pop rbp",
+                    "pop rbx",
                     in("rdi") 1,
+                    clobber_abi("C"),
                     options(nostack),
-                );*/
+                );
+
             }
         }
 
@@ -217,20 +246,6 @@ impl Kernel {
 
         use crate::actor::ActorSpawnSpecification;
         use crate::actor::{ActorInlineSpawnSpecification, ActorUnprivilegedSpawnSpecification};
-
-        /*Kernel::get()
-            .actor_system()
-            .spawn(ActorSpawnSpecification::new(
-                ApplicationActor::default(),
-                ActorInlineSpawnSpecification::new().into(),
-            ));
-
-        Kernel::get()
-            .actor_system()
-            .spawn(ActorSpawnSpecification::new(
-                ApplicationActor::default(),
-                ActorInlineSpawnSpecification::new().into(),
-            ));*/
 
         use core::num::NonZero;
 
@@ -428,21 +443,6 @@ impl Kernel {
 
             local_interrupt_manager
         });
-
-        /*let spawn_result = actor_system.spawn(KernelActorSpawnSpecification::new(
-            TimerActor::default(),
-            KernelActorExecutionMode::Privileged,
-            memory_manager.kernel_image_virtual_memory_region(),
-        ));
-
-        let timer_actor = match spawn_result {
-            Ok(timer_actor) => timer_actor,
-            Err(error) => {
-                logger.writer(|w| write!(w, "Error {:?}\n", error));
-
-                return Err(error.into());
-            }
-        };*/
 
         let this = Self {
             logger,

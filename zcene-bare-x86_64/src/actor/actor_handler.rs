@@ -86,24 +86,12 @@ where
             ActorSpawnSpecificationType::Unprivileged(specification) => {
                 self.future_runtime.spawn(
                     async move {
-                        crate::kernel::logger::println!(
-                            "before executor {:X?} {:X?}",
-                            x86::current::registers::rsp(),
-                            x86::current::registers::rbp()
-                        );
-
                         ActorUnprivilegedExecutor::new(
                             Some(ActorUnprivilegedExecutorCreateState::new(Box::new(actor), None).into()),
                             receiver,
                             ActorCommonContextBuilder::default(),
                             *specification.deadline_in_milliseconds(),
                         ).await;
-
-                        crate::kernel::logger::println!(
-                            "after executor {:X?} {:X?}",
-                            x86::current::registers::rsp(),
-                            x86::current::registers::rbp()
-                        );
                     }
                 );
             }
@@ -114,5 +102,19 @@ where
 
     fn enter(&self, specification: Self::EnterSpecification) -> Result<(), ActorEnterError> {
         Ok(self.future_runtime.run())
+    }
+}
+
+use zcene_core::actor::{ActorMailbox, ActorDiscoveryHandler};
+
+impl<H> ActorDiscoveryHandler for ActorHandler<H>
+where
+    H: FutureRuntimeHandler,
+{
+    fn discover<M>(&self) -> Option<ActorMailbox<M, Self>>
+    where
+        M: ActorMessage
+    {
+        None
     }
 }
