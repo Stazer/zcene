@@ -38,7 +38,7 @@ dependencies = [
 
 [tasks.run-bare-x86_64]
 args = [
-    "-d", "int",
+    #"-d", "int",
     "-no-reboot",
     "-nographic",
     "-cpu", "qemu64",

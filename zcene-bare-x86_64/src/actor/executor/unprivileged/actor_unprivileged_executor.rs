@@ -11,6 +11,7 @@ use crate::kernel::logger::println;
 use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
 use core::future::Future;
+use core::ptr::NonNull;
 use core::marker::PhantomData;
 use core::mem::replace;
 use core::num::NonZero;
@@ -24,7 +25,19 @@ use zcene_core::actor::{
 };
 use ztd::{Constructor, From};
 
-use x86::current::registers::rsp;
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*#[derive(Constructor)]
+pub struct ActorUnprivilegedStageExecutor<A, B, H>
+where
+    A: Actor<H>,
+    B: ActorContextBuilder<A, H>,
+    H: ActorHandler<CreateContext = (), DestroyContext = ()>,
+{
+    context: Option<ActorUnprivilegedStageExecutorContext>,
+    #[Constructor(default)]
+    marker: PhantomData<H>,
+}*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -50,6 +63,178 @@ where
     B: ActorContextBuilder<A, H>,
     H: ActorHandler<CreateContext = (), DestroyContext = ()>,
 {
+    fn handle_create(
+        &mut self,
+        context: &mut Context<'_>,
+        state: ActorUnprivilegedExecutorCreateState<A, H>,
+    ) -> Option<Poll<()>> {
+        let ActorUnprivilegedExecutorCreateStateInner {
+            mut actor,
+            context: stage_context,
+            ..
+        } = state.into_inner();
+
+        let mut event = ActorUnprivilegedStageExecutorEvent::None;
+
+        if let Some(deadline_in_milliseconds) = self.deadline_in_milliseconds {
+            crate::kernel::Kernel::get()
+                .interrupt_manager()
+                .reset_oneshot(Duration::from_millis(
+                    usize::from(deadline_in_milliseconds).r#as(),
+                ));
+        }
+
+        match stage_context {
+            None => {
+                let user_stack = crate::kernel::Kernel::get()
+                    .memory_manager()
+                    .allocate_user_stack()
+                    .unwrap()
+                    .initial_memory_address()
+                    .as_u64();
+
+                unsafe {
+                    Self::enter(&mut actor, &mut event, user_stack, Self::create_main);
+                }
+            }
+            Some(ActorUnprivilegedStageExecutorContext::SystemCall(
+                system_call_context,
+            )) => unsafe {
+                Self::system_return(
+                    &mut actor,
+                    &mut event,
+                    system_call_context.rsp(),
+                    system_call_context.rip(),
+                    system_call_context.rflags(),
+                );
+            },
+            Some(ActorUnprivilegedStageExecutorContext::DeadlinePreemption(
+                deadline_preemption_context,
+            )) => {
+                unsafe {
+                    Self::r#continue(&mut actor, &mut event, &deadline_preemption_context);
+                }
+            },
+        }
+
+        loop {
+            match replace(&mut event, ActorUnprivilegedStageExecutorEvent::None) {
+                ActorUnprivilegedStageExecutorEvent::None => break,
+                ActorUnprivilegedStageExecutorEvent::SystemCall(system_call) => {
+                    let ActorUnprivilegedStageExecutorSystemCallInner {
+                        r#type,
+                        context: system_call_context,
+                    } = system_call.into_inner();
+
+                    match r#type {
+                        ActorUnprivilegedStageExecutorSystemCallType::Continue => unsafe {
+                            Self::system_return(
+                                &mut actor,
+                                &mut event,
+                                system_call_context.rsp(),
+                                system_call_context.rip(),
+                                system_call_context.rflags(),
+                            );
+                        },
+                        ActorUnprivilegedStageExecutorSystemCallType::Preempt => {
+                            self.state = Some(
+                                ActorUnprivilegedExecutorCreateState::new(
+                                    actor,
+                                    Some(system_call_context.into()),
+                                )
+                                    .into(),
+                            );
+
+                            context.waker().wake_by_ref();
+
+                            return Some(Poll::Pending);
+                        }
+                        ActorUnprivilegedStageExecutorSystemCallType::Poll(
+                            Poll::Pending,
+                        ) => {
+                            todo!()
+                        }
+                        ActorUnprivilegedStageExecutorSystemCallType::Poll(
+                            Poll::Ready(()),
+                        ) => {
+                            self.state = Some(
+                                ActorUnprivilegedExecutorReceiveState::new(actor)
+                                    .into(),
+                            );
+                            break;
+                        }
+                        ActorUnprivilegedStageExecutorSystemCallType::Unknown(_) => {
+                            // error
+                            todo!()
+                        }
+                    }
+                }
+                ActorUnprivilegedStageExecutorEvent::DeadlinePreemption(
+                    deadline_preemption,
+                ) => {
+                    let ActorUnprivilegedStageExecutorDeadlinePreemptionInner {
+                        context: deadline_preemption_context,
+                    } = deadline_preemption.into_inner();
+
+                    self.state = Some(
+                        ActorUnprivilegedExecutorCreateState::new(
+                            actor,
+                            Some(deadline_preemption_context.into()),
+                        )
+                            .into(),
+                    );
+
+                    crate::kernel::Kernel::get()
+                        .interrupt_manager()
+                        .notify_local_end_of_interrupt();
+
+                    context.waker().wake_by_ref();
+
+                    return Some(Poll::Pending);
+                }
+                ActorUnprivilegedStageExecutorEvent::Exception => {
+                    // error
+                    todo!()
+                }
+            }
+        }
+
+        None
+    }
+
+    fn handle_receive(
+        &mut self,
+        context: &mut Context<'_>,
+        state: ActorUnprivilegedExecutorReceiveState<A, H>,
+    ) -> Option<Poll<()>> {
+        let mut actor = state.into_inner().actor;
+
+        let result = {
+            let mut pinned = pin!(self.receiver.receive());
+
+            pinned.as_mut().poll(context)
+        };
+
+        match result {
+            Poll::Pending => {
+                self.state =
+                    Some(ActorUnprivilegedExecutorReceiveState::new(actor).into());
+
+                return Some(Poll::Pending);
+            }
+            Poll::Ready(None) => {
+                self.state =
+                    Some(ActorUnprivilegedExecutorDestroyState::new(actor, None).into());
+            }
+            Poll::Ready(Some(message)) => {
+                self.state = Some(
+                    ActorUnprivilegedExecutorHandleState::new(actor, message).into(),
+                );
+            }
+        }
+
+        None
+    }
 }
 
 impl<A, B, H> Future for ActorUnprivilegedExecutor<A, B, H>
@@ -64,162 +249,16 @@ where
         loop {
             match self.state.take() {
                 Some(ActorUnprivilegedExecutorState::Create(state)) => {
-                    let ActorUnprivilegedExecutorCreateStateInner {
-                        mut actor,
-                        context: stage_context,
-                        ..
-                    } = state.into_inner();
-
-                    let mut event = ActorUnprivilegedStageExecutorEvent::None;
-
-                    if let Some(deadline_in_milliseconds) = self.deadline_in_milliseconds {
-                        crate::kernel::Kernel::get()
-                            .interrupt_manager()
-                            .reset_oneshot(Duration::from_millis(
-                                usize::from(deadline_in_milliseconds).r#as(),
-                            ));
-                    }
-
-                    match stage_context {
-                        None => {
-                            let user_stack = crate::kernel::Kernel::get()
-                                .memory_manager()
-                                .allocate_user_stack()
-                                .unwrap()
-                                .initial_memory_address()
-                                .as_u64();
-
-                            unsafe {
-                                Self::enter(&mut actor, &mut event, user_stack, Self::create_main);
-                            }
-                        }
-                        Some(ActorUnprivilegedStageExecutorContext::SystemCall(
-                            system_call_context,
-                        )) => unsafe {
-                            Self::system_return(
-                                &mut actor,
-                                &mut event,
-                                system_call_context.rsp(),
-                                system_call_context.rip(),
-                                system_call_context.rflags(),
-                            );
-                        },
-                        Some(ActorUnprivilegedStageExecutorContext::DeadlinePreemption(
-                            deadline_preemption_context,
-                        )) => {
-                            unsafe {
-                                Self::r#continue(&mut actor, &mut event, &deadline_preemption_context);
-                            }
-                        },
-                    }
-
-                    loop {
-                        match replace(&mut event, ActorUnprivilegedStageExecutorEvent::None) {
-                            ActorUnprivilegedStageExecutorEvent::None => break,
-                            ActorUnprivilegedStageExecutorEvent::SystemCall(system_call) => {
-                                let ActorUnprivilegedStageExecutorSystemCallInner {
-                                    r#type,
-                                    context: system_call_context,
-                                } = system_call.into_inner();
-
-                                match r#type {
-                                    ActorUnprivilegedStageExecutorSystemCallType::Continue => unsafe {
-                                        Self::system_return(
-                                            &mut actor,
-                                            &mut event,
-                                            system_call_context.rsp(),
-                                            system_call_context.rip(),
-                                            system_call_context.rflags(),
-                                        );
-                                    },
-                                    ActorUnprivilegedStageExecutorSystemCallType::Preempt => {
-                                        self.state = Some(
-                                            ActorUnprivilegedExecutorCreateState::new(
-                                                actor,
-                                                Some(system_call_context.into()),
-                                            )
-                                            .into(),
-                                        );
-
-                                        context.waker().wake_by_ref();
-
-                                        return Poll::Pending;
-                                    }
-                                    ActorUnprivilegedStageExecutorSystemCallType::Poll(
-                                        Poll::Pending,
-                                    ) => {
-                                        todo!()
-                                    }
-                                    ActorUnprivilegedStageExecutorSystemCallType::Poll(
-                                        Poll::Ready(()),
-                                    ) => {
-                                        self.state = Some(
-                                            ActorUnprivilegedExecutorReceiveState::new(actor)
-                                                .into(),
-                                        );
-                                        break;
-                                    }
-                                    ActorUnprivilegedStageExecutorSystemCallType::Unknown(_) => {
-                                        // error
-                                        todo!()
-                                    }
-                                }
-                            }
-                            ActorUnprivilegedStageExecutorEvent::DeadlinePreemption(
-                                deadline_preemption,
-                            ) => {
-                                let ActorUnprivilegedStageExecutorDeadlinePreemptionInner {
-                                    context: deadline_preemption_context,
-                                } = deadline_preemption.into_inner();
-
-                                self.state = Some(
-                                    ActorUnprivilegedExecutorCreateState::new(
-                                        actor,
-                                        Some(deadline_preemption_context.into()),
-                                    )
-                                    .into(),
-                                );
-
-                                crate::kernel::Kernel::get()
-                                    .interrupt_manager()
-                                    .notify_local_end_of_interrupt();
-
-                                context.waker().wake_by_ref();
-
-                                return Poll::Pending;
-                            }
-                            ActorUnprivilegedStageExecutorEvent::Exception => {
-                                // error
-                                todo!()
-                            }
-                        }
+                    if let Some(poll) = self.handle_create(
+                        context,
+                        state,
+                    ) {
+                        return poll;
                     }
                 }
                 Some(ActorUnprivilegedExecutorState::Receive(state)) => {
-                    let mut actor = state.into_inner().actor;
-
-                    let result = {
-                        let mut pinned = pin!(self.receiver.receive());
-
-                        pinned.as_mut().poll(context)
-                    };
-
-                    match result {
-                        Poll::Pending => {
-                            self.state =
-                                Some(ActorUnprivilegedExecutorReceiveState::new(actor).into());
-
-                            return Poll::Pending;
-                        }
-                        Poll::Ready(None) => {
-                            self.state =
-                                Some(ActorUnprivilegedExecutorDestroyState::new(actor).into());
-                        }
-                        Poll::Ready(Some(message)) => {
-                            self.state = Some(
-                                ActorUnprivilegedExecutorHandleState::new(actor, message).into(),
-                            );
-                        }
+                    if let Some(poll) = self.handle_receive(context, state) {
+                        return poll;
                     }
                 }
                 Some(ActorUnprivilegedExecutorState::Handle(state)) => {
@@ -262,7 +301,7 @@ where
         unsafe { asm!("mov rdi, 0x2", "syscall", options(noreturn)) }
     }
 
-    extern "C" fn destroy_main(actor: A) -> ! {
+    extern "C" fn destroy_main(actor: Box<A>) -> ! {
         let mut context = Context::from_waker(Waker::noop());
         let mut pinned = pin!(actor.destroy(()));
 
