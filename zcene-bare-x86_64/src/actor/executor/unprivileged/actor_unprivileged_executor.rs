@@ -235,6 +235,145 @@ where
 
         None
     }
+
+    fn handle_destroy(
+        &mut self,
+        context: &mut Context<'_>,
+        state: ActorUnprivilegedExecutorDestroyState<A, H>,
+    ) -> Option<Poll<()>> {
+        let ActorUnprivilegedExecutorDestroyStateInner {
+            mut actor,
+            context: stage_context,
+            ..
+        } = state.into_inner();
+
+        let mut event = ActorUnprivilegedStageExecutorEvent::None;
+
+        if let Some(deadline_in_milliseconds) = self.deadline_in_milliseconds {
+            crate::kernel::Kernel::get()
+                .interrupt_manager()
+                .reset_oneshot(Duration::from_millis(
+                    usize::from(deadline_in_milliseconds).r#as(),
+                ));
+        }
+
+        match stage_context {
+            None => {
+                let user_stack = crate::kernel::Kernel::get()
+                    .memory_manager()
+                    .allocate_user_stack()
+                    .unwrap()
+                    .initial_memory_address()
+                    .as_u64();
+
+                unsafe {
+                    Self::enter(&mut actor, &mut event, user_stack, Self::destroy_main);
+                }
+            }
+            Some(ActorUnprivilegedStageExecutorContext::SystemCall(
+                system_call_context,
+            )) => unsafe {
+                Self::system_return(
+                    &mut actor,
+                    &mut event,
+                    system_call_context.rsp(),
+                    system_call_context.rip(),
+                    system_call_context.rflags(),
+                );
+            },
+            Some(ActorUnprivilegedStageExecutorContext::DeadlinePreemption(
+                deadline_preemption_context,
+            )) => {
+                unsafe {
+                    Self::r#continue(&mut actor, &mut event, &deadline_preemption_context);
+                }
+            },
+        }
+
+        loop {
+            match replace(&mut event, ActorUnprivilegedStageExecutorEvent::None) {
+                ActorUnprivilegedStageExecutorEvent::None => break,
+                ActorUnprivilegedStageExecutorEvent::SystemCall(system_call) => {
+                    let ActorUnprivilegedStageExecutorSystemCallInner {
+                        r#type,
+                        context: system_call_context,
+                    } = system_call.into_inner();
+
+                    match r#type {
+                        ActorUnprivilegedStageExecutorSystemCallType::Continue => unsafe {
+                            Self::system_return(
+                                &mut actor,
+                                &mut event,
+                                system_call_context.rsp(),
+                                system_call_context.rip(),
+                                system_call_context.rflags(),
+                            );
+                        },
+                        ActorUnprivilegedStageExecutorSystemCallType::Preempt => {
+                            self.state = Some(
+                                ActorUnprivilegedExecutorCreateState::new(
+                                    actor,
+                                    Some(system_call_context.into()),
+                                )
+                                    .into(),
+                            );
+
+                            context.waker().wake_by_ref();
+
+                            return Some(Poll::Pending);
+                        }
+                        ActorUnprivilegedStageExecutorSystemCallType::Poll(
+                            Poll::Pending,
+                        ) => {
+                            todo!()
+                        }
+                        ActorUnprivilegedStageExecutorSystemCallType::Poll(
+                            Poll::Ready(()),
+                        ) => {
+                            self.state = Some(
+                                ActorUnprivilegedExecutorReceiveState::new(actor)
+                                    .into(),
+                            );
+                            break;
+                        }
+                        ActorUnprivilegedStageExecutorSystemCallType::Unknown(_) => {
+                            // error
+                            todo!()
+                        }
+                    }
+                }
+                ActorUnprivilegedStageExecutorEvent::DeadlinePreemption(
+                    deadline_preemption,
+                ) => {
+                    let ActorUnprivilegedStageExecutorDeadlinePreemptionInner {
+                        context: deadline_preemption_context,
+                    } = deadline_preemption.into_inner();
+
+                    self.state = Some(
+                        ActorUnprivilegedExecutorCreateState::new(
+                            actor,
+                            Some(deadline_preemption_context.into()),
+                        )
+                            .into(),
+                    );
+
+                    crate::kernel::Kernel::get()
+                        .interrupt_manager()
+                        .notify_local_end_of_interrupt();
+
+                    context.waker().wake_by_ref();
+
+                    return Some(Poll::Pending);
+                }
+                ActorUnprivilegedStageExecutorEvent::Exception => {
+                    // error
+                    todo!()
+                }
+            }
+        }
+
+        None
+    }
 }
 
 impl<A, B, H> Future for ActorUnprivilegedExecutor<A, B, H>
