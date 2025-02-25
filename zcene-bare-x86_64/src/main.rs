@@ -6,9 +6,9 @@
 #![feature(stmt_expr_attributes)]
 #![feature(sync_unsafe_cell)]
 #![feature(unsized_const_params)]
+#![feature(box_as_ptr)]
 #![no_main]
 #![no_std]
-#![feature(box_as_ptr)]
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

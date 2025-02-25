@@ -84,16 +84,17 @@ where
                 ))?
             }
             ActorSpawnSpecificationType::Unprivileged(specification) => {
-                self.future_runtime.spawn(
-                    async move {
-                        ActorUnprivilegedExecutor::new(
-                            Some(ActorUnprivilegedExecutorCreateState::new(Box::new(actor), None).into()),
-                            receiver,
-                            ActorCommonContextBuilder::default(),
-                            *specification.deadline_in_milliseconds(),
-                        ).await;
-                    }
-                );
+                self.future_runtime.spawn(async move {
+                    ActorUnprivilegedExecutor::new(
+                        Some(
+                            ActorUnprivilegedExecutorCreateState::new(Box::new(actor), None).into(),
+                        ),
+                        receiver,
+                        ActorCommonContextBuilder::default(),
+                        *specification.deadline_in_milliseconds(),
+                    )
+                    .await;
+                });
             }
         };
 
@@ -105,7 +106,7 @@ where
     }
 }
 
-use zcene_core::actor::{ActorMailbox, ActorDiscoveryHandler};
+use zcene_core::actor::{ActorDiscoveryHandler, ActorMailbox};
 
 impl<H> ActorDiscoveryHandler for ActorHandler<H>
 where
@@ -113,7 +114,7 @@ where
 {
     fn discover<M>(&self) -> Option<ActorMailbox<M, Self>>
     where
-        M: ActorMessage
+        M: ActorMessage,
     {
         None
     }

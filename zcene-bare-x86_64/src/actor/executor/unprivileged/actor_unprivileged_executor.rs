@@ -1,8 +1,9 @@
 use crate::actor::{
     ActorUnprivilegedExecutorCreateState, ActorUnprivilegedExecutorCreateStateInner,
-    ActorUnprivilegedExecutorDestroyState, ActorUnprivilegedExecutorHandleState,
-    ActorUnprivilegedExecutorReceiveState, ActorUnprivilegedExecutorState,
-    ActorUnprivilegedStageExecutorContext, ActorUnprivilegedStageExecutorDeadlinePreemptionContext,
+    ActorUnprivilegedExecutorDestroyState, ActorUnprivilegedExecutorDestroyStateInner,
+    ActorUnprivilegedExecutorHandleState, ActorUnprivilegedExecutorReceiveState,
+    ActorUnprivilegedExecutorState, ActorUnprivilegedStageExecutorContext,
+    ActorUnprivilegedStageExecutorDeadlinePreemptionContext,
     ActorUnprivilegedStageExecutorDeadlinePreemptionInner, ActorUnprivilegedStageExecutorEvent,
     ActorUnprivilegedStageExecutorSystemCall, ActorUnprivilegedStageExecutorSystemCallInner,
     ActorUnprivilegedStageExecutorSystemCallType,
@@ -11,11 +12,11 @@ use crate::kernel::logger::println;
 use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
 use core::future::Future;
-use core::ptr::NonNull;
 use core::marker::PhantomData;
 use core::mem::replace;
 use core::num::NonZero;
 use core::pin::{pin, Pin};
+use core::ptr::NonNull;
 use core::task::{Context, Poll, Waker};
 use core::time::Duration;
 use pin_project::pin_project;
@@ -27,17 +28,120 @@ use ztd::{Constructor, From};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/*#[derive(Constructor)]
-pub struct ActorUnprivilegedStageExecutor<A, B, H>
-where
-    A: Actor<H>,
-    B: ActorContextBuilder<A, H>,
-    H: ActorHandler<CreateContext = (), DestroyContext = ()>,
-{
-    context: Option<ActorUnprivilegedStageExecutorContext>,
-    #[Constructor(default)]
-    marker: PhantomData<H>,
-}*/
+pub trait ActorUnprivilegedExecutorRegisterArgument {
+    fn as_register_value(self) -> usize;
+}
+
+impl<'a, A> ActorUnprivilegedExecutorRegisterArgument for &'a mut A {
+    fn as_register_value(self) -> usize {
+        self as *mut A as _
+    }
+}
+
+impl<A> ActorUnprivilegedExecutorRegisterArgument for *mut A {
+    fn as_register_value(self) -> usize {
+        self as _
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub trait ActorUnprivilegedExecutorStageHandler {
+    fn begin();
+
+    fn r#continue();
+
+    fn handle();
+}
+
+macro_rules! push_callee_saved_registers {
+    () => {
+        r#"
+            push rbx;
+            push rbp;
+            push r12;
+            push r13;
+            push r14;
+            push r15;
+        "#
+    };
+}
+
+macro_rules! pop_callee_saved_registers {
+    () => {
+        r#"
+            pop r15;
+            pop r14;
+            pop r13;
+            pop r12;
+            pop rbp;
+            pop rbx;
+        "#
+    };
+}
+
+macro_rules! push_inline_return_address {
+    () => {
+        r#"
+            lea rax, [2f];
+            push rax;
+        "#
+    };
+}
+
+macro_rules! push_event_address {
+    () => {
+        r#"
+            push rsi;
+        "#
+    };
+}
+
+macro_rules! push_kernel_stack {
+    () => {
+        r#"
+            mov rax, rsp;
+            mov rdx, rsp;
+            shr rdx, 32;
+            mov rcx, 0xC0000102;
+            wrmsr;
+        "#
+    };
+}
+
+macro_rules! emergency_halt {
+    () => {
+        r#"
+            hlt;
+        "#
+    };
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub enum ActorUnprivilegedExecutorStageResult {}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub struct LeakingAllocator;
+
+pub type LeakingBox<T> = Box<T, LeakingAllocator>;
+
+use core::alloc::AllocError;
+use core::alloc::Allocator;
+use core::alloc::Layout;
+
+unsafe impl Allocator for LeakingAllocator {
+    fn allocate(&self, _layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        Err(AllocError)
+    }
+
+    unsafe fn deallocate(&self, _data: NonNull<u8>, _layout: Layout) {}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub struct ActorUnprivilegedExecutorHandler {}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -63,6 +167,16 @@ where
     B: ActorContextBuilder<A, H>,
     H: ActorHandler<CreateContext = (), DestroyContext = ()>,
 {
+    fn enable_deadline(&mut self) {
+        if let Some(deadline_in_milliseconds) = self.deadline_in_milliseconds {
+            crate::kernel::Kernel::get()
+                .interrupt_manager()
+                .reset_oneshot(Duration::from_millis(
+                    usize::from(deadline_in_milliseconds).r#as(),
+                ));
+        }
+    }
+
     fn handle_create(
         &mut self,
         context: &mut Context<'_>,
@@ -74,15 +188,9 @@ where
             ..
         } = state.into_inner();
 
-        let mut event = ActorUnprivilegedStageExecutorEvent::None;
+        self.enable_deadline();
 
-        if let Some(deadline_in_milliseconds) = self.deadline_in_milliseconds {
-            crate::kernel::Kernel::get()
-                .interrupt_manager()
-                .reset_oneshot(Duration::from_millis(
-                    usize::from(deadline_in_milliseconds).r#as(),
-                ));
-        }
+        let mut event = ActorUnprivilegedStageExecutorEvent::None;
 
         match stage_context {
             None => {
@@ -94,12 +202,10 @@ where
                     .as_u64();
 
                 unsafe {
-                    Self::enter(&mut actor, &mut event, user_stack, Self::create_main);
+                    Self::execute(actor.as_mut(), &mut event, user_stack, Self::create_main);
                 }
             }
-            Some(ActorUnprivilegedStageExecutorContext::SystemCall(
-                system_call_context,
-            )) => unsafe {
+            Some(ActorUnprivilegedStageExecutorContext::SystemCall(system_call_context)) => unsafe {
                 Self::system_return(
                     &mut actor,
                     &mut event,
@@ -110,10 +216,8 @@ where
             },
             Some(ActorUnprivilegedStageExecutorContext::DeadlinePreemption(
                 deadline_preemption_context,
-            )) => {
-                unsafe {
-                    Self::r#continue(&mut actor, &mut event, &deadline_preemption_context);
-                }
+            )) => unsafe {
+                Self::r#continue(&mut actor, &mut event, &deadline_preemption_context);
             },
         }
 
@@ -142,25 +246,19 @@ where
                                     actor,
                                     Some(system_call_context.into()),
                                 )
-                                    .into(),
+                                .into(),
                             );
 
                             context.waker().wake_by_ref();
 
                             return Some(Poll::Pending);
                         }
-                        ActorUnprivilegedStageExecutorSystemCallType::Poll(
-                            Poll::Pending,
-                        ) => {
+                        ActorUnprivilegedStageExecutorSystemCallType::Poll(Poll::Pending) => {
                             todo!()
                         }
-                        ActorUnprivilegedStageExecutorSystemCallType::Poll(
-                            Poll::Ready(()),
-                        ) => {
-                            self.state = Some(
-                                ActorUnprivilegedExecutorReceiveState::new(actor)
-                                    .into(),
-                            );
+                        ActorUnprivilegedStageExecutorSystemCallType::Poll(Poll::Ready(())) => {
+                            self.state =
+                                Some(ActorUnprivilegedExecutorReceiveState::new(actor).into());
                             break;
                         }
                         ActorUnprivilegedStageExecutorSystemCallType::Unknown(_) => {
@@ -169,9 +267,7 @@ where
                         }
                     }
                 }
-                ActorUnprivilegedStageExecutorEvent::DeadlinePreemption(
-                    deadline_preemption,
-                ) => {
+                ActorUnprivilegedStageExecutorEvent::DeadlinePreemption(deadline_preemption) => {
                     let ActorUnprivilegedStageExecutorDeadlinePreemptionInner {
                         context: deadline_preemption_context,
                     } = deadline_preemption.into_inner();
@@ -181,7 +277,7 @@ where
                             actor,
                             Some(deadline_preemption_context.into()),
                         )
-                            .into(),
+                        .into(),
                     );
 
                     crate::kernel::Kernel::get()
@@ -217,24 +313,22 @@ where
 
         match result {
             Poll::Pending => {
-                self.state =
-                    Some(ActorUnprivilegedExecutorReceiveState::new(actor).into());
+                self.state = Some(ActorUnprivilegedExecutorReceiveState::new(actor).into());
 
                 return Some(Poll::Pending);
             }
             Poll::Ready(None) => {
-                self.state =
-                    Some(ActorUnprivilegedExecutorDestroyState::new(actor, None).into());
+                self.state = Some(ActorUnprivilegedExecutorDestroyState::new(actor, None).into());
             }
             Poll::Ready(Some(message)) => {
-                self.state = Some(
-                    ActorUnprivilegedExecutorHandleState::new(actor, message).into(),
-                );
+                self.state = Some(ActorUnprivilegedExecutorHandleState::new(actor, message).into());
             }
         }
 
         None
     }
+
+    fn handle_handle(&mut self, context: &mut Context<'_>) {}
 
     fn handle_destroy(
         &mut self,
@@ -249,13 +343,7 @@ where
 
         let mut event = ActorUnprivilegedStageExecutorEvent::None;
 
-        if let Some(deadline_in_milliseconds) = self.deadline_in_milliseconds {
-            crate::kernel::Kernel::get()
-                .interrupt_manager()
-                .reset_oneshot(Duration::from_millis(
-                    usize::from(deadline_in_milliseconds).r#as(),
-                ));
-        }
+        self.enable_deadline();
 
         match stage_context {
             None => {
@@ -267,12 +355,15 @@ where
                     .as_u64();
 
                 unsafe {
-                    Self::enter(&mut actor, &mut event, user_stack, Self::destroy_main);
+                    Self::execute(
+                        Box::as_mut_ptr(&mut actor),
+                        &mut event,
+                        user_stack,
+                        Self::destroy_main,
+                    );
                 }
             }
-            Some(ActorUnprivilegedStageExecutorContext::SystemCall(
-                system_call_context,
-            )) => unsafe {
+            Some(ActorUnprivilegedStageExecutorContext::SystemCall(system_call_context)) => unsafe {
                 Self::system_return(
                     &mut actor,
                     &mut event,
@@ -283,14 +374,14 @@ where
             },
             Some(ActorUnprivilegedStageExecutorContext::DeadlinePreemption(
                 deadline_preemption_context,
-            )) => {
-                unsafe {
-                    Self::r#continue(&mut actor, &mut event, &deadline_preemption_context);
-                }
+            )) => unsafe {
+                Self::r#continue(&mut actor, &mut event, &deadline_preemption_context);
             },
         }
 
         loop {
+            println!("event {:X?}", event);
+
             match replace(&mut event, ActorUnprivilegedStageExecutorEvent::None) {
                 ActorUnprivilegedStageExecutorEvent::None => break,
                 ActorUnprivilegedStageExecutorEvent::SystemCall(system_call) => {
@@ -311,29 +402,21 @@ where
                         },
                         ActorUnprivilegedStageExecutorSystemCallType::Preempt => {
                             self.state = Some(
-                                ActorUnprivilegedExecutorCreateState::new(
+                                ActorUnprivilegedExecutorDestroyState::new(
                                     actor,
                                     Some(system_call_context.into()),
                                 )
-                                    .into(),
+                                .into(),
                             );
 
                             context.waker().wake_by_ref();
 
                             return Some(Poll::Pending);
                         }
-                        ActorUnprivilegedStageExecutorSystemCallType::Poll(
-                            Poll::Pending,
-                        ) => {
+                        ActorUnprivilegedStageExecutorSystemCallType::Poll(Poll::Pending) => {
                             todo!()
                         }
-                        ActorUnprivilegedStageExecutorSystemCallType::Poll(
-                            Poll::Ready(()),
-                        ) => {
-                            self.state = Some(
-                                ActorUnprivilegedExecutorReceiveState::new(actor)
-                                    .into(),
-                            );
+                        ActorUnprivilegedStageExecutorSystemCallType::Poll(Poll::Ready(())) => {
                             break;
                         }
                         ActorUnprivilegedStageExecutorSystemCallType::Unknown(_) => {
@@ -342,19 +425,17 @@ where
                         }
                     }
                 }
-                ActorUnprivilegedStageExecutorEvent::DeadlinePreemption(
-                    deadline_preemption,
-                ) => {
+                ActorUnprivilegedStageExecutorEvent::DeadlinePreemption(deadline_preemption) => {
                     let ActorUnprivilegedStageExecutorDeadlinePreemptionInner {
                         context: deadline_preemption_context,
                     } = deadline_preemption.into_inner();
 
                     self.state = Some(
-                        ActorUnprivilegedExecutorCreateState::new(
+                        ActorUnprivilegedExecutorDestroyState::new(
                             actor,
                             Some(deadline_preemption_context.into()),
                         )
-                            .into(),
+                        .into(),
                     );
 
                     crate::kernel::Kernel::get()
@@ -388,10 +469,7 @@ where
         loop {
             match self.state.take() {
                 Some(ActorUnprivilegedExecutorState::Create(state)) => {
-                    if let Some(poll) = self.handle_create(
-                        context,
-                        state,
-                    ) {
+                    if let Some(poll) = self.handle_create(context, state) {
                         return poll;
                     }
                 }
@@ -400,9 +478,11 @@ where
                         return poll;
                     }
                 }
-                Some(ActorUnprivilegedExecutorState::Handle(state)) => {
-                }
+                Some(ActorUnprivilegedExecutorState::Handle(state)) => {}
                 Some(ActorUnprivilegedExecutorState::Destroy(state)) => {
+                    if let Some(poll) = self.handle_destroy(context, state) {
+                        return poll;
+                    }
                 }
                 None => return Poll::Ready(()),
             }
@@ -440,7 +520,9 @@ where
         unsafe { asm!("mov rdi, 0x2", "syscall", options(noreturn)) }
     }
 
-    extern "C" fn destroy_main(actor: Box<A>) -> ! {
+    extern "C" fn destroy_main(actor: *mut A) -> ! {
+        let actor = unsafe { LeakingBox::from_raw_in(actor, LeakingAllocator) };
+
         let mut context = Context::from_waker(Waker::noop());
         let mut pinned = pin!(actor.destroy(()));
 
@@ -449,36 +531,31 @@ where
             Poll::Ready(result) => 0,
         };
 
+        unsafe {
+            asm!(
+                push_callee_saved_registers!(),
+                "mov rdi, 0x0",
+                "syscall",
+                pop_callee_saved_registers!(),
+            )
+        }
+
         unsafe { asm!("mov rdi, 0x2", "syscall", options(noreturn)) }
     }
 
-    #[no_mangle]
     #[inline(never)]
-    unsafe extern "C" fn enter(
-        actor: &mut A,
+    unsafe extern "C" fn execute<T>(
+        mut actor: T,
         mut event: &mut ActorUnprivilegedStageExecutorEvent,
         stack: u64,
-        main: extern "C" fn(&mut A) -> !,
-    ) {
+        function: extern "C" fn(T) -> !,
+    ) where
+        T: ActorUnprivilegedExecutorRegisterArgument,
+    {
         asm!(
-            //
-            // Save callee-saved registers to kernel stack
-            //
-            "push rbx",
-            "push rbp",
-            "push r12",
-            "push r13",
-            "push r14",
-            "push r15",
-            //
-            // Save inline return address
-            //
-            "lea rax, [2f]",
-            "push rax",
-            //
-            // Save event address to kernel stack
-            //
-            "push rsi",
+            push_callee_saved_registers!(),
+            push_inline_return_address!(),
+            push_event_address!(),
             //
             // Temporarily save current kernel stack
             //
@@ -502,28 +579,17 @@ where
             // Perform return
             //
             "iretq",
-            //
-            // Inline label for return
-            //
+            emergency_halt!(),
             "2:",
-            //
-            // Restore callee-saved registers
-            //
-            "pop r15",
-            "pop r14",
-            "pop r13",
-            "pop r12",
-            "pop rbp",
-            "pop rbx",
-            in("rdi") actor,
+            pop_callee_saved_registers!(),
+            in("rdi") actor.as_register_value(),
             in("rsi") event,
             in("rdx") stack,
-            in("rcx") main,
+            in("rcx") function,
             clobber_abi("C"),
         )
     }
 
-    #[no_mangle]
     #[inline(never)]
     unsafe extern "C" fn system_return(
         actor: &mut A,
@@ -533,24 +599,9 @@ where
         rflags: u64,
     ) {
         asm!(
-            //
-            // Save callee-saved registers to kernel stack
-            //
-            "push rbx",
-            "push rbp",
-            "push r12",
-            "push r13",
-            "push r14",
-            "push r15",
-            //
-            // Save inline return address
-            //
-            "lea rax, [2f]",
-            "push rax",
-            //
-            // Save event address to kernel stack
-            //
-            "push rsi",
+            push_callee_saved_registers!(),
+            push_inline_return_address!(),
+            push_event_address!(),
             //
             // Temporarily save current kernel stack
             //
@@ -560,14 +611,7 @@ where
             //
             "mov r9, rdx",
             "mov r10, rcx",
-            //
-            // Store kernel stack
-            //
-            "mov rax, rsp",
-            "mov rdx, rsp",
-            "shr rdx, 32",
-            "mov rcx, 0xC0000102",
-            "wrmsr",
+            push_kernel_stack!(),
             //
             // Load user stack
             //
@@ -578,25 +622,14 @@ where
             // Perform return
             //
             "sysretq",
-            //
-            // Inline label for return
-            //
+            emergency_halt!(),
             "2:",
-            //
-            // Restore callee-saved registers
-            //
-            "pop r15",
-            "pop r14",
-            "pop r13",
-            "pop r12",
-            "pop rbp",
-            "pop rbx",
+            pop_callee_saved_registers!(),
             in("rdi") actor,
             in("rsi") event,
             in("rdx") stack,
             in("rcx") rip,
             in("r8") rflags,
-
             clobber_abi("C"),
         )
     }
@@ -608,32 +641,10 @@ where
         context: &ActorUnprivilegedStageExecutorDeadlinePreemptionContext,
     ) {
         asm!(
-            //
-            // Save callee-saved registers to kernel stack
-            //
-            "push rbx",
-            "push rbp",
-            "push r12",
-            "push r13",
-            "push r14",
-            "push r15",
-            //
-            // Save inline return address
-            //
-            "lea rax, [2f]",
-            "push rax",
-            //
-            // Save event address to kernel stack
-            //
-            "push rsi",
-            //
-            // Store kernel stack
-            //
-            "mov rax, rsp",
-            "mov rdx, rsp",
-            "shr rdx, 32",
-            "mov rcx, 0xC0000102",
-            "wrmsr",
+            push_callee_saved_registers!(),
+            push_inline_return_address!(),
+            push_event_address!(),
+            push_kernel_stack!(),
             //
             // Restore user stack from context
             //
@@ -657,20 +668,12 @@ where
             // Perform return
             //
             "iretq",
-            //
-            // Emergency halt
-            //
-            "hlt",
+            emergency_halt!(),
             //
             // Restore callee-saved registers
             //
             "2:",
-            "pop r15",
-            "pop r14",
-            "pop r13",
-            "pop r12",
-            "pop rbp",
-            "pop rbx",
+            pop_callee_saved_registers!(),
             in("rdi") actor,
             in("rsi") event,
             in("r8") context,

@@ -144,6 +144,7 @@ where
     type Message = ();
 
     async fn create(&mut self, context: H::CreateContext) -> Result<(), ActorCreateError> {
+        return Ok(());
         for i in 0..5 {
             unsafe {
                 core::arch::asm!(
@@ -190,7 +191,6 @@ where
                     clobber_abi("C"),
                     options(nostack),
                 );
-
             }
         }
 
@@ -359,9 +359,11 @@ impl Kernel {
 
         let mut gdt = Box::new(GlobalDescriptorTable::new());
 
-        let kernel_code = gdt.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_CODE64.bits())); // 8
+        let kernel_code = gdt.append(Descriptor::UserSegment(
+            DescriptorFlags::KERNEL_CODE64.bits(),
+        )); // 8
         let kernel_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_DATA.bits())); // 16
-        // order is very important!
+                                                                                                    // order is very important!
         let user_code32 = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE32.bits())); // 24
         let user_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_DATA.bits())); // 32
         let user_code64 = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits())); // 40
@@ -390,10 +392,7 @@ impl Kernel {
             //DS::set_reg(kernel_data);
             //SS::set_reg(kernel_data);
 
-            wrmsr(
-                IA32_STAR,
-                selector,
-            );
+            wrmsr(IA32_STAR, selector);
             wrmsr(
                 IA32_LSTAR,
                 crate::actor::actor_system_call_entry_point as u64,
