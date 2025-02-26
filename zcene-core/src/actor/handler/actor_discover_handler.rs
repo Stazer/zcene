@@ -1,4 +1,4 @@
-use crate::actor::{ActorHandler, ActorAllocatorHandler, ActorMailbox, ActorMessage};
+use crate::actor::{ActorAllocatorHandler, ActorHandler, ActorMailbox, ActorMessage};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

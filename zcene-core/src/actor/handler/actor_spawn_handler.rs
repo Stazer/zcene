@@ -1,6 +1,6 @@
 pub use crate::actor::{
-    ActorCommonBounds,
-    Actor, ActorAddressReference, ActorSpawnError, ActorHandler, ActorAllocatorHandler,
+    Actor, ActorAddressReference, ActorAllocatorHandler, ActorCommonBounds, ActorHandler,
+    ActorSpawnError,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -1,4 +1,6 @@
-use crate::actor::{ActorHandler, ActorAllocatorHandler, ActorMailbox, ActorMailboxMessageSender, ActorMessage};
+use crate::actor::{
+    ActorAllocatorHandler, ActorHandler, ActorMailbox, ActorMailboxMessageSender, ActorMessage,
+};
 use alloc::sync::Weak;
 use core::fmt::{self, Debug, Formatter};
 use ztd::Constructor;

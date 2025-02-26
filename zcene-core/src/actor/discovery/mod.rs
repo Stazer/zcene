@@ -1,4 +1,4 @@
-use crate::actor::{ActorHandler, ActorMessage, ActorWeakMailbox, ActorAllocatorHandler};
+use crate::actor::{ActorAllocatorHandler, ActorHandler, ActorMessage, ActorWeakMailbox};
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
@@ -7,7 +7,8 @@ use core::marker::PhantomData;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub type ActorDiscoveryBucket<M, H> = Vec<ActorWeakMailbox<M, H>, <H as ActorAllocatorHandler>::Allocator>;
+pub type ActorDiscoveryBucket<M, H> =
+    Vec<ActorWeakMailbox<M, H>, <H as ActorAllocatorHandler>::Allocator>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

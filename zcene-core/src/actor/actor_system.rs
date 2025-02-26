@@ -1,6 +1,6 @@
 use crate::actor::{
-    Actor, ActorAddressReference, ActorEnterError, ActorHandler, ActorSpawnError,
-    ActorSystemCreateError, ActorSystemReference, ActorEnterHandler, ActorSpawnHandler, ActorAllocatorHandler,
+    Actor, ActorAddressReference, ActorAllocatorHandler, ActorEnterError, ActorEnterHandler,
+    ActorHandler, ActorSpawnError, ActorSpawnHandler, ActorSystemCreateError, ActorSystemReference,
 };
 use ztd::{Constructor, Method};
 

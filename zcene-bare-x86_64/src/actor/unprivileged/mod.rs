@@ -3,18 +3,23 @@ mod executor;
 pub use executor::*;
 
 use core::marker::PhantomData;
-use zcene_core::actor::{ActorSendError, Actor, ActorHandler, ActorMessage, ActorAddress, ActorMessageSender, ActorFuture};
+use zcene_core::actor::{
+    Actor, ActorAddress, ActorFuture, ActorHandler, ActorMessage, ActorMessageSender,
+    ActorSendError,
+};
 
 use core::arch::asm;
 
 pub struct ActorUnprivilegedHandler;
 
 impl ActorHandler for ActorUnprivilegedHandler {
-    type Address<A> = ActorUnprivilegedAddress<A>
+    type Address<A>
+        = ActorUnprivilegedAddress<A>
     where
         A: Actor<Self>;
     type CreateContext = ();
-    type HandleContext<M> = ()
+    type HandleContext<M>
+        = ()
     where
         M: ActorMessage;
     type DestroyContext = ();
@@ -28,9 +33,8 @@ where
     marker: PhantomData<A::Message>,
 }
 
-impl<A> ActorAddress<A, ActorUnprivilegedHandler> for ActorUnprivilegedAddress<A>
-where
-    A: Actor<ActorUnprivilegedHandler>,
+impl<A> ActorAddress<A, ActorUnprivilegedHandler> for ActorUnprivilegedAddress<A> where
+    A: Actor<ActorUnprivilegedHandler>
 {
 }
 
@@ -60,7 +64,6 @@ where
                     in ("rdx") size_of::<A::Message>(),
                     clobber_abi("C"),
                 );
-
             }
 
             Ok(())

@@ -1,6 +1,6 @@
 use crate::actor::{
-    ActorFuture, ActorHandler, ActorMailboxMessageSender, ActorMessage, ActorMessageSender,
-    ActorSendError, ActorWeakMailbox, ActorAllocatorHandler,
+    ActorAllocatorHandler, ActorFuture, ActorHandler, ActorMailboxMessageSender, ActorMessage,
+    ActorMessageSender, ActorSendError, ActorWeakMailbox,
 };
 use alloc::sync::Arc;
 use core::fmt::{self, Debug, Formatter};

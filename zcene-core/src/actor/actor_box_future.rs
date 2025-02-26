@@ -1,4 +1,4 @@
-use crate::actor::{ActorFuture, ActorAllocatorHandler};
+use crate::actor::{ActorAllocatorHandler, ActorFuture};
 use alloc::boxed::Box;
 use core::pin::Pin;
 

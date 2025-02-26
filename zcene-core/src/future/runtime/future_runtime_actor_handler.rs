@@ -1,6 +1,7 @@
 use crate::actor::{
-    ActorAllocatorHandler, Actor, ActorAddressReference, ActorCommonHandleContext, ActorEnterError, ActorHandler,
-    ActorMessage, ActorSpawnHandler, ActorMessageChannel, ActorMessageChannelAddress, ActorSpawnError, ActorEnterHandler,
+    Actor, ActorAddressReference, ActorAllocatorHandler, ActorCommonHandleContext, ActorEnterError,
+    ActorEnterHandler, ActorHandler, ActorMessage, ActorMessageChannel, ActorMessageChannelAddress,
+    ActorSpawnError, ActorSpawnHandler,
 };
 use crate::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
 use ztd::Constructor;
@@ -30,7 +31,6 @@ where
     where
         M: ActorMessage;
     type DestroyContext = ();
-
 }
 
 impl<H> ActorAllocatorHandler for FutureRuntimeActorHandler<H>

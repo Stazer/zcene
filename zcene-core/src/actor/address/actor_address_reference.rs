@@ -1,4 +1,4 @@
-use crate::actor::{ActorHandler, ActorAllocatorHandler};
+use crate::actor::{ActorAllocatorHandler, ActorHandler};
 use alloc::sync::Arc;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

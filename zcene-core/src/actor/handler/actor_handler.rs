@@ -1,7 +1,4 @@
-pub use crate::actor::{
-    Actor, ActorAddress, ActorAllocator, ActorCommonBounds,
-    ActorMessage,
-};
+pub use crate::actor::{Actor, ActorAddress, ActorCommonBounds, ActorMessage};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
