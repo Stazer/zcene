@@ -76,53 +76,6 @@ pub extern "C" fn actor_deadline_preemption_restore(
     )
 }
 
-/*#[naked]
-pub unsafe extern "C" fn actor_system_call_entry_point() {
-    naked_asm!(
-        //
-        // Save callee-saved registers
-        //
-        "push rbx",
-        "push r12",
-        "push r13",
-        "push r14",
-        "push r15",
-        //
-        // Store user stack
-        //
-        "mov rsi, rsp",
-        "mov r8, rcx",
-        //
-        // Load kernel stack
-        //
-        "mov rcx, 0xC0000102",
-        "rdmsr",
-        "shl rdx, 32",
-        "or rax, rdx",
-        "mov rsp, rax",
-        //
-        // Restore callee-saved registers
-        //
-        "pop r15",
-        "pop r14",
-        "pop r13",
-        "pop r12",
-        "pop rbx",
-        //
-        // Perform restore
-        //
-        "mov rdx, r8",
-        "mov rcx, r11",
-        "pop r8",
-        "cld",
-        "jmp actor_system_call_restore",
-        //
-        // Emergency halt
-        //
-        "hlt",
-    )
-}*/
-
 #[naked]
 #[no_mangle]
 pub unsafe extern "C" fn actor_system_call_entry_point() {
