@@ -1,6 +1,6 @@
 use crate::actor::{
     Actor, ActorAddressReference, ActorCommonHandleContext, ActorEnterError, ActorHandler,
-    ActorMessage, ActorMessageChannel, ActorMessageChannelAddress, ActorSpawnError,
+    ActorMessage, ActorSpawnHandler, ActorMessageChannel, ActorMessageChannelAddress, ActorSpawnError, ActorEnterHandler,
 };
 use crate::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
 use ztd::Constructor;
@@ -43,7 +43,23 @@ where
     fn allocator(&self) -> &Self::Allocator {
         self.future_runtime.handler().allocator()
     }
+}
 
+impl<H> ActorEnterHandler for FutureRuntimeActorHandler<H>
+where
+    H: FutureRuntimeHandler,
+{
+    fn enter(&self, _specification: Self::EnterSpecification) -> Result<(), ActorEnterError> {
+        self.future_runtime.run();
+
+        Ok(())
+    }
+}
+
+impl<H> ActorSpawnHandler for FutureRuntimeActorHandler<H>
+where
+    H: FutureRuntimeHandler,
+{
     fn spawn<A>(
         &self,
         mut actor: Self::SpawnSpecification<A>,
@@ -79,11 +95,5 @@ where
         });
 
         Ok(reference)
-    }
-
-    fn enter(&self, specification: Self::EnterSpecification) -> Result<(), ActorEnterError> {
-        self.future_runtime.run();
-
-        Ok(())
     }
 }

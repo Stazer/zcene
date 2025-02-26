@@ -1,6 +1,6 @@
 pub use crate::actor::{
-    Actor, ActorAddress, ActorAddressReference, ActorAllocator, ActorCommonBounds, ActorEnterError,
-    ActorMessage, ActorSpawnError,
+    Actor, ActorAddress, ActorAllocator, ActorCommonBounds,
+    ActorMessage,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -24,13 +24,4 @@ pub trait ActorHandler: ActorCommonBounds + Sized {
     type EnterSpecification: ActorCommonBounds;
 
     fn allocator(&self) -> &Self::Allocator;
-
-    fn spawn<A>(
-        &self,
-        specification: Self::SpawnSpecification<A>,
-    ) -> Result<ActorAddressReference<A, Self>, ActorSpawnError>
-    where
-        A: Actor<Self>;
-
-    fn enter(&self, specification: Self::EnterSpecification) -> Result<(), ActorEnterError>;
 }

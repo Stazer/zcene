@@ -93,9 +93,9 @@ where
 }
 
 #[derive(Debug, Constructor, Default)]
-pub struct UserActor;
+pub struct PrintActor;
 
-impl<H> Actor<H> for UserActor
+impl<H> Actor<H> for PrintActor
 where
     H: actor::ActorHandler,
     H::HandleContext<usize>: ActorContextMessageProvider<usize>,
@@ -106,14 +106,7 @@ where
         &mut self,
         context: H::CreateContext,
     ) -> impl ActorFuture<'_, Result<(), ActorCreateError>> {
-        async move {
-            for i in 0..1000000000 {
-                core::hint::black_box(());
-                x86_64::instructions::nop();
-            }
-
-            Ok(())
-        }
+        async move { Ok(()) }
     }
 
     fn destroy(
@@ -127,11 +120,14 @@ where
         &mut self,
         context: H::HandleContext<Self::Message>,
     ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
-        async move { Ok(()) }
+        async move {
+            println!("Received {}", context.message());
+
+            Ok(())
+        }
     }
 }
 
-use core::marker::PhantomData;
 use zcene_core::actor::{ActorCreateError, ActorDestroyError};
 
 #[derive(Debug, Constructor, Default)]
@@ -245,7 +241,7 @@ impl Kernel {
         }
 
         use crate::actor::ActorSpawnSpecification;
-        use crate::actor::{ActorInlineSpawnSpecification, ActorUnprivilegedSpawnSpecification};
+        use crate::actor::ActorUnprivilegedSpawnSpecification;
 
         use core::num::NonZero;
 
@@ -254,44 +250,7 @@ impl Kernel {
             .spawn(ActorSpawnSpecification::new(
                 UnprivilegedActor::default(),
                 ActorUnprivilegedSpawnSpecification::new(NonZero::new(100)).into(),
-                //ActorUnprivilegedSpawnSpecification::new(None).into(),
             ));
-
-        /*Kernel::get()
-            .actor_system()
-            .spawn(KernelActorSpawnSpecification::new(
-                ApplicationActor::default(),
-                KernelActorExecutionMode::Privileged,
-                KernelActorInstructionRegion::new(
-                    VirtualMemoryAddress::new(
-                        Kernel::get()
-                            .memory_manager()
-                            .kernel_image_virtual_memory_region()
-                            .start()
-                            .as_usize()
-                            + unsafe { linker_value(&USER_SECTIONS_START) },
-                    ),
-                    unsafe { linker_value(&USER_SECTIONS_SIZE) },
-                ),
-            ));
-
-        Kernel::get()
-            .actor_system()
-            .spawn(KernelActorSpawnSpecification::new(
-                UserActor::default(),
-                KernelActorExecutionMode::Unprivileged,
-                KernelActorInstructionRegion::new(
-                    VirtualMemoryAddress::new(
-                        Kernel::get()
-                            .memory_manager()
-                            .kernel_image_virtual_memory_region()
-                            .start()
-                            .as_usize()
-                            + unsafe { linker_value(&USER_SECTIONS_START) },
-                    ),
-                    unsafe { linker_value(&USER_SECTIONS_SIZE) },
-                ),
-            ));*/
 
         Kernel::get().run();
 

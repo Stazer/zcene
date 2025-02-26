@@ -5,9 +5,10 @@ use crate::actor::{
 };
 use alloc::boxed::Box;
 use zcene_core::actor::{
+    ActorEnterHandler,
     self, Actor, ActorAddressReference, ActorCommonContextBuilder, ActorCommonHandleContext,
     ActorEnterError, ActorMessage, ActorMessageChannel, ActorMessageChannelAddress,
-    ActorSpawnError,
+    ActorSpawnError, ActorDiscoverHandler, ActorMailbox, ActorSpawnHandler,
 };
 use zcene_core::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
 use ztd::Constructor;
@@ -50,7 +51,21 @@ where
     fn allocator(&self) -> &Self::Allocator {
         self.future_runtime.handler().allocator()
     }
+}
 
+impl<H> ActorEnterHandler for ActorHandler<H>
+where
+    H: FutureRuntimeHandler,
+{
+    fn enter(&self, specification: Self::EnterSpecification) -> Result<(), ActorEnterError> {
+        Ok(self.future_runtime.run())
+    }
+}
+
+impl<H> ActorSpawnHandler for ActorHandler<H>
+where
+    H: FutureRuntimeHandler,
+{
     fn spawn<A>(
         &self,
         specification: Self::SpawnSpecification<A>,
@@ -62,7 +77,7 @@ where
 
         let reference = ActorAddressReference::<A, Self>::try_new_in(
             <Self as actor::ActorHandler>::Address::new(sender),
-            self.allocator().clone(),
+            <Self as actor::ActorHandler>::allocator(self).clone(),
         )?;
 
         let ActorSpawnSpecificationInner { actor, r#type, .. } = specification.into_inner();
@@ -100,15 +115,9 @@ where
 
         Ok(reference)
     }
-
-    fn enter(&self, specification: Self::EnterSpecification) -> Result<(), ActorEnterError> {
-        Ok(self.future_runtime.run())
-    }
 }
 
-use zcene_core::actor::{ActorDiscoveryHandler, ActorMailbox};
-
-impl<H> ActorDiscoveryHandler for ActorHandler<H>
+impl<H> ActorDiscoverHandler for ActorHandler<H>
 where
     H: FutureRuntimeHandler,
 {
