@@ -312,7 +312,10 @@ impl ActorUnprivilegedExecutorCreateStageHandler {
         A: Actor<H>,
         H: ActorHandler<CreateContext = ()>,
     {
-        let actor = unsafe { actor.as_mut() }.unwrap();
+        let actor = match unsafe { actor.as_mut() } {
+            Some(actor) => actor,
+            None => unsafe { asm!("mov rdi, 0xFFFF", "syscall", options(noreturn, nostack)) },
+        };
 
         let mut context = Context::from_waker(Waker::noop());
         let mut pinned = pin!(actor.create(()));

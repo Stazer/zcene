@@ -20,5 +20,3 @@ pub mod actor;
 pub mod architecture;
 pub mod driver;
 mod kernel;
-
-mod user;
