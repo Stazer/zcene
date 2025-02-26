@@ -1,6 +1,6 @@
 use crate::actor::{
     Actor, ActorAddressReference, ActorEnterError, ActorHandler, ActorSpawnError,
-    ActorSystemCreateError, ActorSystemReference, ActorEnterHandler, ActorSpawnHandler,
+    ActorSystemCreateError, ActorSystemReference, ActorEnterHandler, ActorSpawnHandler, ActorAllocatorHandler,
 };
 use ztd::{Constructor, Method};
 
@@ -20,7 +20,10 @@ impl<H> ActorSystem<H>
 where
     H: ActorHandler,
 {
-    pub fn try_new(handler: H) -> Result<ActorSystemReference<H>, ActorSystemCreateError> {
+    pub fn try_new(handler: H) -> Result<ActorSystemReference<H>, ActorSystemCreateError>
+    where
+        H: ActorAllocatorHandler,
+    {
         let allocator = handler.allocator().clone();
 
         ActorSystemReference::try_new_in(Self::new(handler), allocator)
@@ -33,7 +36,7 @@ where
     ) -> Result<ActorAddressReference<A, H>, ActorSpawnError>
     where
         A: Actor<H>,
-        H: ActorSpawnHandler,
+        H: ActorAllocatorHandler + ActorSpawnHandler,
     {
         self.handler.spawn(specification)
     }

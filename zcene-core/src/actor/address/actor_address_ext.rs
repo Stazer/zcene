@@ -1,5 +1,5 @@
 use crate::actor::{
-    Actor, ActorAddress, ActorCommonBounds, ActorHandler, ActorMailbox, ActorMessage,
+    Actor, ActorAllocatorHandler, ActorAddress, ActorCommonBounds, ActorHandler, ActorMailbox, ActorMessage,
 };
 use alloc::sync::Arc;
 use core::alloc::AllocError;
@@ -10,7 +10,7 @@ use core::marker::PhantomData;
 pub trait ActorAddressExt<A, H>
 where
     A: Actor<H>,
-    H: ActorHandler,
+    H: ActorHandler + ActorAllocatorHandler,
 {
     fn mailbox_with_mapping<F, M>(
         self: &Arc<Self, H::Allocator>,
@@ -28,7 +28,7 @@ where
 impl<A, H, T> ActorAddressExt<A, H> for T
 where
     A: Actor<H>,
-    H: ActorHandler<Address<A> = T>,
+    H: ActorHandler<Address<A> = T> + ActorAllocatorHandler,
     T: ActorAddress<A, H> + ActorCommonBounds,
 {
     fn mailbox_with_mapping<F, M>(

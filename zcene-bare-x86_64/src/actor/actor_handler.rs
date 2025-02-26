@@ -8,7 +8,7 @@ use zcene_core::actor::{
     ActorEnterHandler,
     self, Actor, ActorAddressReference, ActorCommonContextBuilder, ActorCommonHandleContext,
     ActorEnterError, ActorMessage, ActorMessageChannel, ActorMessageChannelAddress,
-    ActorSpawnError, ActorDiscoverHandler, ActorMailbox, ActorSpawnHandler,
+    ActorSpawnError, ActorDiscoverHandler, ActorMailbox, ActorSpawnHandler, ActorAllocatorHandler,
 };
 use zcene_core::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
 use ztd::Constructor;
@@ -32,21 +32,19 @@ where
     where
         A: Actor<Self>;
 
-    type Allocator = <H as FutureRuntimeHandler>::Allocator;
-
     type CreateContext = ();
     type HandleContext<M>
         = ActorCommonHandleContext<M>
     where
         M: ActorMessage;
     type DestroyContext = ();
+}
 
-    type SpawnSpecification<A>
-        = ActorSpawnSpecification<A, Self>
-    where
-        A: Actor<Self>;
-
-    type EnterSpecification = ();
+impl<H> ActorAllocatorHandler for ActorHandler<H>
+where
+    H: FutureRuntimeHandler,
+{
+    type Allocator = <H as FutureRuntimeHandler>::Allocator;
 
     fn allocator(&self) -> &Self::Allocator {
         self.future_runtime.handler().allocator()
@@ -57,6 +55,8 @@ impl<H> ActorEnterHandler for ActorHandler<H>
 where
     H: FutureRuntimeHandler,
 {
+    type EnterSpecification = ();
+
     fn enter(&self, specification: Self::EnterSpecification) -> Result<(), ActorEnterError> {
         Ok(self.future_runtime.run())
     }
@@ -66,6 +66,11 @@ impl<H> ActorSpawnHandler for ActorHandler<H>
 where
     H: FutureRuntimeHandler,
 {
+    type SpawnSpecification<A>
+        = ActorSpawnSpecification<A, Self>
+    where
+        A: Actor<Self>;
+
     fn spawn<A>(
         &self,
         specification: Self::SpawnSpecification<A>,
@@ -77,7 +82,7 @@ where
 
         let reference = ActorAddressReference::<A, Self>::try_new_in(
             <Self as actor::ActorHandler>::Address::new(sender),
-            <Self as actor::ActorHandler>::allocator(self).clone(),
+            self.allocator().clone(),
         )?;
 
         let ActorSpawnSpecificationInner { actor, r#type, .. } = specification.into_inner();

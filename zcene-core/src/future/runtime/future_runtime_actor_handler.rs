@@ -1,5 +1,5 @@
 use crate::actor::{
-    Actor, ActorAddressReference, ActorCommonHandleContext, ActorEnterError, ActorHandler,
+    ActorAllocatorHandler, Actor, ActorAddressReference, ActorCommonHandleContext, ActorEnterError, ActorHandler,
     ActorMessage, ActorSpawnHandler, ActorMessageChannel, ActorMessageChannelAddress, ActorSpawnError, ActorEnterHandler,
 };
 use crate::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
@@ -24,8 +24,6 @@ where
     where
         A: Actor<Self>;
 
-    type Allocator = H::Allocator;
-
     type CreateContext = ();
     type HandleContext<M>
         = ActorCommonHandleContext<M>
@@ -33,12 +31,13 @@ where
         M: ActorMessage;
     type DestroyContext = ();
 
-    type SpawnSpecification<A>
-        = A
-    where
-        A: Actor<Self>;
+}
 
-    type EnterSpecification = ();
+impl<H> ActorAllocatorHandler for FutureRuntimeActorHandler<H>
+where
+    H: FutureRuntimeHandler,
+{
+    type Allocator = H::Allocator;
 
     fn allocator(&self) -> &Self::Allocator {
         self.future_runtime.handler().allocator()
@@ -49,6 +48,8 @@ impl<H> ActorEnterHandler for FutureRuntimeActorHandler<H>
 where
     H: FutureRuntimeHandler,
 {
+    type EnterSpecification = ();
+
     fn enter(&self, _specification: Self::EnterSpecification) -> Result<(), ActorEnterError> {
         self.future_runtime.run();
 
@@ -60,6 +61,11 @@ impl<H> ActorSpawnHandler for FutureRuntimeActorHandler<H>
 where
     H: FutureRuntimeHandler,
 {
+    type SpawnSpecification<A>
+        = A
+    where
+        A: Actor<Self>;
+
     fn spawn<A>(
         &self,
         mut actor: Self::SpawnSpecification<A>,

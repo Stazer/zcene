@@ -1,4 +1,4 @@
-use crate::actor::{ActorHandler, ActorMailbox, ActorMailboxMessageSender, ActorMessage};
+use crate::actor::{ActorHandler, ActorAllocatorHandler, ActorMailbox, ActorMailboxMessageSender, ActorMessage};
 use alloc::sync::Weak;
 use core::fmt::{self, Debug, Formatter};
 use ztd::Constructor;
@@ -9,7 +9,7 @@ use ztd::Constructor;
 pub struct ActorWeakMailbox<M, H>
 where
     M: ActorMessage,
-    H: ActorHandler,
+    H: ActorHandler + ActorAllocatorHandler,
 {
     caller: Weak<dyn ActorMailboxMessageSender<M, H>, H::Allocator>,
 }
@@ -17,7 +17,7 @@ where
 impl<M, H> Debug for ActorWeakMailbox<M, H>
 where
     M: ActorMessage,
-    H: ActorHandler,
+    H: ActorHandler + ActorAllocatorHandler,
 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         formatter.debug_struct("ActorWeakMailbox").finish()
@@ -27,7 +27,7 @@ where
 impl<M, H> ActorWeakMailbox<M, H>
 where
     M: ActorMessage,
-    H: ActorHandler,
+    H: ActorHandler + ActorAllocatorHandler,
 {
     pub fn upgrade(&self) -> Option<ActorMailbox<M, H>> {
         self.caller.upgrade().map(ActorMailbox::new)

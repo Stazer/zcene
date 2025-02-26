@@ -1,4 +1,4 @@
-use crate::actor::{ActorHandler, ActorMessage, ActorWeakMailbox};
+use crate::actor::{ActorHandler, ActorMessage, ActorWeakMailbox, ActorAllocatorHandler};
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
@@ -7,13 +7,13 @@ use core::marker::PhantomData;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub type ActorDiscoveryBucket<M, H> = Vec<ActorWeakMailbox<M, H>, <H as ActorHandler>::Allocator>;
+pub type ActorDiscoveryBucket<M, H> = Vec<ActorWeakMailbox<M, H>, <H as ActorAllocatorHandler>::Allocator>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct ActorMailboxDiscovery<H>
 where
-    H: ActorHandler,
+    H: ActorHandler + ActorAllocatorHandler,
 {
     bucket_resolvers: BTreeMap<TypeId, Box<dyn Any + Send>>,
     types: PhantomData<H>,
@@ -21,7 +21,7 @@ where
 
 impl<H> ActorMailboxDiscovery<H>
 where
-    H: ActorHandler,
+    H: ActorHandler + ActorAllocatorHandler,
 {
     pub fn bucket<M>(&self) -> Option<&ActorDiscoveryBucket<M, H>>
     where

@@ -3,4 +3,5 @@ use ztd::Constructor;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Constructor, Default)]
-pub struct ActorPrivilegedSpawnSpecification {}
+pub struct ActorPrivilegedSpawnSpecification {
+}

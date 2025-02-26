@@ -1,6 +1,6 @@
 use crate::actor::{
     Actor, ActorAddressReference, ActorBoxFuture, ActorCommonBounds, ActorHandler, ActorMessage,
-    ActorMessageSender, ActorSendError,
+    ActorMessageSender, ActorSendError, ActorAllocatorHandler,
 };
 use alloc::boxed::Box;
 use core::marker::PhantomData;
@@ -10,7 +10,7 @@ use core::marker::PhantomData;
 pub trait ActorMailboxMessageSender<M, H>: ActorCommonBounds
 where
     M: ActorMessage,
-    H: ActorHandler,
+    H: ActorHandler + ActorAllocatorHandler,
 {
     fn send(&self, message: M) -> ActorBoxFuture<'_, Result<(), ActorSendError>, H>;
 }
@@ -19,7 +19,7 @@ impl<A, M, H, F> ActorMailboxMessageSender<M, H>
     for (ActorAddressReference<A, H>, PhantomData<(M, A)>, F)
 where
     A: Actor<H>,
-    H: ActorHandler,
+    H: ActorHandler + ActorAllocatorHandler,
     M: ActorMessage,
     F: Fn(M) -> A::Message + ActorCommonBounds,
 {

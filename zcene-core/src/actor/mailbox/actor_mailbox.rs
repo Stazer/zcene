@@ -1,6 +1,6 @@
 use crate::actor::{
     ActorFuture, ActorHandler, ActorMailboxMessageSender, ActorMessage, ActorMessageSender,
-    ActorSendError, ActorWeakMailbox,
+    ActorSendError, ActorWeakMailbox, ActorAllocatorHandler,
 };
 use alloc::sync::Arc;
 use core::fmt::{self, Debug, Formatter};
@@ -12,7 +12,7 @@ use ztd::Constructor;
 pub struct ActorMailbox<M, H>
 where
     M: ActorMessage,
-    H: ActorHandler,
+    H: ActorHandler + ActorAllocatorHandler,
 {
     caller: Arc<dyn ActorMailboxMessageSender<M, H>, H::Allocator>,
 }
@@ -20,7 +20,7 @@ where
 impl<M, H> Clone for ActorMailbox<M, H>
 where
     M: ActorMessage,
-    H: ActorHandler,
+    H: ActorHandler + ActorAllocatorHandler,
 {
     fn clone(&self) -> Self {
         Self {
@@ -32,7 +32,7 @@ where
 impl<M, H> Debug for ActorMailbox<M, H>
 where
     M: ActorMessage,
-    H: ActorHandler,
+    H: ActorHandler + ActorAllocatorHandler,
 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         formatter.debug_struct("ActorMailbox").finish()
@@ -42,7 +42,7 @@ where
 impl<M, H> ActorMessageSender<M> for ActorMailbox<M, H>
 where
     M: ActorMessage,
-    H: ActorHandler,
+    H: ActorHandler + ActorAllocatorHandler,
 {
     fn send(&self, message: M) -> impl ActorFuture<'_, Result<(), ActorSendError>> {
         async { self.caller.send(message).await }
@@ -52,7 +52,7 @@ where
 impl<M, H> ActorMailbox<M, H>
 where
     M: ActorMessage,
-    H: ActorHandler,
+    H: ActorHandler + ActorAllocatorHandler,
 {
     pub fn downgrade(&self) -> ActorWeakMailbox<M, H> {
         ActorWeakMailbox::<M, H>::new(Arc::downgrade(&self.caller))

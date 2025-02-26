@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 use pc_keyboard::DecodedKey;
 use zcene_core::actor::{
+    ActorAllocatorHandler,
     Actor, ActorContextMessageProvider, ActorFuture, ActorHandleError, ActorHandler, ActorMailbox,
 };
 
@@ -12,7 +13,7 @@ pub struct KeyboardDecodedKeyMessage(DecodedKey);
 #[derive(Debug)]
 pub enum KeyboardMessage<H>
 where
-    H: ActorHandler,
+    H: ActorHandler + ActorAllocatorHandler,
 {
     Subscription(ActorMailbox<KeyboardDecodedKeyMessage, H>),
     Byte(u16),
@@ -20,7 +21,7 @@ where
 
 impl<H> Clone for KeyboardMessage<H>
 where
-    H: ActorHandler,
+    H: ActorHandler + ActorAllocatorHandler,
 {
     fn clone(&self) -> Self {
         match self {
@@ -32,14 +33,14 @@ where
 
 pub struct KeyboardActor<H>
 where
-    H: ActorHandler,
+    H: ActorHandler + ActorAllocatorHandler,
 {
     subscriptions: Vec<ActorMailbox<KeyboardDecodedKeyMessage, H>, H::Allocator>,
 }
 
 impl<H> Actor<H> for KeyboardActor<H>
 where
-    H: ActorHandler,
+    H: ActorHandler + ActorAllocatorHandler,
     H::HandleContext<KeyboardMessage<H>>: ActorContextMessageProvider<KeyboardMessage<H>>,
 {
     type Message = KeyboardMessage<H>;

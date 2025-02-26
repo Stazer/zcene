@@ -6,8 +6,6 @@ pub use crate::actor::{
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub trait ActorHandler: ActorCommonBounds + Sized {
-    type Allocator: ActorAllocator;
-
     type Address<A>: ActorAddress<A, Self>
     where
         A: Actor<Self>;
@@ -17,11 +15,4 @@ pub trait ActorHandler: ActorCommonBounds + Sized {
     type HandleContext<M>: ActorCommonBounds
     where
         M: ActorMessage;
-
-    type SpawnSpecification<A>: ActorCommonBounds
-    where
-        A: Actor<Self>;
-    type EnterSpecification: ActorCommonBounds;
-
-    fn allocator(&self) -> &Self::Allocator;
 }

@@ -1,8 +1,8 @@
-use crate::actor::{Actor, ActorAddressReference, ActorHandler};
+use crate::actor::{Actor, ActorAllocatorHandler, ActorAddressReference, ActorHandler};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait ActorRelocationHandler: ActorHandler {
+pub trait ActorRelocationHandler: ActorHandler + ActorAllocatorHandler {
     fn relocate<A, B>(
         &self,
         first: ActorAddressReference<A, Self>,
