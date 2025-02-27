@@ -123,6 +123,8 @@ where
     ) -> Result<Self::Address<A>, ActorSpawnError>
     where
         A: Actor<Self> + Actor<ActorUnprivilegedHandler>,
+        <A as Actor<Self>>::Message: From<<A as Actor<ActorUnprivilegedHandler>>::Message>,
+        <A as Actor<ActorUnprivilegedHandler>>::Message: From<<A as Actor<Self>>::Message>,
     {
         let (sender, receiver) =
             ActorMessageChannel::<<A as Actor<Self>>::Message>::new_unbounded();
@@ -142,101 +144,6 @@ where
 }
 
 use crate::actor::ActorUnprivilegedHandler;
-
-/*impl<H> ActorSpawnHandler<ActorHandler<H>, ActorUnprivilegedHandler> for ActorHandler<H>
-where
-    H: FutureRuntimeHandler,
-{
-    type SpawnSpecification = usize;
-
-    fn spawn<A>(
-        &self,
-        specification: Self::SpawnSpecification,
-    ) -> Result<<ActorHandler<H> as actor::ActorHandler>::Address<A>, ActorSpawnError>
-    where
-        A: Actor<Self>
-    {
-        todo!()
-    }
-}*/
-
-/*impl<H> ActorSpawnHandler<A> for ActorHandler<H>
-where
-    H: FutureRuntimeHandler,
-{
-    type SpawnSpecification<A>
-        = ActorSpawnSpecification<A, Self>
-    where
-        A: Actor<Self>;
-
-    fn spawn<A>(
-        &self,
-        specification: Self::SpawnSpecification<A>,
-    ) -> Result<Self::Address<A>, ActorSpawnError>
-    where
-        A: Actor<Self>,
-    {
-        let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
-
-        let address = <Self as actor::ActorHandler>::Address::new(sender);
-
-        let ActorSpawnSpecificationInner { actor, r#type, .. } = specification.into_inner();
-
-        match r#type {
-            ActorSpawnSpecificationType::Inline(_) => {
-                self.future_runtime.spawn(ActorInlineExecutor::new(
-                    Some(ActorInlineExecutorCreateState::new(actor).into()),
-                    receiver,
-                    ActorCommonContextBuilder::default(),
-                ))?
-            }
-            ActorSpawnSpecificationType::Privileged(_) => {
-                self.future_runtime.spawn(ActorPrivilegedExecutor::new(
-                    Some(ActorPrivilegedExecutorCreateState::new(actor).into()),
-                    receiver,
-                    ActorCommonContextBuilder::default(),
-                    None,
-                ))?
-            }
-            ActorSpawnSpecificationType::Unprivileged(specification) => {
-                self.future_runtime.spawn(
-                    ActorUnprivilegedExecutor::new(
-                        Some(
-                            ActorUnprivilegedExecutorCreateState::new(Box::new(actor), None).into(),
-                        ),
-                        receiver,
-                        ActorCommonContextBuilder::default(),
-                        *specification.deadline_in_milliseconds(),
-                    )
-                );
-            }
-        };
-
-        Ok(address)
-    }
-}
-
-use crate::actor::ActorUnprivilegedHandler;
-
-impl<H> ActorSpawnHandler<ActorUnprivilegedHandler> for ActorHandler<H>
-where
-    H: FutureRuntimeHandler,
-{
-    type SpawnSpecification<A>
-        = ActorSpawnSpecification<A, Self>
-    where
-        A: Actor<Self>;
-
-    fn spawn<A>(
-        &self,
-        specification: Self::SpawnSpecification<A>,
-    ) -> Result<Self::Address<A>, ActorSpawnError>
-    where
-        A: Actor<Self>,
-    {
-        todo!()
-    }
-}*/
 
 impl<H> ActorDiscoverHandler for ActorHandler<H>
 where

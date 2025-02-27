@@ -37,7 +37,10 @@ where
     where
         H: ActorSpawnHandler<T>,
         A: Actor<H> + Actor<T>,
+        //<A as Actor<Self>>::Message: From<<A as Actor<T>>::Message>,
         T: ActorHandler,
+        <A as Actor<H>>::Message: From<<A as Actor<T>>::Message>,
+        <A as Actor<T>>::Message: From<<A as Actor<H>>::Message>,
     {
         self.handler.spawn(specification)
     }

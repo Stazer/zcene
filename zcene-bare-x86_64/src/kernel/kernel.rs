@@ -175,7 +175,6 @@ impl Kernel {
 
         use crate::actor::ActorSpawnSpecification;
         use crate::actor::ActorUnprivilegedSpawnSpecification;
-
         use core::num::NonZero;
 
         /*let print_actor = Kernel::get()
@@ -204,15 +203,17 @@ impl Kernel {
             .spawn::<_, ActorHandler<_>>(PrintActor)
             .unwrap();
 
-        Kernel::get()
+        /*Kernel::get()
             .actor_system()
-            .spawn::<_, ActorHandler<_>>(PrintActor);
+            .spawn::<_, ActorUnprivilegedHandler>(
+                EmptyActor,
+            ).unwrap();*/
 
         /*Kernel::get()
-        .actor_system()
-        .spawn_within::<_, ActorUnprivilegedHandler>(
-            UnprivilegedActor::<ActorHandler<_>>::new(address),
-        );*/
+            .actor_system()
+            .spawn_within::<_, ActorUnprivilegedHandler>(
+                UnprivilegedActor::<ActorHandler<_>>::new(address),
+            );*/
 
         use zcene_core::future::FutureExt;
 
