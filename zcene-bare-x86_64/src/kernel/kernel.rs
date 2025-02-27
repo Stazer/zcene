@@ -1,10 +1,12 @@
 use crate::kernel::future::runtime::{KernelFutureRuntime, KernelFutureRuntimeHandler};
+use crate::actor::ActorInlineSpawnSpecification;
 use crate::kernel::interrupt::KernelInterruptManager;
 use crate::kernel::logger::println;
 use crate::kernel::logger::KernelLogger;
 use crate::kernel::memory::{KernelMemoryManager, KernelMemoryManagerInitializeError};
 use crate::kernel::KernelTimer;
 use bootloader_api::BootInfo;
+use core::marker::PhantomData;
 use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
 use bootloader_x86_64_common::serial::SerialPort;
 use core::cell::SyncUnsafeCell;
@@ -15,6 +17,7 @@ use zcene_bare::memory::address::PhysicalMemoryAddress;
 use zcene_bare::memory::frame::FrameManagerAllocationError;
 use zcene_core::actor::ActorSpawnError;
 use zcene_core::actor::{self, Actor, ActorFuture, ActorHandleError, ActorSystemCreateError};
+use zcene_core::actor::{ActorMessage, ActorMessageSender, ActorCreateError, ActorDestroyError};
 use zcene_core::future::runtime::FutureRuntimeCreateError;
 use ztd::From;
 
@@ -34,161 +37,81 @@ pub enum KernelInitializeError {
     ActorSystemCreate(ActorSystemCreateError),
 }
 
-#[derive(Constructor, Default)]
-pub struct ApplicationActor {
-    number: usize,
-    times: usize,
-}
-
-impl<H> Actor<H> for ApplicationActor
-where
-    H: actor::ActorHandler,
-    H::HandleContext<usize>: ActorContextMessageProvider<usize>,
-{
-    type Message = usize;
-
-    fn create(
-        &mut self,
-        context: H::CreateContext,
-    ) -> impl ActorFuture<'_, Result<(), ActorCreateError>> {
-        async move {
-            println!("Application::create");
-
-            Ok(())
-        }
-    }
-
-    fn destroy(
-        self,
-        context: H::DestroyContext,
-    ) -> impl ActorFuture<'static, Result<(), ActorDestroyError>> {
-        async move {
-            println!("Application::destroy");
-
-            Ok(())
-        }
-    }
-
-    fn handle(
-        &mut self,
-        context: H::HandleContext<Self::Message>,
-    ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
-        async move {
-            self.times += 1;
-
-            let cpu_id = CpuId::new();
-            let feature_info = cpu_id.get_feature_info().unwrap();
-
-            println!(
-                "application #{}, times: {}, ticks: {}, CPU: {}",
-                self.number,
-                self.times,
-                context.message(),
-                feature_info.initial_local_apic_id()
-            );
-
-            Ok(())
-        }
-    }
-}
-
 #[derive(Debug, Constructor, Default)]
 pub struct PrintActor;
+
+pub type PrintActorMessage = usize;
 
 impl<H> Actor<H> for PrintActor
 where
     H: actor::ActorHandler,
-    H::HandleContext<usize>: ActorContextMessageProvider<usize>,
+    H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
 {
-    type Message = usize;
+    type Message = PrintActorMessage;
 
-    fn create(
+    async fn create(
         &mut self,
         context: H::CreateContext,
-    ) -> impl ActorFuture<'_, Result<(), ActorCreateError>> {
-        async move { Ok(()) }
+    ) -> Result<(), ActorCreateError> {
+        Ok(())
     }
 
-    fn destroy(
-        self,
-        context: H::DestroyContext,
-    ) -> impl ActorFuture<'static, Result<(), ActorDestroyError>> {
-        async move { Ok(()) }
-    }
-
-    fn handle(
+    async fn handle(
         &mut self,
         context: H::HandleContext<Self::Message>,
-    ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
-        async move {
-            println!("Received {}", context.message());
+    ) -> Result<(), ActorHandleError> {
+        //println!("Received {}", context.message());
 
-            Ok(())
+        Ok(())
+    }
+
+    async fn destroy(
+        self,
+        context: H::DestroyContext,
+    ) -> Result<(), ActorDestroyError> {
+        Ok(())
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug)]
+pub struct UnprivilegedActor<H>
+where
+    H: actor::ActorHandler,
+    H::HandleContext<usize>: ActorContextMessageProvider<PrintActorMessage>,
+    //H::HandleContext<<PrintActor as Actor<H>>::Message>: ActorContextMessageProvider<<PrintActor as Actor<H>>::Message>,
+{
+    printer: H::Address<PrintActor>,
+}
+
+impl<H> UnprivilegedActor<H>
+where
+    H: actor::ActorHandler,
+    H::HandleContext<usize>: ActorContextMessageProvider<usize>,
+    //H::HandleContext<<PrintActor as Actor<H>>::Message>: ActorContextMessageProvider<<PrintActor as Actor<H>>::Message>,
+{
+    pub fn new(
+        printer: H::Address<PrintActor>,
+    ) -> Self {
+        Self {
+            printer,
         }
     }
 }
 
-use zcene_core::actor::{ActorCreateError, ActorDestroyError};
 
-#[derive(Debug, Constructor, Default)]
-pub struct UnprivilegedActor;
-
-impl<H> Actor<H> for UnprivilegedActor
+impl<H> Actor<H> for UnprivilegedActor<H>
 where
     H: actor::ActorHandler,
+    H::HandleContext<usize>: ActorContextMessageProvider<usize>,
+    //H::HandleContext<<PrintActor as Actor<H>>::Message>: ActorContextMessageProvider<<PrintActor as Actor<H>>::Message>,
+    //for <M: ActorMessage> H::HandleContext<M>: ActorContextMessageProvider<M>,
 {
     type Message = ();
 
     async fn create(&mut self, context: H::CreateContext) -> Result<(), ActorCreateError> {
-        return Ok(());
-        for i in 0..5 {
-            unsafe {
-                core::arch::asm!(
-                    "push rbx",
-                    "push rbp",
-                    "push r12",
-                    "push r13",
-                    "push r14",
-                    "push r15",
-                    "mov rdi, 0",
-                    "syscall",
-                    "pop r15",
-                    "pop r14",
-                    "pop r13",
-                    "pop r12",
-                    "pop rbp",
-                    "pop rbx",
-                    in("rdi") 0,
-                    clobber_abi("C"),
-                    options(nostack),
-                );
-
-                for i in 0..100000000 {
-                    core::hint::black_box(());
-                    x86_64::instructions::nop();
-                }
-
-                core::arch::asm!(
-                    "push rbx",
-                    "push rbp",
-                    "push r12",
-                    "push r13",
-                    "push r14",
-                    "push r15",
-                    "mov rdi, 1",
-                    "syscall",
-                    "pop r15",
-                    "pop r14",
-                    "pop r13",
-                    "pop r12",
-                    "pop rbp",
-                    "pop rbx",
-                    in("rdi") 1,
-                    clobber_abi("C"),
-                    options(nostack),
-                );
-            }
-        }
+        self.printer.send(55).await;
 
         Ok(())
     }
@@ -245,12 +168,21 @@ impl Kernel {
 
         use core::num::NonZero;
 
-        Kernel::get()
+        let print_actor = Kernel::get()
             .actor_system()
             .spawn(ActorSpawnSpecification::new(
-                UnprivilegedActor::default(),
+                PrintActor::default(),
+                ActorInlineSpawnSpecification::new().into(),
+            )).unwrap();
+
+        /*Kernel::get()
+            .actor_system()
+            .spawn(ActorSpawnSpecification::new(
+                UnprivilegedActor::new(
+                    print_actor,
+                ),
                 ActorUnprivilegedSpawnSpecification::new(NonZero::new(100)).into(),
-            ));
+            ));*/
 
         Kernel::get().run();
 
