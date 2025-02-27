@@ -69,16 +69,13 @@ where
     fn spawn<A>(
         &self,
         mut actor: Self::SpawnSpecification<A>,
-    ) -> Result<ActorAddressReference<A, Self>, ActorSpawnError>
+    ) -> Result<Self::Address<A>, ActorSpawnError>
     where
         A: Actor<Self>,
     {
         let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
 
-        let reference = ActorAddressReference::<A, Self>::try_new_in(
-            Self::Address::new(sender),
-            self.allocator().clone(),
-        )?;
+        let address = Self::Address::new(sender);
 
         self.future_runtime.spawn(async move {
             // TODO: Handle result
@@ -100,6 +97,6 @@ where
             actor.destroy(()).await;
         });
 
-        Ok(reference)
+        Ok(address)
     }
 }

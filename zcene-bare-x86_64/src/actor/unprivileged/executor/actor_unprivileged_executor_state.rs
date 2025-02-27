@@ -1,6 +1,7 @@
 use crate::actor::{
     ActorUnprivilegedExecutorCreateState, ActorUnprivilegedExecutorDestroyState,
     ActorUnprivilegedExecutorHandleState, ActorUnprivilegedExecutorReceiveState,
+    ActorUnprivilegedHandler,
 };
 use zcene_core::actor::{Actor, ActorHandler};
 use ztd::From;
@@ -11,7 +12,7 @@ use ztd::From;
 #[From(all)]
 pub enum ActorUnprivilegedExecutorState<A, H>
 where
-    A: Actor<H>,
+    A: Actor<H> + Actor<ActorUnprivilegedHandler>,
     H: ActorHandler,
 {
     Create(ActorUnprivilegedExecutorCreateState<A, H>),

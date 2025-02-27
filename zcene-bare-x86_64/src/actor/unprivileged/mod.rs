@@ -33,6 +33,27 @@ where
     marker: PhantomData<A::Message>,
 }
 
+impl<A> Clone for ActorUnprivilegedAddress<A>
+where
+    A: Actor<ActorUnprivilegedHandler>,
+{
+    fn clone(&self) -> Self {
+        Self::new(self.descriptor)
+    }
+}
+
+impl<A> ActorUnprivilegedAddress<A>
+where
+    A: Actor<ActorUnprivilegedHandler>,
+{
+    pub fn new(descriptor: usize) -> Self {
+        Self {
+            descriptor,
+            marker: PhantomData::<A::Message>,
+        }
+    }
+}
+
 impl<A> ActorAddress<A, ActorUnprivilegedHandler> for ActorUnprivilegedAddress<A> where
     A: Actor<ActorUnprivilegedHandler>
 {
@@ -60,6 +81,7 @@ where
                     "pop r12",
                     "pop rbp",
                     "pop rbx",
+                    in ("rdi") 3,
                     in ("rsi") &message,
                     in ("rdx") size_of::<A::Message>(),
                     clobber_abi("C"),

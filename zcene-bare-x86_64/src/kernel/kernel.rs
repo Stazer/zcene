@@ -1,23 +1,23 @@
-use crate::kernel::future::runtime::{KernelFutureRuntime, KernelFutureRuntimeHandler};
 use crate::actor::ActorInlineSpawnSpecification;
+use crate::kernel::future::runtime::{KernelFutureRuntime, KernelFutureRuntimeHandler};
 use crate::kernel::interrupt::KernelInterruptManager;
 use crate::kernel::logger::println;
 use crate::kernel::logger::KernelLogger;
 use crate::kernel::memory::{KernelMemoryManager, KernelMemoryManagerInitializeError};
 use crate::kernel::KernelTimer;
 use bootloader_api::BootInfo;
-use core::marker::PhantomData;
 use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
 use bootloader_x86_64_common::serial::SerialPort;
 use core::cell::SyncUnsafeCell;
 use core::fmt::{self, Write};
+use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use x86::cpuid::CpuId;
 use zcene_bare::memory::address::PhysicalMemoryAddress;
 use zcene_bare::memory::frame::FrameManagerAllocationError;
 use zcene_core::actor::ActorSpawnError;
 use zcene_core::actor::{self, Actor, ActorFuture, ActorHandleError, ActorSystemCreateError};
-use zcene_core::actor::{ActorMessage, ActorMessageSender, ActorCreateError, ActorDestroyError};
+use zcene_core::actor::{ActorCreateError, ActorDestroyError, ActorMessage, ActorMessageSender};
 use zcene_core::future::runtime::FutureRuntimeCreateError;
 use ztd::From;
 
@@ -49,10 +49,7 @@ where
 {
     type Message = PrintActorMessage;
 
-    async fn create(
-        &mut self,
-        context: H::CreateContext,
-    ) -> Result<(), ActorCreateError> {
+    async fn create(&mut self, context: H::CreateContext) -> Result<(), ActorCreateError> {
         Ok(())
     }
 
@@ -60,15 +57,12 @@ where
         &mut self,
         context: H::HandleContext<Self::Message>,
     ) -> Result<(), ActorHandleError> {
-        //println!("Received {}", context.message());
+        println!("Received {}", context.message());
 
         Ok(())
     }
 
-    async fn destroy(
-        self,
-        context: H::DestroyContext,
-    ) -> Result<(), ActorDestroyError> {
+    async fn destroy(self, context: H::DestroyContext) -> Result<(), ActorDestroyError> {
         Ok(())
     }
 }
@@ -76,11 +70,35 @@ where
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug)]
+pub struct EmptyActor;
+
+impl<H> Actor<H> for EmptyActor
+where
+    H: actor::ActorHandler,
+{
+    type Message = ();
+
+    async fn create(&mut self, context: H::CreateContext) -> Result<(), ActorCreateError> {
+        Ok(())
+    }
+
+    async fn handle(
+        &mut self,
+        _context: H::HandleContext<Self::Message>,
+    ) -> Result<(), ActorHandleError> {
+        Ok(())
+    }
+
+    async fn destroy(self, context: H::DestroyContext) -> Result<(), ActorDestroyError> {
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
 pub struct UnprivilegedActor<H>
 where
     H: actor::ActorHandler,
-    H::HandleContext<usize>: ActorContextMessageProvider<PrintActorMessage>,
-    //H::HandleContext<<PrintActor as Actor<H>>::Message>: ActorContextMessageProvider<<PrintActor as Actor<H>>::Message>,
+    H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
 {
     printer: H::Address<PrintActor>,
 }
@@ -88,25 +106,18 @@ where
 impl<H> UnprivilegedActor<H>
 where
     H: actor::ActorHandler,
-    H::HandleContext<usize>: ActorContextMessageProvider<usize>,
+    H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
     //H::HandleContext<<PrintActor as Actor<H>>::Message>: ActorContextMessageProvider<<PrintActor as Actor<H>>::Message>,
 {
-    pub fn new(
-        printer: H::Address<PrintActor>,
-    ) -> Self {
-        Self {
-            printer,
-        }
+    pub fn new(printer: H::Address<PrintActor>) -> Self {
+        Self { printer }
     }
 }
-
 
 impl<H> Actor<H> for UnprivilegedActor<H>
 where
     H: actor::ActorHandler,
-    H::HandleContext<usize>: ActorContextMessageProvider<usize>,
-    //H::HandleContext<<PrintActor as Actor<H>>::Message>: ActorContextMessageProvider<<PrintActor as Actor<H>>::Message>,
-    //for <M: ActorMessage> H::HandleContext<M>: ActorContextMessageProvider<M>,
+    H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
 {
     type Message = ();
 
@@ -130,11 +141,10 @@ where
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use zcene_core::actor::ActorContextMessageProvider;
-use ztd::Constructor;
-
 use crate::actor::ActorHandler;
+use zcene_core::actor::ActorContextMessageProvider;
 use zcene_core::actor::{ActorSystem, ActorSystemReference};
+use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -168,21 +178,43 @@ impl Kernel {
 
         use core::num::NonZero;
 
-        let print_actor = Kernel::get()
-            .actor_system()
-            .spawn(ActorSpawnSpecification::new(
-                PrintActor::default(),
-                ActorInlineSpawnSpecification::new().into(),
-            )).unwrap();
+        /*let print_actor = Kernel::get()
+        .actor_system()
+        .spawn(ActorSpawnSpecification::new(
+            PrintActor::default(),
+            ActorInlineSpawnSpecification::new().into(),
+        ))
+        .unwrap();*/
 
         /*Kernel::get()
+        .actor_system()
+        .spawn(ActorSpawnSpecification::new(
+            UnprivilegedActor::new(print_actor),
+            ActorUnprivilegedSpawnSpecification::new(NonZero::new(100)).into(),
+        ));*/
+
+        /*Kernel::get()
+        .actor_system()
+        .spawn(PrintActor::default());*/
+
+        use crate::actor::ActorUnprivilegedHandler;
+
+        let address = Kernel::get()
             .actor_system()
-            .spawn(ActorSpawnSpecification::new(
-                UnprivilegedActor::new(
-                    print_actor,
-                ),
-                ActorUnprivilegedSpawnSpecification::new(NonZero::new(100)).into(),
-            ));*/
+            .spawn::<_, ActorHandler<_>>(PrintActor)
+            .unwrap();
+
+        Kernel::get()
+            .actor_system()
+            .spawn::<_, ActorHandler<_>>(PrintActor);
+
+        /*Kernel::get()
+        .actor_system()
+        .spawn_within::<_, ActorUnprivilegedHandler>(
+            UnprivilegedActor::<ActorHandler<_>>::new(address),
+        );*/
+
+        use zcene_core::future::FutureExt;
 
         Kernel::get().run();
 

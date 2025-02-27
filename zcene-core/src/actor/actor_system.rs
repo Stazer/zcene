@@ -1,6 +1,6 @@
 use crate::actor::{
-    Actor, ActorAddressReference, ActorAllocatorHandler, ActorEnterError, ActorEnterHandler,
-    ActorHandler, ActorSpawnError, ActorSpawnHandler, ActorSystemCreateError, ActorSystemReference,
+    Actor, ActorAllocatorHandler, ActorEnterError, ActorEnterHandler, ActorHandler,
+    ActorSpawnError, ActorSpawnHandler, ActorSystemCreateError, ActorSystemReference,
 };
 use ztd::{Constructor, Method};
 
@@ -30,15 +30,27 @@ where
             .map_err(ActorSystemCreateError::from)
     }
 
-    pub fn spawn<A>(
+    pub fn spawn<A, T>(
         &self,
         specification: H::SpawnSpecification<A>,
-    ) -> Result<ActorAddressReference<A, H>, ActorSpawnError>
+    ) -> Result<H::Address<A>, ActorSpawnError>
     where
-        A: Actor<H>,
-        H: ActorAllocatorHandler + ActorSpawnHandler,
+        H: ActorSpawnHandler<T>,
+        A: Actor<H> + Actor<T>,
+        T: ActorHandler,
     {
         self.handler.spawn(specification)
+    }
+
+    pub fn spawn_inline<A>(
+        &self,
+        specification: H::SpawnSpecification<A>,
+    ) -> Result<H::Address<A>, ActorSpawnError>
+    where
+        H: ActorSpawnHandler<H>,
+        A: Actor<H>,
+    {
+        self.spawn::<A, H>(specification)
     }
 
     pub fn enter(&self, specification: H::EnterSpecification) -> Result<(), ActorEnterError>

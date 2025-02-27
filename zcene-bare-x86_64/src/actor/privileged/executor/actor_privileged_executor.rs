@@ -10,6 +10,7 @@ use core::pin::{pin, Pin};
 use core::task::{Context, Poll};
 use pin_project::pin_project;
 use zcene_core::actor::{Actor, ActorContextBuilder, ActorHandler, ActorMessageChannelReceiver};
+use zcene_core::future::FutureExt;
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -39,6 +40,10 @@ where
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
+        if let Some(_) = self.deadline_in_milliseconds {
+            todo!()
+        }
+
         loop {
             match self.state.take() {
                 Some(ActorPrivilegedExecutorState::Create(state)) => {
@@ -121,16 +126,10 @@ where
                 }
                 Some(ActorPrivilegedExecutorState::Destroy(state)) => {
                     let actor = state.into_inner().actor;
-
                     let destroy_context = self.context_builder.build_destroy_context(&actor);
                     let mut pinned = pin!(actor.destroy(destroy_context));
 
-                    loop {
-                        // TODO: Handle result
-                        if let Poll::Ready(_result) = pinned.as_mut().poll(context) {
-                            break;
-                        }
-                    }
+                    pinned.as_mut().complete();
                 }
                 None => return Poll::Ready(()),
             }

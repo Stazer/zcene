@@ -18,6 +18,16 @@ where
     handler_type: PhantomData<H>,
 }
 
+impl<A, H> Clone for ActorMessageChannelAddress<A, H>
+where
+    A: Actor<H>,
+    H: ActorHandler,
+{
+    fn clone(&self) -> Self {
+        Self::new(self.sender.clone())
+    }
+}
+
 impl<A, H> ActorMessageSender<A::Message> for ActorMessageChannelAddress<A, H>
 where
     A: Actor<H>,

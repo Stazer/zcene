@@ -2,8 +2,8 @@ use crate::actor::{
     ActorUnprivilegedExecutorCreateState, ActorUnprivilegedExecutorCreateStateInner,
     ActorUnprivilegedExecutorDestroyState, ActorUnprivilegedExecutorDestroyStateInner,
     ActorUnprivilegedExecutorHandleState, ActorUnprivilegedExecutorReceiveState,
-    ActorUnprivilegedExecutorState, ActorUnprivilegedStageExecutorContext,
-    ActorUnprivilegedStageExecutorDeadlinePreemptionContext,
+    ActorUnprivilegedExecutorState, ActorUnprivilegedHandler,
+    ActorUnprivilegedStageExecutorContext, ActorUnprivilegedStageExecutorDeadlinePreemptionContext,
     ActorUnprivilegedStageExecutorDeadlinePreemptionInner, ActorUnprivilegedStageExecutorEvent,
     ActorUnprivilegedStageExecutorSystemCall, ActorUnprivilegedStageExecutorSystemCallContext,
     ActorUnprivilegedStageExecutorSystemCallInner, ActorUnprivilegedStageExecutorSystemCallType,
@@ -21,9 +21,7 @@ use core::task::{Context, Poll, Waker};
 use core::time::Duration;
 use pin_project::pin_project;
 use zcene_bare::common::As;
-use zcene_core::actor::{
-    Actor, ActorContextBuilder, ActorCreateError, ActorHandler, ActorMessageChannelReceiver,
-};
+use zcene_core::actor::{Actor, ActorCreateError, ActorHandler, ActorMessageChannelReceiver};
 use ztd::{Constructor, From};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -122,7 +120,7 @@ pub enum ActorUnprivilegedStageResult {
 
 pub trait ActorUnprivilegedExecutorStageHandler<A, H>
 where
-    A: Actor<H>,
+    A: Actor<H> + Actor<ActorUnprivilegedHandler>,
     H: ActorHandler,
 {
     fn execute(&self, actor: *mut A, event: &mut ActorUnprivilegedStageExecutorEvent, stack: usize);
@@ -137,14 +135,13 @@ where
 }
 
 #[inline(never)]
-extern "C" fn execute<A, H>(
+extern "C" fn execute<A>(
     mut actor: *mut A,
     mut event: &mut ActorUnprivilegedStageExecutorEvent,
     stack: u64,
     function: extern "C" fn(*mut A) -> !,
 ) where
-    A: Actor<H>,
-    H: ActorHandler,
+    A: Actor<ActorUnprivilegedHandler>,
 {
     unsafe {
         asm!(
@@ -187,13 +184,12 @@ extern "C" fn execute<A, H>(
 }
 
 #[inline(never)]
-extern "C" fn continue_from_deadline_preemption<A, H>(
+extern "C" fn continue_from_deadline_preemption<A>(
     actor: *mut A,
     event: &mut ActorUnprivilegedStageExecutorEvent,
     context: &ActorUnprivilegedStageExecutorDeadlinePreemptionContext,
 ) where
-    A: Actor<H>,
-    H: ActorHandler,
+    A: Actor<ActorUnprivilegedHandler>,
 {
     unsafe {
         asm!(
@@ -239,13 +235,12 @@ extern "C" fn continue_from_deadline_preemption<A, H>(
 }
 
 #[inline(never)]
-extern "C" fn continue_from_system_call<A, H>(
+extern "C" fn continue_from_system_call<A>(
     actor: *mut A,
     event: &mut ActorUnprivilegedStageExecutorEvent,
     context: &ActorUnprivilegedStageExecutorSystemCallContext,
 ) where
-    A: Actor<H>,
-    H: ActorHandler,
+    A: Actor<ActorUnprivilegedHandler>,
 {
     unsafe {
         asm!(
@@ -290,10 +285,9 @@ extern "C" fn continue_from_system_call<A, H>(
 pub struct ActorUnprivilegedExecutorCreateStageHandler;
 
 impl ActorUnprivilegedExecutorCreateStageHandler {
-    extern "C" fn main<A, H>(actor: *mut A) -> !
+    extern "C" fn main<A>(actor: *mut A) -> !
     where
-        A: Actor<H>,
-        H: ActorHandler<CreateContext = ()>,
+        A: Actor<ActorUnprivilegedHandler>,
     {
         let actor = match unsafe { actor.as_mut() } {
             Some(actor) => actor,
@@ -315,8 +309,8 @@ impl ActorUnprivilegedExecutorCreateStageHandler {
 impl<A, H> ActorUnprivilegedExecutorStageHandler<A, H>
     for ActorUnprivilegedExecutorCreateStageHandler
 where
-    A: Actor<H>,
-    H: ActorHandler<CreateContext = ()>,
+    A: Actor<H> + Actor<ActorUnprivilegedHandler>,
+    H: ActorHandler,
 {
     fn execute(
         &self,
@@ -345,10 +339,9 @@ where
 pub struct ActorUnprivilegedExecutorDestroyStageHandler;
 
 impl ActorUnprivilegedExecutorDestroyStageHandler {
-    extern "C" fn main<A, H>(actor: *mut A) -> !
+    extern "C" fn main<A>(actor: *mut A) -> !
     where
-        A: Actor<H>,
-        H: ActorHandler<DestroyContext = ()>,
+        A: Actor<ActorUnprivilegedHandler>,
     {
         let actor = unsafe { LeakingBox::from_raw_in(actor, LeakingAllocator) };
 
@@ -376,8 +369,8 @@ impl ActorUnprivilegedExecutorDestroyStageHandler {
 impl<A, H> ActorUnprivilegedExecutorStageHandler<A, H>
     for ActorUnprivilegedExecutorDestroyStageHandler
 where
-    A: Actor<H>,
-    H: ActorHandler<DestroyContext = ()>,
+    A: Actor<H> + Actor<ActorUnprivilegedHandler>,
+    H: ActorHandler,
 {
     fn execute(
         &self,
@@ -405,25 +398,22 @@ where
 
 #[pin_project]
 #[derive(Constructor)]
-pub struct ActorUnprivilegedExecutor<A, B, H>
+pub struct ActorUnprivilegedExecutor<A, H>
 where
-    A: Actor<H>,
-    B: ActorContextBuilder<A, H>,
-    H: ActorHandler<CreateContext = (), DestroyContext = ()>,
+    A: Actor<H> + Actor<ActorUnprivilegedHandler>,
+    H: ActorHandler,
 {
     state: Option<ActorUnprivilegedExecutorState<A, H>>,
-    receiver: ActorMessageChannelReceiver<A::Message>,
-    context_builder: B,
+    receiver: ActorMessageChannelReceiver<<A as Actor<H>>::Message>,
     deadline_in_milliseconds: Option<NonZero<usize>>,
     #[Constructor(default)]
     marker: PhantomData<H>,
 }
 
-impl<A, B, H> ActorUnprivilegedExecutor<A, B, H>
+impl<A, H> ActorUnprivilegedExecutor<A, H>
 where
-    A: Actor<H>,
-    B: ActorContextBuilder<A, H>,
-    H: ActorHandler<CreateContext = (), DestroyContext = ()>,
+    A: Actor<H> + Actor<ActorUnprivilegedHandler>,
+    H: ActorHandler,
 {
     fn enable_deadline(&mut self) {
         if let Some(deadline_in_milliseconds) = self.deadline_in_milliseconds {
@@ -461,7 +451,7 @@ where
                 handler.execute(Box::as_mut_ptr(&mut actor), &mut event, user_stack.r#as());
             }
             Some(ActorUnprivilegedStageExecutorContext::SystemCall(system_call_context)) => {
-                continue_from_system_call(
+                continue_from_system_call::<A>(
                     Box::as_mut_ptr(&mut actor),
                     &mut event,
                     &system_call_context,
@@ -575,11 +565,10 @@ where
     }
 }
 
-impl<A, B, H> Future for ActorUnprivilegedExecutor<A, B, H>
+impl<A, H> Future for ActorUnprivilegedExecutor<A, H>
 where
-    A: Actor<H>,
-    B: ActorContextBuilder<A, H>,
-    H: ActorHandler<CreateContext = (), DestroyContext = ()>,
+    A: Actor<H> + Actor<ActorUnprivilegedHandler>,
+    H: ActorHandler,
 {
     type Output = ();
 

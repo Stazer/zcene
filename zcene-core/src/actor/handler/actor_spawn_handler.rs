@@ -1,19 +1,19 @@
-pub use crate::actor::{
-    Actor, ActorAddressReference, ActorAllocatorHandler, ActorCommonBounds, ActorHandler,
-    ActorSpawnError,
-};
+pub use crate::actor::{Actor, ActorCommonBounds, ActorHandler, ActorSpawnError};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait ActorSpawnHandler: ActorHandler + ActorAllocatorHandler {
+pub trait ActorSpawnHandler<T>: ActorHandler
+where
+    T: ActorHandler,
+{
     type SpawnSpecification<A>: ActorCommonBounds
     where
-        A: Actor<Self>;
+        A: ActorCommonBounds + Actor<T>;
 
     fn spawn<A>(
         &self,
         specification: Self::SpawnSpecification<A>,
-    ) -> Result<ActorAddressReference<A, Self>, ActorSpawnError>
+    ) -> Result<Self::Address<A>, ActorSpawnError>
     where
-        A: Actor<Self>;
+        A: Actor<Self> + Actor<T>;
 }
