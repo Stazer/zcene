@@ -30,29 +30,15 @@ where
             .map_err(ActorSystemCreateError::from)
     }
 
-    pub fn spawn<A, T>(
+    pub fn spawn<A>(
         &self,
         specification: H::SpawnSpecification<A>,
     ) -> Result<H::Address<A>, ActorSpawnError>
     where
-        H: ActorSpawnHandler<T>,
-        A: Actor<H> + Actor<T>,
-        T: ActorHandler,
-        <A as Actor<H>>::Message: From<<A as Actor<T>>::Message>,
-        <A as Actor<T>>::Message: From<<A as Actor<H>>::Message>,
-    {
-        self.handler.spawn(specification)
-    }
-
-    pub fn spawn_inline<A>(
-        &self,
-        specification: H::SpawnSpecification<A>,
-    ) -> Result<H::Address<A>, ActorSpawnError>
-    where
-        H: ActorSpawnHandler<H>,
+        H: ActorSpawnHandler,
         A: Actor<H>,
     {
-        self.spawn::<A, H>(specification)
+        self.handler.spawn(specification)
     }
 
     pub fn enter(&self, specification: H::EnterSpecification) -> Result<(), ActorEnterError>

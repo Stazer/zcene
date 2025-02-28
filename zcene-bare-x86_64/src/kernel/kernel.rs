@@ -50,6 +50,7 @@ where
     type Message = PrintActorMessage;
 
     async fn create(&mut self, context: H::CreateContext) -> Result<(), ActorCreateError> {
+        println!("zup");
         Ok(())
     }
 
@@ -216,7 +217,7 @@ impl Kernel {
 
         let address = Kernel::get()
             .actor_system()
-            .spawn::<_, ActorHandler<_>>(PrintActor)
+            .spawn(PrintActor)
             .unwrap();
 
         /*Kernel::get()
@@ -228,7 +229,7 @@ impl Kernel {
         use alloc::vec::Vec;
         use crate::actor::ActorUnprivilegedAddress;
 
-        Kernel::get()
+        /*Kernel::get()
             .actor_system()
             .spawn::<_, ActorUnprivilegedHandler>(
                 crate::actor::ActorUnprivilegedHandlerSpawnSpecification {
@@ -239,7 +240,7 @@ impl Kernel {
                     deadline_in_milliseconds: None,
                     marker: PhantomData::<_>,
                 }
-            );
+            );*/
 
         use zcene_core::future::FutureExt;
 
@@ -330,8 +331,6 @@ impl Kernel {
         };
 
         let selector = (u64::from(user_code32.0) << 48) | (u64::from(kernel_code.0) << 32);
-        logger.writer(|w| write!(w, "SEL: {:X}", selector));
-
         unsafe {
             gdt.load_unsafe();
 

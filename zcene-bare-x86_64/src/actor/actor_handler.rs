@@ -67,14 +67,14 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::num::NonZero;
 
-/*impl<H> ActorSpawnHandler<ActorHandler<H>> for ActorHandler<H>
+impl<H> ActorSpawnHandler for ActorHandler<H>
 where
     H: FutureRuntimeHandler,
 {
     type SpawnSpecification<A>
         = A
     where
-        A: ActorCommonBounds + Actor<ActorHandler<H>>;
+        A: ActorCommonBounds + Actor<Self>;
 
     fn spawn<A>(
         &self,
@@ -94,7 +94,7 @@ where
 
         Ok(<Self as actor::ActorHandler>::Address::new(sender))
     }
-}*/
+}
 
 pub struct ActorPrivilegedHandlerSpawnSpecification<A, H>
 where
