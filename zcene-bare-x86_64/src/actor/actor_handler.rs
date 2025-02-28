@@ -63,8 +63,11 @@ where
 }
 
 use zcene_core::actor::ActorCommonBounds;
+use alloc::vec::Vec;
+use core::marker::PhantomData;
+use core::num::NonZero;
 
-impl<H> ActorSpawnHandler<ActorHandler<H>> for ActorHandler<H>
+/*impl<H> ActorSpawnHandler<ActorHandler<H>> for ActorHandler<H>
 where
     H: FutureRuntimeHandler,
 {
@@ -91,24 +94,37 @@ where
 
         Ok(<Self as actor::ActorHandler>::Address::new(sender))
     }
+}*/
+
+pub struct ActorPrivilegedHandlerSpawnSpecification<A, H>
+where
+    A: Actor<H>,
+    H: actor::ActorHandler
+{
+    actor: A,
+    deadline_in_milliseconds: Option<NonZero<usize>>,
+    marker: PhantomData<H>,
 }
 
-use alloc::vec::Vec;
-use core::marker::PhantomData;
-use core::num::NonZero;
+pub struct ActorUnprivilegedHandlerMessage {
+    data: *const (),
+    size: usize,
+}
+
+use zcene_core::actor::ActorMessageSender;
 
 pub struct ActorUnprivilegedHandlerSpawnSpecification<A, H>
 where
     A: Actor<ActorUnprivilegedHandler>,
     H: actor::ActorHandler + ActorAllocatorHandler,
 {
-    actor: A,
-    address_mappings: Vec<()>,
-    deadline_in_milliseconds: Option<NonZero<usize>>,
-    marker: PhantomData<H>,
+    pub actor: A,
+    pub addresses: Vec<()>,
+    pub deadline_in_milliseconds: Option<NonZero<usize>>,
+    pub marker: PhantomData<H>,
 }
 
-impl<H> ActorSpawnHandler<ActorUnprivilegedHandler> for ActorHandler<H>
+/*impl<H> ActorSpawnHandler<ActorUnprivilegedHandler> for ActorHandler<H>
 where
     H: FutureRuntimeHandler,
 {
@@ -122,12 +138,12 @@ where
         specification: Self::SpawnSpecification<A>,
     ) -> Result<Self::Address<A>, ActorSpawnError>
     where
-        A: Actor<Self> + Actor<ActorUnprivilegedHandler>,
-        <A as Actor<Self>>::Message: From<<A as Actor<ActorUnprivilegedHandler>>::Message>,
-        <A as Actor<ActorUnprivilegedHandler>>::Message: From<<A as Actor<Self>>::Message>,
+        A: Actor<T>,
+        //<A as Actor<Self>>::Message: From<<A as Actor<ActorUnprivilegedHandler>>::Message>,
+        //<A as Actor<ActorUnprivilegedHandler>>::Message: From<<A as Actor<Self>>::Message>,
     {
         let (sender, receiver) =
-            ActorMessageChannel::<<A as Actor<Self>>::Message>::new_unbounded();
+            ActorMessageChannel::<<A as Actor<T>>::Message>::new_unbounded();
 
         self.future_runtime
             .spawn(ActorUnprivilegedExecutor::<A, Self>::new(
@@ -141,7 +157,7 @@ where
 
         Ok(Self::Address::new(sender))
     }
-}
+}*/
 
 use crate::actor::ActorUnprivilegedHandler;
 
@@ -155,4 +171,15 @@ where
     {
         None
     }
+}
+
+pub trait ActorEnvironmentTransformer<FE, TE>
+where
+    FE: actor::ActorEnvironment,
+    TE: actor::ActorEnvironment,
+    Self: Actor<FE> + Actor<TE>,
+{
+    type Output: Actor<TE>;
+
+    fn transform(self) -> Self::Output;
 }

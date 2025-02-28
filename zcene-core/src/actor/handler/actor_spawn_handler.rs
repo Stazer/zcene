@@ -17,6 +17,6 @@ where
     where
         A: Actor<Self> + Actor<T>,
         <A as Actor<Self>>::Message: From<<A as Actor<T>>::Message>,
-        <A as Actor<T>>::Message: From<<A as Actor<Self>>::Message>,
+        <A as Actor<T>>::Message: From<<A as Actor<Self>>::Message>
     ;
 }

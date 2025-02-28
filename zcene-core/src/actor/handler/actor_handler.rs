@@ -13,3 +13,5 @@ pub trait ActorHandler: ActorCommonBounds + Sized {
     where
         M: ActorMessage;
 }
+
+pub trait ActorEnvironment = ActorHandler;

@@ -6,6 +6,7 @@ use core::marker::PhantomData;
 use zcene_core::actor::{
     Actor, ActorAddress, ActorFuture, ActorHandler, ActorMessage, ActorMessageSender,
     ActorSendError,
+    ActorCommonHandleContext,
 };
 
 use core::arch::asm;
@@ -19,17 +20,21 @@ impl ActorHandler for ActorUnprivilegedHandler {
         A: Actor<Self>;
     type CreateContext = ();
     type HandleContext<M>
-        = ()
+        = ActorCommonHandleContext<M>
     where
         M: ActorMessage;
     type DestroyContext = ();
 }
 
+use ztd::Constructor;
+
+#[derive(Constructor)]
 pub struct ActorUnprivilegedAddress<A>
 where
     A: Actor<ActorUnprivilegedHandler>,
 {
     descriptor: usize,
+    #[Constructor(default)]
     marker: PhantomData<A::Message>,
 }
 
@@ -39,18 +44,6 @@ where
 {
     fn clone(&self) -> Self {
         Self::new(self.descriptor)
-    }
-}
-
-impl<A> ActorUnprivilegedAddress<A>
-where
-    A: Actor<ActorUnprivilegedHandler>,
-{
-    pub fn new(descriptor: usize) -> Self {
-        Self {
-            descriptor,
-            marker: PhantomData::<A::Message>,
-        }
     }
 }
 

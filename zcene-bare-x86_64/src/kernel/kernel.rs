@@ -107,7 +107,6 @@ impl<H> UnprivilegedActor<H>
 where
     H: actor::ActorHandler,
     H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
-    //H::HandleContext<<PrintActor as Actor<H>>::Message>: ActorContextMessageProvider<<PrintActor as Actor<H>>::Message>,
 {
     pub fn new(printer: H::Address<PrintActor>) -> Self {
         Self { printer }
@@ -136,6 +135,23 @@ where
 
     async fn destroy(self, context: H::DestroyContext) -> Result<(), ActorDestroyError> {
         Ok(())
+    }
+}
+
+use crate::actor::ActorEnvironmentTransformer;
+
+impl<FE, TE> ActorEnvironmentTransformer<FE, TE> for UnprivilegedActor<FE>
+where
+    FE: zcene_core::actor::ActorEnvironment,
+    TE: zcene_core::actor::ActorEnvironment,
+    FE::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
+    TE::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
+    Self: Actor<FE> + Actor<TE>,
+{
+    type Output = UnprivilegedActor<TE>;
+
+    fn transform(self) -> Self::Output {
+        todo!()
     }
 }
 
@@ -209,11 +225,21 @@ impl Kernel {
                 EmptyActor,
             ).unwrap();*/
 
-        /*Kernel::get()
+        use alloc::vec::Vec;
+        use crate::actor::ActorUnprivilegedAddress;
+
+        Kernel::get()
             .actor_system()
-            .spawn_within::<_, ActorUnprivilegedHandler>(
-                UnprivilegedActor::<ActorHandler<_>>::new(address),
-            );*/
+            .spawn::<_, ActorUnprivilegedHandler>(
+                crate::actor::ActorUnprivilegedHandlerSpawnSpecification {
+                    actor: UnprivilegedActor::new(
+                        ActorUnprivilegedAddress::new(0),
+                    ),
+                    addresses: Vec::default(),
+                    deadline_in_milliseconds: None,
+                    marker: PhantomData::<_>,
+                }
+            );
 
         use zcene_core::future::FutureExt;
 
