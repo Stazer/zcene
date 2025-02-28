@@ -35,7 +35,7 @@ where
         specification: H::SpawnSpecification<A>,
     ) -> Result<H::Address<A>, ActorSpawnError>
     where
-        H: ActorSpawnHandler,
+        H: ActorSpawnHandler<H>,
         A: Actor<H>,
     {
         self.handler.spawn(specification)

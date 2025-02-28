@@ -67,7 +67,7 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::num::NonZero;
 
-impl<H> ActorSpawnHandler for ActorHandler<H>
+impl<H> ActorSpawnHandler<ActorHandler<H>> for ActorHandler<H>
 where
     H: FutureRuntimeHandler,
 {
@@ -79,9 +79,9 @@ where
     fn spawn<A>(
         &self,
         actor: Self::SpawnSpecification<A>,
-    ) -> Result<Self::Address<A>, ActorSpawnError>
+    ) -> Result<<ActorHandler<H> as actor::ActorHandler>::Address<A>, ActorSpawnError>
     where
-        A: Actor<Self>,
+        A: Actor<ActorHandler<H>>,
     {
         let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
 
