@@ -1,7 +1,6 @@
 use crate::actor::{
-    ActorPrivilegedExecutor, ActorPrivilegedExecutorCreateState, ActorSpawnSpecification,
-    ActorSpawnSpecificationInner, ActorSpawnSpecificationType, ActorUnprivilegedExecutor,
-    ActorUnprivilegedExecutorCreateState,
+    ActorPrivilegedExecutor, ActorPrivilegedExecutorCreateState,
+    ActorUnprivilegedExecutor, ActorUnprivilegedExecutorCreateState,
 };
 use alloc::boxed::Box;
 use zcene_core::actor::{
@@ -96,6 +95,50 @@ where
     }
 }
 
+use zcene_core::actor::ActorMessageSender;
+
+pub trait ActorSpawnable<H>
+where
+    H: actor::ActorHandler,
+{
+    type Actor: Actor<H>;
+
+    fn spawn(self, handler: &H) -> H::Address<Self::Actor>;
+}
+
+impl<H> ActorHandler<H>
+where
+    H: FutureRuntimeHandler,
+{
+    pub fn spawn_custom<S>(&self, spawnable: S) -> <ActorHandler<H> as actor::ActorHandler>::Address<S::Actor>
+    where
+        S: ActorSpawnable<Self>,
+    {
+        spawnable.spawn(self)
+    }
+}
+
+impl<A, H> ActorSpawnable<ActorHandler<H>> for A
+where
+    A: Actor<ActorHandler<H>>,
+    H: FutureRuntimeHandler,
+{
+    type Actor = A;
+
+    fn spawn(self, handler: &ActorHandler<H>) -> <ActorHandler<H> as actor::ActorHandler>::Address<A> {
+        let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
+
+        handler.future_runtime.spawn(ActorPrivilegedExecutor::new(
+            Some(ActorPrivilegedExecutorCreateState::new(self).into()),
+            receiver,
+            ActorCommonContextBuilder::default(),
+            None,
+        )).unwrap();
+
+        <ActorHandler<H> as actor::ActorHandler>::Address::new(sender)//).unwrap()
+    }
+}
+
 pub struct ActorPrivilegedHandlerSpawnSpecification<A, H>
 where
     A: Actor<H>,
@@ -106,22 +149,62 @@ where
     marker: PhantomData<H>,
 }
 
-pub struct ActorUnprivilegedHandlerMessage {
-    data: *const (),
-    size: usize,
-}
-
-use zcene_core::actor::ActorMessageSender;
-
 pub struct ActorUnprivilegedHandlerSpawnSpecification<A, H>
 where
-    A: Actor<ActorUnprivilegedHandler>,
-    H: actor::ActorHandler + ActorAllocatorHandler,
+    A: Actor<H>,
+    H: actor::ActorHandler
 {
     pub actor: A,
     pub addresses: Vec<()>,
     pub deadline_in_milliseconds: Option<NonZero<usize>>,
     pub marker: PhantomData<H>,
+}
+
+pub trait ActorEnvironmentTransformer<FE, TE>
+where
+    FE: actor::ActorHandler,
+    TE: actor::ActorHandler,
+    Self: Actor<FE>,
+{
+    type Output: Actor<TE>;
+
+    fn transform(self) -> Self::Output;
+}
+
+/*impl<A, H> ActorEnvironmentTransformer<H, H> for A
+where
+    A: Actor<H>,
+    H: actor::ActorHandler,
+{
+    type Output = A;
+
+    fn transform(self) -> Self::Output {
+        self
+    }
+}*/
+
+impl<A, H> ActorSpawnable<ActorHandler<H>> for ActorUnprivilegedHandlerSpawnSpecification<A, ActorHandler<H>>
+where
+    A: Actor<ActorHandler<H>> + ActorEnvironmentTransformer<ActorHandler<H>, ActorUnprivilegedHandler>,
+    H: FutureRuntimeHandler,
+{
+    type Actor = A;
+
+    fn spawn(self, handler: &ActorHandler<H>) -> <ActorHandler<H> as actor::ActorHandler>::Address<A> {
+        self.actor.transform();
+
+        /*let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
+
+        handler.future_runtime.spawn(ActorPrivilegedExecutor::new(
+            Some(ActorPrivilegedExecutorCreateState::new(self).into()),
+            receiver,
+            ActorCommonContextBuilder::default(),
+            None,
+        )).unwrap();
+
+        <ActorHandler<H> as actor::ActorHandler>::Address::new(sender)//).unwrap()*/
+        todo!()
+    }
 }
 
 /*impl<H> ActorSpawnHandler<ActorUnprivilegedHandler> for ActorHandler<H>
@@ -147,7 +230,7 @@ where
 
         self.future_runtime
             .spawn(ActorUnprivilegedExecutor::<A, Self>::new(
-                Some(
+
                     ActorUnprivilegedExecutorCreateState::new(Box::new(specification.actor), None)
                         .into(),
                 ),
@@ -171,15 +254,4 @@ where
     {
         None
     }
-}
-
-pub trait ActorEnvironmentTransformer<FE, TE>
-where
-    FE: actor::ActorEnvironment,
-    TE: actor::ActorEnvironment,
-    Self: Actor<FE> + Actor<TE>,
-{
-    type Output: Actor<TE>;
-
-    fn transform(self) -> Self::Output;
 }

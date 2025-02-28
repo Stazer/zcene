@@ -1,4 +1,3 @@
-use crate::actor::ActorInlineSpawnSpecification;
 use crate::kernel::future::runtime::{KernelFutureRuntime, KernelFutureRuntimeHandler};
 use crate::kernel::interrupt::KernelInterruptManager;
 use crate::kernel::logger::println;
@@ -96,6 +95,7 @@ where
 }
 
 #[derive(Debug)]
+// #[derive(ActorEnvironmentTransformer(ActorUnprivilegedEnvironment))]
 pub struct UnprivilegedActor<H>
 where
     H: actor::ActorHandler,
@@ -139,22 +139,24 @@ where
     }
 }
 
-use crate::actor::ActorEnvironmentTransformer;
+use crate::actor::{ActorUnprivilegedHandler, ActorUnprivilegedAddress};
 
-impl<FE, TE> ActorEnvironmentTransformer<FE, TE> for UnprivilegedActor<FE>
+impl<H> crate::actor::ActorEnvironmentTransformer<H, ActorUnprivilegedHandler> for UnprivilegedActor<H>
 where
-    FE: zcene_core::actor::ActorEnvironment,
-    TE: zcene_core::actor::ActorEnvironment,
-    FE::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
-    TE::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
-    Self: Actor<FE> + Actor<TE>,
+    H: actor::ActorHandler,
+    H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
 {
-    type Output = UnprivilegedActor<TE>;
+    type Output = UnprivilegedActor<ActorUnprivilegedHandler>;
 
-    fn transform(self) -> Self::Output {
-        todo!()
+    fn transform(self/*, builder: Builder*/) -> Self::Output {
+        UnprivilegedActor::new(
+            //builder.transform_address(self.printer),
+            ActorUnprivilegedAddress::new(0),
+        )
     }
 }
+
+use crate::actor::ActorEnvironmentTransformer;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -190,8 +192,6 @@ impl Kernel {
             wrmsr(IA32_EFER, rdmsr(IA32_EFER) | 1);
         }
 
-        use crate::actor::ActorSpawnSpecification;
-        use crate::actor::ActorUnprivilegedSpawnSpecification;
         use core::num::NonZero;
 
         /*let print_actor = Kernel::get()
@@ -215,10 +215,20 @@ impl Kernel {
 
         use crate::actor::ActorUnprivilegedHandler;
 
+        let print_address = Kernel::get()
+            .actor_system()
+            .handler()
+            .spawn_custom(PrintActor);
+
         let address = Kernel::get()
             .actor_system()
-            .spawn(PrintActor)
-            .unwrap();
+            .handler()
+            .spawn_custom(ActorUnprivilegedHandlerSpawnSpecification{
+                actor: UnprivilegedActor::new(print_address),
+                addresses: Vec::default(),
+                deadline_in_milliseconds: None,
+                marker: PhantomData::<_>,
+            });
 
         /*Kernel::get()
             .actor_system()
@@ -227,7 +237,7 @@ impl Kernel {
             ).unwrap();*/
 
         use alloc::vec::Vec;
-        use crate::actor::ActorUnprivilegedAddress;
+        use crate::actor::{ActorUnprivilegedAddress, ActorUnprivilegedHandlerSpawnSpecification};
 
         /*Kernel::get()
             .actor_system()
