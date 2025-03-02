@@ -57,18 +57,13 @@ where
     }
 }
 
-impl<H> ActorSpawnHandler for FutureRuntimeActorHandler<H>
+impl<A, H> ActorSpawner<A, FutureRuntimeActorHandler<H>> for FutureRuntimeActorHandler<H>
 where
     H: FutureRuntimeHandler,
 {
-    type SpawnSpecification<A>
-        = A
-    where
-        A: Actor<Self>;
-
-    fn spawn<A>(
+    fn spawn<S>(
         &self,
-        mut actor: Self::SpawnSpecification<A>,
+        spawnable: S,
     ) -> Result<Self::Address<A>, ActorSpawnError>
     where
         A: Actor<Self>,

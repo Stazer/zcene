@@ -4,7 +4,6 @@ mod actor_unprivileged_executor_destroy_state;
 mod actor_unprivileged_executor_handle_state;
 mod actor_unprivileged_executor_receive_state;
 mod actor_unprivileged_executor_stage_context;
-mod actor_unprivileged_executor_stage_event;
 mod actor_unprivileged_executor_state;
 
 pub use actor_unprivileged_executor::*;

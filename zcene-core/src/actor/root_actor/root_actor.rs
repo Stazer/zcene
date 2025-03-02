@@ -1,29 +1,29 @@
 use crate::actor::{
-    Actor, ActorAllocatorHandler, ActorCreateError, ActorFuture, ActorHandleError, ActorHandler,
+    Actor, ActorAllocatorHandler, ActorCreateError, ActorFuture, ActorHandleError, ActorEnvironment,
     ActorMailbox, RootActorMessage,
 };
 use alloc::vec::Vec;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct RootActor<H>
+pub struct RootActor<E>
 where
-    H: ActorHandler + ActorAllocatorHandler,
+    E: ActorEnvironment + ActorAllocatorHandler,
 {
-    children: Vec<ActorMailbox<(), H>, H::Allocator>,
+    children: Vec<ActorMailbox<(), E>, E::Allocator>,
 }
 
-impl<H> Actor<H> for RootActor<H>
+impl<E> Actor<E> for RootActor<E>
 where
-    H: ActorHandler + ActorAllocatorHandler,
-    H::CreateContext: Into<ActorMailbox<(), H>>,
-    H::HandleContext<RootActorMessage<H>>: Into<RootActorMessage<H>>,
+    E: ActorEnvironment + ActorAllocatorHandler,
+    E::CreateContext: Into<ActorMailbox<(), E>>,
+    E::HandleContext<RootActorMessage<E>>: Into<RootActorMessage<E>>,
 {
-    type Message = RootActorMessage<H>;
+    type Message = RootActorMessage<E>;
 
     fn create(
         &mut self,
-        context: H::CreateContext,
+        context: E::CreateContext,
     ) -> impl ActorFuture<'_, Result<(), ActorCreateError>> {
         async move {
             self.children.push(context.into());
@@ -34,7 +34,7 @@ where
 
     fn handle(
         &mut self,
-        context: H::HandleContext<Self::Message>,
+        context: E::HandleContext<Self::Message>,
     ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
         async move {
             match context.into() {

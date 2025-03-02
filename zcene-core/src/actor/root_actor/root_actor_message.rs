@@ -1,18 +1,18 @@
-use crate::actor::{ActorAllocatorHandler, ActorHandler, ActorMailbox};
+use crate::actor::{ActorAllocatorHandler, ActorEnvironment, ActorMailbox};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug)]
-pub enum RootActorMessage<H>
+pub enum RootActorMessage<E>
 where
-    H: ActorHandler + ActorAllocatorHandler,
+    E: ActorEnvironment + ActorAllocatorHandler,
 {
-    Attach(ActorMailbox<(), H>),
+    Attach(ActorMailbox<(), E>),
 }
 
-impl<H> Clone for RootActorMessage<H>
+impl<E> Clone for RootActorMessage<E>
 where
-    H: ActorHandler + ActorAllocatorHandler,
+    E: ActorEnvironment + ActorAllocatorHandler,
 {
     fn clone(&self) -> Self {
         match self {

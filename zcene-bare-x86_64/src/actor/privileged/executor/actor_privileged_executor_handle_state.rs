@@ -1,17 +1,17 @@
 use core::marker::PhantomData;
-use zcene_core::actor::{Actor, ActorHandler};
+use zcene_core::actor::{Actor, ActorEnvironment};
 use ztd::{Constructor, Inner};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Constructor, Inner)]
-pub struct ActorPrivilegedExecutorHandleState<A, H>
+pub struct ActorPrivilegedExecutorHandleState<A, E>
 where
-    A: Actor<H>,
-    H: ActorHandler,
+    A: Actor<E>,
+    E: ActorEnvironment,
 {
     actor: A,
     message: A::Message,
     #[Constructor(default)]
-    marker: PhantomData<H>,
+    marker: PhantomData<E>,
 }

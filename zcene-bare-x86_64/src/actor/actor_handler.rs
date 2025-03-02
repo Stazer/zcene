@@ -5,9 +5,9 @@ use crate::actor::{
 use alloc::boxed::Box;
 use zcene_core::actor::{
     self, Actor, ActorAddressReference, ActorAllocatorHandler, ActorCommonContextBuilder,
-    ActorCommonHandleContext, ActorDiscoverHandler, ActorEnterError, ActorEnterHandler,
+    ActorCommonHandleContext, ActorEnterError, ActorEnterHandler,
     ActorMailbox, ActorMessage, ActorMessageChannel, ActorMessageChannelAddress, ActorSpawnError,
-    ActorSpawnHandler,
+
 };
 use zcene_core::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
 use ztd::Constructor;
@@ -22,7 +22,7 @@ where
     future_runtime: FutureRuntimeReference<H>,
 }
 
-impl<H> actor::ActorHandler for ActorHandler<H>
+impl<H> actor::ActorEnvironment for ActorHandler<H>
 where
     H: FutureRuntimeHandler,
 {
@@ -66,7 +66,7 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::num::NonZero;
 
-impl<H> ActorSpawnHandler<ActorHandler<H>> for ActorHandler<H>
+/*impl<H> ActorSpawnHandler<ActorHandler<H>> for ActorHandler<H>
 where
     H: FutureRuntimeHandler,
 {
@@ -78,7 +78,7 @@ where
     fn spawn<A>(
         &self,
         actor: Self::SpawnSpecification<A>,
-    ) -> Result<<ActorHandler<H> as actor::ActorHandler>::Address<A>, ActorSpawnError>
+    ) -> Result<<ActorHandler<H> as actor::ActorEnvironment>::Address<A>, ActorSpawnError>
     where
         A: Actor<ActorHandler<H>>,
     {
@@ -91,41 +91,20 @@ where
             None,
         ))?;
 
-        Ok(<Self as actor::ActorHandler>::Address::new(sender))
+        Ok(<Self as actor::ActorEnvironment>::Address::new(sender))
     }
-}
+}*/
 
 use zcene_core::actor::ActorMessageSender;
 
-pub trait ActorSpawnable<H>
-where
-    H: actor::ActorHandler,
-{
-    type Actor: Actor<H>;
-
-    fn spawn(self, handler: &H) -> H::Address<Self::Actor>;
-}
-
-impl<H> ActorHandler<H>
-where
-    H: FutureRuntimeHandler,
-{
-    pub fn spawn_custom<S>(&self, spawnable: S) -> <ActorHandler<H> as actor::ActorHandler>::Address<S::Actor>
-    where
-        S: ActorSpawnable<Self>,
-    {
-        spawnable.spawn(self)
-    }
-}
-
-impl<A, H> ActorSpawnable<ActorHandler<H>> for A
+/*impl<A, H> ActorSpawnable<ActorHandler<H>> for A
 where
     A: Actor<ActorHandler<H>>,
     H: FutureRuntimeHandler,
 {
     type Actor = A;
 
-    fn spawn(self, handler: &ActorHandler<H>) -> <ActorHandler<H> as actor::ActorHandler>::Address<A> {
+    fn spawn(self, handler: &ActorHandler<H>) -> <ActorHandler<H> as actor::ActorEnvironment>::Address<A> {
         let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
 
         handler.future_runtime.spawn(ActorPrivilegedExecutor::new(
@@ -135,14 +114,14 @@ where
             None,
         )).unwrap();
 
-        <ActorHandler<H> as actor::ActorHandler>::Address::new(sender)//).unwrap()
+        <ActorHandler<H> as actor::ActorEnvironment>::Address::new(sender)//).unwrap()
     }
 }
 
 pub struct ActorPrivilegedHandlerSpawnSpecification<A, H>
 where
     A: Actor<H>,
-    H: actor::ActorHandler
+    H: actor::ActorEnvironment
 {
     actor: A,
     deadline_in_milliseconds: Option<NonZero<usize>>,
@@ -152,7 +131,7 @@ where
 pub struct ActorUnprivilegedHandlerSpawnSpecification<A, H>
 where
     A: Actor<H>,
-    H: actor::ActorHandler
+    H: actor::ActorEnvironment
 {
     pub actor: A,
     pub addresses: Vec<()>,
@@ -162,8 +141,8 @@ where
 
 pub trait ActorEnvironmentTransformer<FE, TE>
 where
-    FE: actor::ActorHandler,
-    TE: actor::ActorHandler,
+    FE: actor::ActorEnvironment,
+    TE: actor::ActorEnvironment,
     Self: Actor<FE>,
 {
     type Output: Actor<TE>;
@@ -174,7 +153,7 @@ where
 /*impl<A, H> ActorEnvironmentTransformer<H, H> for A
 where
     A: Actor<H>,
-    H: actor::ActorHandler,
+    H: actor::ActorEnvironment,
 {
     type Output = A;
 
@@ -190,7 +169,7 @@ where
 {
     type Actor = A;
 
-    fn spawn(self, handler: &ActorHandler<H>) -> <ActorHandler<H> as actor::ActorHandler>::Address<A> {
+    fn spawn(self, handler: &ActorHandler<H>) -> <ActorHandler<H> as actor::ActorEnvironment>::Address<A> {
         self.actor.transform();
 
         /*let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
@@ -202,7 +181,7 @@ where
             None,
         )).unwrap();
 
-        <ActorHandler<H> as actor::ActorHandler>::Address::new(sender)//).unwrap()*/
+        <ActorHandler<H> as actor::ActorEnvironment>::Address::new(sender)//).unwrap()*/
         todo!()
     }
 }
@@ -255,3 +234,4 @@ where
         None
     }
 }
+*/

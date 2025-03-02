@@ -1,10 +1,10 @@
-use crate::actor::{Actor, ActorCommonBounds, ActorHandler, ActorMessageSender};
+use crate::actor::{Actor, ActorCommonBounds, ActorEnvironment, ActorMessageSender};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait ActorAddress<A, H>: ActorMessageSender<A::Message> + ActorCommonBounds
+pub trait ActorAddress<A, E>: ActorMessageSender<A::Message> + ActorCommonBounds
 where
-    A: Actor<H>,
-    H: ActorHandler,
+    A: Actor<E>,
+    E: ActorEnvironment,
 {
 }

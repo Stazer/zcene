@@ -1,5 +1,5 @@
 use crate::actor::{
-    ActorAllocatorHandler, ActorHandler, ActorMailbox, ActorMailboxMessageSender, ActorMessage,
+    ActorAllocatorHandler, ActorEnvironment, ActorMailbox, ActorMailboxMessageSender, ActorMessage,
 };
 use alloc::sync::Weak;
 use core::fmt::{self, Debug, Formatter};
@@ -8,30 +8,30 @@ use ztd::Constructor;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Constructor)]
-pub struct ActorWeakMailbox<M, H>
+pub struct ActorWeakMailbox<M, E>
 where
     M: ActorMessage,
-    H: ActorHandler + ActorAllocatorHandler,
+    E: ActorEnvironment + ActorAllocatorHandler,
 {
-    caller: Weak<dyn ActorMailboxMessageSender<M, H>, H::Allocator>,
+    caller: Weak<dyn ActorMailboxMessageSender<M, E>, E::Allocator>,
 }
 
-impl<M, H> Debug for ActorWeakMailbox<M, H>
+impl<M, E> Debug for ActorWeakMailbox<M, E>
 where
     M: ActorMessage,
-    H: ActorHandler + ActorAllocatorHandler,
+    E: ActorEnvironment + ActorAllocatorHandler,
 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         formatter.debug_struct("ActorWeakMailbox").finish()
     }
 }
 
-impl<M, H> ActorWeakMailbox<M, H>
+impl<M, E> ActorWeakMailbox<M, E>
 where
     M: ActorMessage,
-    H: ActorHandler + ActorAllocatorHandler,
+    E: ActorEnvironment + ActorAllocatorHandler,
 {
-    pub fn upgrade(&self) -> Option<ActorMailbox<M, H>> {
+    pub fn upgrade(&self) -> Option<ActorMailbox<M, E>> {
         self.caller.upgrade().map(ActorMailbox::new)
     }
 }

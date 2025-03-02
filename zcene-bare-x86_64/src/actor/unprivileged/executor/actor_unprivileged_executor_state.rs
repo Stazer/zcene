@@ -3,20 +3,20 @@ use crate::actor::{
     ActorUnprivilegedExecutorHandleState, ActorUnprivilegedExecutorReceiveState,
     ActorUnprivilegedHandler,
 };
-use zcene_core::actor::{Actor, ActorHandler};
+use zcene_core::actor::{Actor, ActorEnvironment};
 use ztd::From;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(From)]
 #[From(all)]
-pub enum ActorUnprivilegedExecutorState<A, H>
+pub enum ActorUnprivilegedExecutorState<A, E>
 where
-    A: Actor<H> + Actor<ActorUnprivilegedHandler>,
-    H: ActorHandler,
+    A: Actor<E> + Actor<ActorUnprivilegedHandler>,
+    E: ActorEnvironment,
 {
-    Create(ActorUnprivilegedExecutorCreateState<A, H>),
-    Receive(ActorUnprivilegedExecutorReceiveState<A, H>),
-    Handle(ActorUnprivilegedExecutorHandleState<A, H>),
-    Destroy(ActorUnprivilegedExecutorDestroyState<A, H>),
+    Create(ActorUnprivilegedExecutorCreateState<A, E>),
+    Receive(ActorUnprivilegedExecutorReceiveState<A, E>),
+    Handle(ActorUnprivilegedExecutorHandleState<A, E>),
+    Destroy(ActorUnprivilegedExecutorDestroyState<A, E>),
 }

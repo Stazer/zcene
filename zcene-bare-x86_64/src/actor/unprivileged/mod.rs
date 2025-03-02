@@ -4,7 +4,7 @@ pub use executor::*;
 
 use core::marker::PhantomData;
 use zcene_core::actor::{
-    Actor, ActorAddress, ActorFuture, ActorHandler, ActorMessage, ActorMessageSender,
+    Actor, ActorAddress, ActorFuture, ActorEnvironment, ActorMessage, ActorMessageSender,
     ActorSendError,
     ActorCommonHandleContext,
 };
@@ -13,7 +13,7 @@ use core::arch::asm;
 
 pub struct ActorUnprivilegedHandler;
 
-impl ActorHandler for ActorUnprivilegedHandler {
+impl ActorEnvironment for ActorUnprivilegedHandler {
     type Address<A>
         = ActorUnprivilegedAddress<A>
     where

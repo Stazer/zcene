@@ -2,7 +2,7 @@ pub use crate::actor::{Actor, ActorAddress, ActorCommonBounds, ActorMessage};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait ActorHandler: ActorCommonBounds + Sized {
+pub trait ActorEnvironment: ActorCommonBounds + Sized {
     type Address<A>: ActorAddress<A, Self>
     where
         A: Actor<Self>;
@@ -13,5 +13,3 @@ pub trait ActorHandler: ActorCommonBounds + Sized {
     where
         M: ActorMessage;
 }
-
-pub trait ActorEnvironment = ActorHandler;

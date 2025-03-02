@@ -9,7 +9,7 @@ use core::num::NonZero;
 use core::pin::{pin, Pin};
 use core::task::{Context, Poll};
 use pin_project::pin_project;
-use zcene_core::actor::{Actor, ActorContextBuilder, ActorHandler, ActorMessageChannelReceiver};
+use zcene_core::actor::{Actor, ActorContextBuilder, ActorEnvironment, ActorMessageChannelReceiver};
 use zcene_core::future::FutureExt;
 use ztd::Constructor;
 
@@ -17,25 +17,25 @@ use ztd::Constructor;
 
 #[pin_project]
 #[derive(Constructor)]
-pub struct ActorPrivilegedExecutor<A, B, H>
+pub struct ActorPrivilegedExecutor<A, B, E>
 where
-    A: Actor<H>,
-    B: ActorContextBuilder<A, H>,
-    H: ActorHandler,
+    A: Actor<E>,
+    B: ActorContextBuilder<A, E>,
+    E: ActorEnvironment,
 {
-    state: Option<ActorPrivilegedExecutorState<A, H>>,
+    state: Option<ActorPrivilegedExecutorState<A, E>>,
     receiver: ActorMessageChannelReceiver<A::Message>,
     context_builder: B,
     deadline_in_milliseconds: Option<NonZero<usize>>,
     #[Constructor(default)]
-    marker: PhantomData<H>,
+    marker: PhantomData<E>,
 }
 
-impl<A, B, H> Future for ActorPrivilegedExecutor<A, B, H>
+impl<A, B, E> Future for ActorPrivilegedExecutor<A, B, E>
 where
-    A: Actor<H>,
-    B: ActorContextBuilder<A, H>,
-    H: ActorHandler,
+    A: Actor<E>,
+    B: ActorContextBuilder<A, E>,
+    E: ActorEnvironment,
 {
     type Output = ();
 

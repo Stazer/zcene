@@ -1,30 +1,30 @@
 use crate::actor::{
     Actor, ActorAddressReference, ActorAllocatorHandler, ActorBoxFuture, ActorCommonBounds,
-    ActorHandler, ActorMessage, ActorMessageSender, ActorSendError,
+    ActorEnvironment, ActorMessage, ActorMessageSender, ActorSendError,
 };
 use alloc::boxed::Box;
 use core::marker::PhantomData;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait ActorMailboxMessageSender<M, H>: ActorCommonBounds
+pub trait ActorMailboxMessageSender<M, E>: ActorCommonBounds
 where
     M: ActorMessage,
-    H: ActorHandler + ActorAllocatorHandler,
+    E: ActorEnvironment + ActorAllocatorHandler,
 {
-    fn send(&self, message: M) -> ActorBoxFuture<'_, Result<(), ActorSendError>, H>;
+    fn send(&self, message: M) -> ActorBoxFuture<'_, Result<(), ActorSendError>, E>;
 }
 
-impl<A, M, H, F> ActorMailboxMessageSender<M, H>
-    for (ActorAddressReference<A, H>, PhantomData<(M, A)>, F)
+impl<A, M, E, F> ActorMailboxMessageSender<M, E>
+    for (ActorAddressReference<A, E>, PhantomData<(M, A)>, F)
 where
-    A: Actor<H>,
-    H: ActorHandler + ActorAllocatorHandler,
+    A: Actor<E>,
+    E: ActorEnvironment + ActorAllocatorHandler,
     M: ActorMessage,
     F: Fn(M) -> A::Message + ActorCommonBounds,
 {
-    fn send(&self, message: M) -> ActorBoxFuture<'_, Result<(), ActorSendError>, H> {
-        let allocator = ActorAddressReference::<A, H>::allocator(&self.0).clone();
+    fn send(&self, message: M) -> ActorBoxFuture<'_, Result<(), ActorSendError>, E> {
+        let allocator = ActorAddressReference::<A, E>::allocator(&self.0).clone();
         let sender = self.0.clone();
         let message = (self.2)(message);
 

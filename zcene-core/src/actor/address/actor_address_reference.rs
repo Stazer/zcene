@@ -1,7 +1,7 @@
-use crate::actor::{ActorAllocatorHandler, ActorHandler};
+use crate::actor::{ActorAllocatorHandler, ActorEnvironment};
 use alloc::sync::Arc;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub type ActorAddressReference<A, H> =
-    Arc<<H as ActorHandler>::Address<A>, <H as ActorAllocatorHandler>::Allocator>;
+    Arc<<H as ActorEnvironment>::Address<A>, <H as ActorAllocatorHandler>::Allocator>;

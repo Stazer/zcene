@@ -1,33 +1,33 @@
 use crate::actor::{
     ActorCommonBounds, ActorCreateError, ActorDestroyError, ActorFuture, ActorHandleError,
-    ActorHandler, ActorMessage,
+    ActorEnvironment, ActorMessage,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait Actor<H>: ActorCommonBounds + Sized
+pub trait Actor<E>: ActorCommonBounds + Sized
 where
-    H: ActorHandler,
+    E: ActorEnvironment,
 {
     type Message: ActorMessage;
 
     fn create(
         &mut self,
-        _context: H::CreateContext,
+        _context: E::CreateContext,
     ) -> impl ActorFuture<'_, Result<(), ActorCreateError>> {
         async { Ok(()) }
     }
 
     fn handle(
         &mut self,
-        _context: H::HandleContext<Self::Message>,
+        _context: E::HandleContext<Self::Message>,
     ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
         async { Ok(()) }
     }
 
     fn destroy(
         self,
-        _context: H::DestroyContext,
+        _context: E::DestroyContext,
     ) -> impl ActorFuture<'static, Result<(), ActorDestroyError>> {
         async { Ok(()) }
     }

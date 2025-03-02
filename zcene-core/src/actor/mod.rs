@@ -3,6 +3,8 @@ mod actor_allocator;
 mod actor_box_future;
 mod actor_common_bounds;
 mod actor_future;
+mod actor_spawner;
+mod actor_spawnable;
 mod actor_system;
 mod actor_system_reference;
 mod address;
@@ -16,6 +18,8 @@ mod message;
 mod root_actor;
 
 pub use actor::*;
+pub use actor_spawner::*;
+pub use actor_spawnable::*;
 pub use actor_allocator::*;
 pub use actor_box_future::*;
 pub use actor_common_bounds::*;

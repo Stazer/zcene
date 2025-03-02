@@ -1,6 +1,6 @@
 use crate::actor::{
-    Actor, ActorAllocatorHandler, ActorEnterError, ActorEnterHandler, ActorHandler,
-    ActorSpawnError, ActorSpawnHandler, ActorSystemCreateError, ActorSystemReference,
+    Actor, ActorAllocatorHandler, ActorEnterError, ActorEnterHandler, ActorEnvironment,
+    ActorSpawnError, ActorSystemCreateError, ActorSystemReference, ActorSpawnable, ActorSpawner
 };
 use ztd::{Constructor, Method};
 
@@ -9,50 +9,51 @@ use ztd::{Constructor, Method};
 #[derive(Constructor, Method)]
 #[Constructor(visibility = pub(self))]
 #[Method(accessors)]
-pub struct ActorSystem<H>
+pub struct ActorSystem<E>
 where
-    H: ActorHandler,
+    E: ActorEnvironment,
 {
-    handler: H,
+    environment: E,
 }
 
-impl<H> ActorSystem<H>
+impl<E> ActorSystem<E>
 where
-    H: ActorHandler,
+    E: ActorEnvironment,
 {
-    pub fn try_new(handler: H) -> Result<ActorSystemReference<H>, ActorSystemCreateError>
+    pub fn try_new(environment: E) -> Result<ActorSystemReference<E>, ActorSystemCreateError>
     where
-        H: ActorAllocatorHandler,
+        E: ActorAllocatorHandler,
     {
-        let allocator = handler.allocator().clone();
+        let allocator = environment.allocator().clone();
 
-        ActorSystemReference::try_new_in(Self::new(handler), allocator)
+        ActorSystemReference::try_new_in(Self::new(environment), allocator)
             .map_err(ActorSystemCreateError::from)
     }
 
-    pub fn spawn<A>(
+    pub fn spawn<A, S>(
         &self,
-        specification: H::SpawnSpecification<A>,
-    ) -> Result<H::Address<A>, ActorSpawnError>
+        spawnable: S
+    ) -> Result<E::Address<A>, ActorSpawnError>
     where
-        H: ActorSpawnHandler<H>,
-        A: Actor<H>,
+        A: Actor<E>,
+        E: ActorSpawner<A, E>,
+        S: ActorSpawnable<A, E>,
     {
-        self.handler.spawn(specification)
+        self.environment.spawn(spawnable)
     }
 
-    pub fn enter(&self, specification: H::EnterSpecification) -> Result<(), ActorEnterError>
+    pub fn enter(&self, specification: E::EnterSpecification) -> Result<(), ActorEnterError>
     where
-        H: ActorEnterHandler,
+        E: ActorEnterHandler,
     {
-        self.handler.enter(specification)
+        self.environment.enter(specification)
     }
 
     pub fn enter_default(&self) -> Result<(), ActorEnterError>
     where
-        H: ActorEnterHandler,
-        H::EnterSpecification: Default,
+        E: ActorEnterHandler,
+        E::EnterSpecification: Default,
     {
-        self.enter(H::EnterSpecification::default())
+        self.enter(E::EnterSpecification::default())
     }
 }
