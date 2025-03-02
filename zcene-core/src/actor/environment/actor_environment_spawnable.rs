@@ -2,7 +2,7 @@ pub use crate::actor::{Actor, ActorCommonBounds, ActorEnvironment, ActorSpawnErr
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait ActorSpawnable<A, E>
+pub trait ActorEnvironmentSpawnable<A, E>
 where
     A: Actor<E>,
     E: ActorEnvironment,

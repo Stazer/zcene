@@ -1,7 +1,7 @@
 use crate::actor::{
-    Actor, ActorAddressReference, ActorAllocatorHandler, ActorCommonHandleContext, ActorEnterError,
-    ActorEnterHandler, ActorHandler, ActorMessage, ActorMessageChannel, ActorMessageChannelAddress,
-    ActorSpawnError, ActorSpawnHandler,
+    Actor, ActorEnvironment, ActorAddressReference, ActorCommonHandleContext, ActorEnterError,
+    ActorMessage, ActorMessageChannel, ActorMessageChannelAddress,
+    ActorSpawnError, ActorEnvironmentAllocator, ActorEnvironmentEnterable, ActorEnvironmentSpawnable,
 };
 use crate::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
 use ztd::Constructor;
@@ -9,14 +9,14 @@ use ztd::Constructor;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Constructor)]
-pub struct FutureRuntimeActorHandler<H>
+pub struct FutureRuntimeActorEnvironment<H>
 where
     H: FutureRuntimeHandler,
 {
     future_runtime: FutureRuntimeReference<H>,
 }
 
-impl<H> ActorHandler for FutureRuntimeActorHandler<H>
+impl<H> ActorEnvironment for FutureRuntimeActorEnvironment<H>
 where
     H: FutureRuntimeHandler,
 {
@@ -33,7 +33,7 @@ where
     type DestroyContext = ();
 }
 
-impl<H> ActorAllocatorHandler for FutureRuntimeActorHandler<H>
+impl<H> ActorEnvironmentAllocator for FutureRuntimeActorEnvironment<H>
 where
     H: FutureRuntimeHandler,
 {
@@ -44,37 +44,34 @@ where
     }
 }
 
-impl<H> ActorEnterHandler for FutureRuntimeActorHandler<H>
+impl<H> ActorEnvironmentEnterable<FutureRuntimeActorEnvironment<H>> for ()
 where
     H: FutureRuntimeHandler,
 {
-    type EnterSpecification = ();
-
-    fn enter(&self, _specification: Self::EnterSpecification) -> Result<(), ActorEnterError> {
-        self.future_runtime.run();
+    fn enter(self, environment: &FutureRuntimeActorEnvironment<H>) -> Result<(), ActorEnterError> {
+        environment.future_runtime.run();
 
         Ok(())
     }
 }
 
-impl<A, H> ActorSpawner<A, FutureRuntimeActorHandler<H>> for FutureRuntimeActorHandler<H>
+impl<A, H> ActorEnvironmentSpawnable<A, FutureRuntimeActorEnvironment<H>> for A
 where
+    A: Actor<FutureRuntimeActorEnvironment<H>>,
     H: FutureRuntimeHandler,
 {
-    fn spawn<S>(
-        &self,
-        spawnable: S,
-    ) -> Result<Self::Address<A>, ActorSpawnError>
-    where
-        A: Actor<Self>,
+    fn spawn(
+        mut self,
+        environment: &FutureRuntimeActorEnvironment<H>,
+    ) -> Result<<FutureRuntimeActorEnvironment<H> as ActorEnvironment>::Address<A>, ActorSpawnError>
     {
         let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
 
-        let address = Self::Address::new(sender);
+        let address = <FutureRuntimeActorEnvironment<H> as ActorEnvironment>::Address::new(sender);
 
-        self.future_runtime.spawn(async move {
+        environment.future_runtime.spawn(async move {
             // TODO: Handle result
-            actor.create(()).await;
+            self.create(()).await;
 
             loop {
                 let message = match receiver.receive().await {
@@ -83,13 +80,13 @@ where
                 };
 
                 // TODO: Handle result
-                actor
-                    .handle(Self::HandleContext::<A::Message>::new(message))
+                self
+                    .handle(<FutureRuntimeActorEnvironment<H> as ActorEnvironment>::HandleContext::<A::Message>::new(message))
                     .await;
             }
 
             // TODO: Handle result
-            actor.destroy(()).await;
+            self.destroy(()).await;
         });
 
         Ok(address)

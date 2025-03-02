@@ -1,6 +1,6 @@
 use crate::actor::{
-    Actor, ActorEnterError, ActorEnterable, ActorEnvironment,
-    ActorSpawnError, ActorSystemCreateError, ActorSystemReference, ActorSpawnable, ActorEnvironmentAllocator
+    Actor, ActorEnterError, ActorEnvironmentEnterable, ActorEnvironment,
+    ActorSpawnError, ActorSystemCreateError, ActorSystemReference, ActorEnvironmentSpawnable, ActorEnvironmentAllocator
 };
 use ztd::{Constructor, Method};
 
@@ -36,22 +36,29 @@ where
     ) -> Result<E::Address<A>, ActorSpawnError>
     where
         A: Actor<E>,
-        S: ActorSpawnable<A, E>,
+        S: ActorEnvironmentSpawnable<A, E>,
     {
         spawnable.spawn(&self.environment)
     }
 
-    pub fn enter<S>(&self, enterable: S) -> Result<(), ActorEnterError>
+    pub fn enter_with<S>(&self, enterable: S) -> Result<(), ActorEnterError>
     where
-        S: ActorEnterable<E>,
+        S: ActorEnvironmentEnterable<E>,
     {
         enterable.enter(&self.environment)
     }
 
-    pub fn enter_default(&self) -> Result<(), ActorEnterError>
+    pub fn enter_default<S>(&self) -> Result<(), ActorEnterError>
     where
-        (): ActorEnterable<E>,
+        S: ActorEnvironmentEnterable<E> + Default,
     {
-        self.enter(())
+        S::default().enter(&self.environment)
+    }
+
+    pub fn enter(&self) -> Result<(), ActorEnterError>
+    where
+        (): ActorEnvironmentEnterable<E>,
+    {
+        self.enter_with(())
     }
 }

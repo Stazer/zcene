@@ -421,7 +421,7 @@ impl Kernel {
     pub fn run(&self) -> ! {
         self.logger().writer(|w| write!(w, "zcene\n"));
 
-        self.actor_system().enter_default().unwrap();
+        self.actor_system().enter().unwrap();
 
         loop {}
     }

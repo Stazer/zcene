@@ -11,7 +11,9 @@ use zcene_core::actor::{
 };
 use zcene_core::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
 use ztd::{Constructor, Method};
-use zcene_core::actor::{ActorSpawnable};
+use zcene_core::actor::{ActorEnvironmentSpawnable};
+use zcene_core::actor::ActorEnvironmentEnterable;
+use zcene_core::actor::ActorEnterError;
 use zcene_core::actor::ActorCommonBounds;
 use alloc::vec::Vec;
 use core::marker::PhantomData;
@@ -45,9 +47,6 @@ where
     type DestroyContext = ();
 }
 
-use zcene_core::actor::ActorEnterable;
-use zcene_core::actor::ActorEnterError;
-
 impl<H> ActorEnvironmentAllocator for ActorHandler<H>
 where
     H: FutureRuntimeHandler,
@@ -59,7 +58,7 @@ where
     }
 }
 
-impl<H> ActorEnterable<ActorHandler<H>> for ()
+impl<H> ActorEnvironmentEnterable<ActorHandler<H>> for ()
 where
     H: FutureRuntimeHandler,
 {
