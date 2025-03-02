@@ -4,13 +4,12 @@ use crate::actor::{
     ActorUnprivilegedExecutorHandleState, ActorUnprivilegedExecutorReceiveState,
     ActorUnprivilegedExecutorState, ActorUnprivilegedHandler,
     ActorUnprivilegedStageExecutorContext, ActorUnprivilegedStageExecutorDeadlinePreemptionContext,
-    ActorUnprivilegedStageExecutorDeadlinePreemptionInner, ActorUnprivilegedStageExecutorEvent,
-    ActorUnprivilegedStageExecutorSystemCall, ActorUnprivilegedStageExecutorSystemCallContext,
+    ActorUnprivilegedStageExecutorDeadlinePreemptionInner, ActorUnprivilegedStageExecutorEvent, ActorUnprivilegedStageExecutorSystemCallContext,
     ActorUnprivilegedStageExecutorSystemCallInner, ActorUnprivilegedStageExecutorSystemCallType,
 };
 use crate::kernel::logger::println;
 use alloc::boxed::Box;
-use core::arch::{asm, naked_asm};
+use core::arch::asm;
 use core::future::Future;
 use core::marker::PhantomData;
 use core::mem::replace;
@@ -21,8 +20,10 @@ use core::task::{Context, Poll, Waker};
 use core::time::Duration;
 use pin_project::pin_project;
 use zcene_bare::common::As;
-use zcene_core::actor::{ActorMessage, Actor, ActorCreateError, ActorEnvironment, ActorMessageChannelReceiver};
-use ztd::{Constructor, From};
+use zcene_core::actor::{
+    Actor, ActorEnvironment, ActorMessage, ActorMessageChannelReceiver,
+};
+use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -137,8 +138,8 @@ where
 
 #[inline(never)]
 extern "C" fn execute<A>(
-    mut actor: *mut A,
-    mut event: &mut ActorUnprivilegedStageExecutorEvent,
+    actor: *mut A,
+    event: &mut ActorUnprivilegedStageExecutorEvent,
     stack: u64,
     function: extern "C" fn(*mut A) -> !,
 ) where
@@ -544,7 +545,7 @@ where
         context: &mut Context<'_>,
         state: ActorUnprivilegedExecutorReceiveState<A, E>,
     ) -> Option<Poll<()>> {
-        let mut actor = state.into_inner().actor;
+        let actor = state.into_inner().actor;
 
         let result = {
             let mut pinned = pin!(self.receiver.receive());
@@ -583,7 +584,7 @@ where
             match self.state.take() {
                 Some(ActorUnprivilegedExecutorState::Create(state)) => {
                     let ActorUnprivilegedExecutorCreateStateInner {
-                        mut actor,
+                        actor,
                         context: stage_context,
                         ..
                     } = state.into_inner();
@@ -607,7 +608,7 @@ where
                 Some(ActorUnprivilegedExecutorState::Handle(state)) => {}
                 Some(ActorUnprivilegedExecutorState::Destroy(state)) => {
                     let ActorUnprivilegedExecutorDestroyStateInner {
-                        mut actor,
+                        actor,
                         context: stage_context,
                         ..
                     } = state.into_inner();

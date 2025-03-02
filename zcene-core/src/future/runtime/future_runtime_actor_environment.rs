@@ -1,5 +1,5 @@
 use crate::actor::{
-    Actor, ActorAddressReference, ActorCommonHandleContext, ActorEnterError, ActorEnvironment,
+    Actor, ActorCommonHandleContext, ActorEnterError, ActorEnvironment,
     ActorEnvironmentAllocator, ActorEnvironmentEnterable, ActorEnvironmentSpawnable, ActorMessage,
     ActorMessageChannel, ActorMessageChannelAddress, ActorSpawnError,
 };

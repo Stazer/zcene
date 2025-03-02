@@ -1,7 +1,7 @@
 use crate::actor::ActorUnprivilegedHandler;
 use alloc::boxed::Box;
 use core::marker::PhantomData;
-use zcene_core::actor::{Actor, ActorMessage, ActorEnvironment};
+use zcene_core::actor::{Actor, ActorEnvironment, ActorMessage};
 use ztd::{Constructor, Inner};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

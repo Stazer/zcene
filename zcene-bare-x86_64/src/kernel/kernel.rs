@@ -1,3 +1,6 @@
+use crate::actor::{
+    ActorEnvironmentTransformer, ActorUnprivilegedAddress, ActorUnprivilegedHandler,
+};
 use crate::kernel::future::runtime::{KernelFutureRuntime, KernelFutureRuntimeHandler};
 use crate::kernel::interrupt::KernelInterruptManager;
 use crate::kernel::logger::println;
@@ -9,11 +12,10 @@ use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
 use bootloader_x86_64_common::serial::SerialPort;
 use core::cell::SyncUnsafeCell;
 use core::fmt::{self, Write};
-use core::marker::PhantomData;
 use core::mem::MaybeUninit;
-use x86::cpuid::CpuId;
 use zcene_bare::memory::address::PhysicalMemoryAddress;
 use zcene_bare::memory::frame::FrameManagerAllocationError;
+use zcene_core::actor::ActorEnvironment;
 use zcene_core::actor::ActorSpawnError;
 use zcene_core::actor::{self, Actor, ActorFuture, ActorHandleError, ActorSystemCreateError};
 use zcene_core::actor::{ActorCreateError, ActorDestroyError, ActorMessage, ActorMessageSender};
@@ -139,11 +141,6 @@ where
     }
 }
 
-use crate::actor::{
-    ActorEnvironmentTransformer, ActorUnprivilegedAddress, ActorUnprivilegedHandler,
-};
-use zcene_core::actor::ActorEnvironment;
-
 impl<H> ActorEnvironmentTransformer<ActorUnprivilegedHandler> for UnprivilegedActor<H>
 where
     H: ActorEnvironment,
@@ -158,7 +155,7 @@ where
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use crate::actor::ActorHandler;
+use crate::actor::ActorRootEnvironment;
 use zcene_core::actor::ActorContextMessageProvider;
 use zcene_core::actor::{ActorSystem, ActorSystemReference};
 use ztd::Constructor;
@@ -168,7 +165,7 @@ use ztd::Constructor;
 pub struct Kernel {
     logger: KernelLogger,
     memory_manager: KernelMemoryManager,
-    actor_system: ActorSystemReference<ActorHandler<KernelFutureRuntimeHandler>>,
+    actor_system: ActorSystemReference<ActorRootEnvironment<KernelFutureRuntimeHandler>>,
     interrupt_manager: KernelInterruptManager,
     timer: KernelTimer<'static>,
     //timer_actor: KernelActorAddressReference<TimerActor>,
@@ -190,21 +187,18 @@ impl Kernel {
             wrmsr(IA32_EFER, rdmsr(IA32_EFER) | 1);
         }
 
-        use core::num::NonZero;
-
-        use crate::actor::{
-            ActorPrivilegedHandlerSpawnSpecification, ActorUnprivilegedHandlerSpawnSpecification,
-        };
+        use crate::actor::ActorRootEnvironmentSpawnSpecification;
+        
 
         let print_actor = Kernel::get()
             .actor_system()
-            .spawn(ActorPrivilegedHandlerSpawnSpecification::new(
+            .spawn(ActorRootEnvironmentSpawnSpecification::new(
                 PrintActor::default(),
                 None,
             ))
             .unwrap();
 
-        let address =
+        /*let address =
             Kernel::get()
                 .actor_system()
                 .spawn(ActorUnprivilegedHandlerSpawnSpecification::new(
@@ -212,57 +206,9 @@ impl Kernel {
                     None,
                 ));
 
-        /*Kernel::get()
-        .actor_system()
-        .spawn(ActorSpawnSpecification::new(
-            UnprivilegedActor::new(print_actor),
-            ActorUnprivilegedSpawnSpecification::new(NonZero::new(100)).into(),
-        ));*/
+        use crate::actor::ActorUnprivilegedHandler;*/
 
-        /*Kernel::get()
-        .actor_system()
-        .spawn(PrintActor::default());*/
-
-        use crate::actor::ActorUnprivilegedHandler;
-
-        /*let print_address = Kernel::get()
-            .actor_system()
-            .handler()
-            .spawn_custom(PrintActor);
-
-        let address = Kernel::get()
-            .actor_system()
-            .handler()
-            .spawn_custom(ActorUnprivilegedHandlerSpawnSpecification{
-                actor: UnprivilegedActor::new(print_address),
-                addresses: Vec::default(),
-                deadline_in_milliseconds: None,
-                marker: PhantomData::<_>,
-            });*/
-
-        /*Kernel::get()
-        .actor_system()
-        .spawn::<_, ActorUnprivilegedHandler>(
-            EmptyActor,
-        ).unwrap();*/
-
-        //use alloc::vec::Vec;
-        //use crate::actor::{ActorUnprivilegedAddress, ActorUnprivilegedHandlerSpawnSpecification};
-
-        /*Kernel::get()
-        .actor_system()
-        .spawn::<_, ActorUnprivilegedHandler>(
-            crate::actor::ActorUnprivilegedHandlerSpawnSpecification {
-                actor: UnprivilegedActor::new(
-                    ActorUnprivilegedAddress::new(0),
-                ),
-                addresses: Vec::default(),
-                deadline_in_milliseconds: None,
-                marker: PhantomData::<_>,
-            }
-        );*/
-
-        use zcene_core::future::FutureExt;
+        
 
         Kernel::get().run();
 
@@ -291,9 +237,9 @@ impl Kernel {
             }
         };
 
-        let actor_system = ActorSystem::try_new(ActorHandler::new(KernelFutureRuntime::new(
-            KernelFutureRuntimeHandler::default(),
-        )?))?;
+        let actor_system = ActorSystem::try_new(ActorRootEnvironment::new(
+            KernelFutureRuntime::new(KernelFutureRuntimeHandler::default())?,
+        ))?;
 
         let timer = KernelTimer::new(
             &memory_manager,
@@ -435,7 +381,9 @@ impl Kernel {
         &self.logger
     }
 
-    pub fn actor_system(&self) -> &ActorSystemReference<ActorHandler<KernelFutureRuntimeHandler>> {
+    pub fn actor_system(
+        &self,
+    ) -> &ActorSystemReference<ActorRootEnvironment<KernelFutureRuntimeHandler>> {
         &self.actor_system
     }
 

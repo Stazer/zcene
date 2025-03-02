@@ -1,7 +1,8 @@
 use crate::actor::{
-    ActorPrivilegedExecutorCreateState, ActorPrivilegedExecutorDestroyState,
-    ActorPrivilegedExecutorHandleState, ActorPrivilegedExecutorHandleStateInner,
-    ActorPrivilegedExecutorReceiveState, ActorPrivilegedExecutorState,
+    ActorRootEnvironment, ActorRootEnvironmentExecutorCreateState,
+    ActorRootEnvironmentExecutorDestroyState, ActorRootEnvironmentExecutorHandleState,
+    ActorRootEnvironmentExecutorHandleStateInner, ActorRootEnvironmentExecutorReceiveState,
+    ActorRootEnvironmentExecutorState,
 };
 use core::future::Future;
 use core::marker::PhantomData;
@@ -10,8 +11,9 @@ use core::pin::{pin, Pin};
 use core::task::{Context, Poll};
 use pin_project::pin_project;
 use zcene_core::actor::{
-    Actor, ActorContextBuilder, ActorEnvironment, ActorMessageChannelReceiver,
+    Actor, ActorContextBuilder, ActorMessageChannelReceiver,
 };
+use zcene_core::future::runtime::FutureRuntimeHandler;
 use zcene_core::future::FutureExt;
 use ztd::Constructor;
 
@@ -19,25 +21,25 @@ use ztd::Constructor;
 
 #[pin_project]
 #[derive(Constructor)]
-pub struct ActorPrivilegedExecutor<A, B, E>
+pub struct ActorRootEnvironmentExecutor<A, B, H>
 where
-    A: Actor<E>,
-    B: ActorContextBuilder<A, E>,
-    E: ActorEnvironment,
+    A: Actor<ActorRootEnvironment<H>>,
+    B: ActorContextBuilder<A, ActorRootEnvironment<H>>,
+    H: FutureRuntimeHandler,
 {
-    state: Option<ActorPrivilegedExecutorState<A, E>>,
+    state: Option<ActorRootEnvironmentExecutorState<A, H>>,
     receiver: ActorMessageChannelReceiver<A::Message>,
     context_builder: B,
     deadline_in_milliseconds: Option<NonZero<usize>>,
     #[Constructor(default)]
-    marker: PhantomData<E>,
+    marker: PhantomData<H>,
 }
 
-impl<A, B, E> Future for ActorPrivilegedExecutor<A, B, E>
+impl<A, B, H> Future for ActorRootEnvironmentExecutor<A, B, H>
 where
-    A: Actor<E>,
-    B: ActorContextBuilder<A, E>,
-    E: ActorEnvironment,
+    A: Actor<ActorRootEnvironment<H>>,
+    B: ActorContextBuilder<A, ActorRootEnvironment<H>>,
+    H: FutureRuntimeHandler,
 {
     type Output = ();
 
@@ -48,7 +50,7 @@ where
 
         loop {
             match self.state.take() {
-                Some(ActorPrivilegedExecutorState::Create(state)) => {
+                Some(ActorRootEnvironmentExecutorState::Create(state)) => {
                     let mut actor = state.into_inner().actor;
 
                     let result = {
@@ -61,18 +63,18 @@ where
                     match result {
                         Poll::Pending => {
                             self.state =
-                                Some(ActorPrivilegedExecutorCreateState::new(actor).into());
+                                Some(ActorRootEnvironmentExecutorCreateState::new(actor).into());
 
                             return Poll::Pending;
                         }
                         // TODO: Handle result
                         Poll::Ready(_result) => {
                             self.state =
-                                Some(ActorPrivilegedExecutorReceiveState::new(actor).into());
+                                Some(ActorRootEnvironmentExecutorReceiveState::new(actor).into());
                         }
                     }
                 }
-                Some(ActorPrivilegedExecutorState::Receive(state)) => {
+                Some(ActorRootEnvironmentExecutorState::Receive(state)) => {
                     let actor = state.into_inner().actor;
 
                     let result = {
@@ -84,23 +86,23 @@ where
                     match result {
                         Poll::Pending => {
                             self.state =
-                                Some(ActorPrivilegedExecutorReceiveState::new(actor).into());
+                                Some(ActorRootEnvironmentExecutorReceiveState::new(actor).into());
 
                             return Poll::Pending;
                         }
                         Poll::Ready(None) => {
                             self.state =
-                                Some(ActorPrivilegedExecutorDestroyState::new(actor).into());
+                                Some(ActorRootEnvironmentExecutorDestroyState::new(actor).into());
                         }
                         Poll::Ready(Some(message)) => {
                             self.state = Some(
-                                ActorPrivilegedExecutorHandleState::new(actor, message).into(),
+                                ActorRootEnvironmentExecutorHandleState::new(actor, message).into(),
                             );
                         }
                     }
                 }
-                Some(ActorPrivilegedExecutorState::Handle(state)) => {
-                    let ActorPrivilegedExecutorHandleStateInner {
+                Some(ActorRootEnvironmentExecutorState::Handle(state)) => {
+                    let ActorRootEnvironmentExecutorHandleStateInner {
                         mut actor, message, ..
                     } = state.into_inner();
 
@@ -115,18 +117,18 @@ where
                     match result {
                         Poll::Pending => {
                             self.state =
-                                Some(ActorPrivilegedExecutorReceiveState::new(actor).into());
+                                Some(ActorRootEnvironmentExecutorReceiveState::new(actor).into());
 
                             return Poll::Pending;
                         }
                         // TODO: Handle result
                         Poll::Ready(_result) => {
                             self.state =
-                                Some(ActorPrivilegedExecutorReceiveState::new(actor).into());
+                                Some(ActorRootEnvironmentExecutorReceiveState::new(actor).into());
                         }
                     }
                 }
-                Some(ActorPrivilegedExecutorState::Destroy(state)) => {
+                Some(ActorRootEnvironmentExecutorState::Destroy(state)) => {
                     let actor = state.into_inner().actor;
                     let destroy_context = self.context_builder.build_destroy_context(&actor);
                     let mut pinned = pin!(actor.destroy(destroy_context));

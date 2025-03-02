@@ -1,4 +1,4 @@
-pub use crate::actor::{Actor, ActorCommonBounds, ActorEnvironment, ActorSpawnError};
+pub use crate::actor::{Actor, ActorEnvironment, ActorSpawnError};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
