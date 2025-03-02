@@ -139,6 +139,23 @@ where
     }
 }
 
+use crate::actor::{
+    ActorEnvironmentTransformer, ActorUnprivilegedAddress, ActorUnprivilegedHandler,
+};
+use zcene_core::actor::ActorEnvironment;
+
+impl<H> ActorEnvironmentTransformer<ActorUnprivilegedHandler> for UnprivilegedActor<H>
+where
+    H: ActorEnvironment,
+    H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
+{
+    type Output = UnprivilegedActor<ActorUnprivilegedHandler>;
+
+    fn transform(self) -> Self::Output {
+        Self::Output::new(ActorUnprivilegedAddress::new(0))
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 use crate::actor::ActorHandler;
@@ -175,13 +192,25 @@ impl Kernel {
 
         use core::num::NonZero;
 
-        /*let print_actor = Kernel::get()
-        .actor_system()
-        .spawn(ActorSpawnSpecification::new(
-            PrintActor::default(),
-            ActorInlineSpawnSpecification::new().into(),
-        ))
-        .unwrap();*/
+        use crate::actor::{
+            ActorPrivilegedHandlerSpawnSpecification, ActorUnprivilegedHandlerSpawnSpecification,
+        };
+
+        let print_actor = Kernel::get()
+            .actor_system()
+            .spawn(ActorPrivilegedHandlerSpawnSpecification::new(
+                PrintActor::default(),
+                None,
+            ))
+            .unwrap();
+
+        let address =
+            Kernel::get()
+                .actor_system()
+                .spawn(ActorUnprivilegedHandlerSpawnSpecification::new(
+                    UnprivilegedActor::new(print_actor.clone()),
+                    None,
+                ));
 
         /*Kernel::get()
         .actor_system()
@@ -212,26 +241,26 @@ impl Kernel {
             });*/
 
         /*Kernel::get()
-            .actor_system()
-            .spawn::<_, ActorUnprivilegedHandler>(
-                EmptyActor,
-            ).unwrap();*/
+        .actor_system()
+        .spawn::<_, ActorUnprivilegedHandler>(
+            EmptyActor,
+        ).unwrap();*/
 
         //use alloc::vec::Vec;
         //use crate::actor::{ActorUnprivilegedAddress, ActorUnprivilegedHandlerSpawnSpecification};
 
         /*Kernel::get()
-            .actor_system()
-            .spawn::<_, ActorUnprivilegedHandler>(
-                crate::actor::ActorUnprivilegedHandlerSpawnSpecification {
-                    actor: UnprivilegedActor::new(
-                        ActorUnprivilegedAddress::new(0),
-                    ),
-                    addresses: Vec::default(),
-                    deadline_in_milliseconds: None,
-                    marker: PhantomData::<_>,
-                }
-            );*/
+        .actor_system()
+        .spawn::<_, ActorUnprivilegedHandler>(
+            crate::actor::ActorUnprivilegedHandlerSpawnSpecification {
+                actor: UnprivilegedActor::new(
+                    ActorUnprivilegedAddress::new(0),
+                ),
+                addresses: Vec::default(),
+                deadline_in_milliseconds: None,
+                marker: PhantomData::<_>,
+            }
+        );*/
 
         use zcene_core::future::FutureExt;
 

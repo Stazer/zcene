@@ -4,9 +4,8 @@ pub use executor::*;
 
 use core::marker::PhantomData;
 use zcene_core::actor::{
-    Actor, ActorAddress, ActorFuture, ActorEnvironment, ActorMessage, ActorMessageSender,
-    ActorSendError,
-    ActorCommonHandleContext,
+    Actor, ActorAddress, ActorCommonHandleContext, ActorEnvironment, ActorFuture, ActorMessage,
+    ActorMessageSender, ActorSendError,
 };
 
 use core::arch::asm;

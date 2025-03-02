@@ -1,6 +1,6 @@
 use crate::actor::{
-    ActorCommonBounds, ActorCreateError, ActorDestroyError, ActorFuture, ActorHandleError,
-    ActorEnvironment, ActorMessage,
+    ActorCommonBounds, ActorCreateError, ActorDestroyError, ActorEnvironment, ActorFuture,
+    ActorHandleError, ActorMessage,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

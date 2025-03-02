@@ -1,6 +1,6 @@
 use crate::actor::{
-    Actor, ActorAddress, ActorEnvironmentAllocator, ActorCommonBounds, ActorEnvironment, ActorMailbox,
-    ActorMessage,
+    Actor, ActorAddress, ActorCommonBounds, ActorEnvironment, ActorEnvironmentAllocator,
+    ActorMailbox, ActorMessage,
 };
 use alloc::sync::Arc;
 use core::alloc::AllocError;

@@ -1,19 +1,20 @@
 use crate::actor::ActorUnprivilegedHandler;
 use alloc::boxed::Box;
 use core::marker::PhantomData;
-use zcene_core::actor::{Actor, ActorEnvironment};
+use zcene_core::actor::{Actor, ActorMessage, ActorEnvironment};
 use ztd::{Constructor, Inner};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Constructor, Inner)]
-pub struct ActorUnprivilegedExecutorHandleState<A, E>
+pub struct ActorUnprivilegedExecutorHandleState<A, E, M>
 where
-    A: Actor<E> + Actor<ActorUnprivilegedHandler>,
+    A: Actor<ActorUnprivilegedHandler>,
     E: ActorEnvironment,
+    M: ActorMessage,
 {
     actor: Box<A>,
-    message: <A as Actor<E>>::Message,
+    message: M,
     #[Constructor(default)]
     marker: PhantomData<E>,
 }

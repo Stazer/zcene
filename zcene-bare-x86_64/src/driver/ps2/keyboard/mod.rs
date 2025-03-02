@@ -1,8 +1,8 @@
 use alloc::vec::Vec;
 use pc_keyboard::DecodedKey;
 use zcene_core::actor::{
-    Actor, ActorContextMessageProvider, ActorEnvironmentAllocator, ActorFuture, ActorHandleError,
-    ActorEnvironment, ActorMailbox,
+    Actor, ActorContextMessageProvider, ActorEnvironment, ActorEnvironmentAllocator, ActorFuture,
+    ActorHandleError, ActorMailbox,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

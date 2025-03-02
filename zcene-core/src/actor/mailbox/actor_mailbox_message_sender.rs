@@ -1,6 +1,6 @@
 use crate::actor::{
-    Actor, ActorAddressReference, ActorEnvironmentAllocator, ActorBoxFuture, ActorCommonBounds,
-    ActorEnvironment, ActorMessage, ActorMessageSender, ActorSendError,
+    Actor, ActorAddressReference, ActorBoxFuture, ActorCommonBounds, ActorEnvironment,
+    ActorEnvironmentAllocator, ActorMessage, ActorMessageSender, ActorSendError,
 };
 use alloc::boxed::Box;
 use core::marker::PhantomData;

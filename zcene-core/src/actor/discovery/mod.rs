@@ -1,4 +1,4 @@
-use crate::actor::{ActorEnvironmentAllocator, ActorEnvironment, ActorMessage, ActorWeakMailbox};
+use crate::actor::{ActorEnvironment, ActorEnvironmentAllocator, ActorMessage, ActorWeakMailbox};
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;

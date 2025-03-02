@@ -8,7 +8,7 @@ use ztd::{Constructor, Inner};
 pub struct ActorPrivilegedExecutorDestroyState<A, E>
 where
     A: Actor<E>,
-    E: ActorEnvironment
+    E: ActorEnvironment,
 {
     actor: A,
     #[Constructor(default)]

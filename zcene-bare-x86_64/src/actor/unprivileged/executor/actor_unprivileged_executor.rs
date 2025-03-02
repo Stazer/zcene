@@ -21,7 +21,7 @@ use core::task::{Context, Poll, Waker};
 use core::time::Duration;
 use pin_project::pin_project;
 use zcene_bare::common::As;
-use zcene_core::actor::{Actor, ActorCreateError, ActorEnvironment, ActorMessageChannelReceiver};
+use zcene_core::actor::{ActorMessage, Actor, ActorCreateError, ActorEnvironment, ActorMessageChannelReceiver};
 use ztd::{Constructor, From};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -118,10 +118,11 @@ pub enum ActorUnprivilegedStageResult {
     Ready,
 }
 
-pub trait ActorUnprivilegedExecutorStageHandler<A, E>
+pub trait ActorUnprivilegedExecutorStageHandler<A, E, M>
 where
-    A: Actor<E> + Actor<ActorUnprivilegedHandler>,
+    A: Actor<ActorUnprivilegedHandler>,
     E: ActorEnvironment,
+    M: ActorMessage,
 {
     fn execute(&self, actor: *mut A, event: &mut ActorUnprivilegedStageExecutorEvent, stack: usize);
 
@@ -129,9 +130,9 @@ where
         &self,
         actor: Box<A>,
         context: ActorUnprivilegedStageExecutorContext,
-    ) -> ActorUnprivilegedExecutorState<A, E>;
+    ) -> ActorUnprivilegedExecutorState<A, E, M>;
 
-    fn next_state(&self, actor: Box<A>) -> Option<ActorUnprivilegedExecutorState<A, E>>;
+    fn next_state(&self, actor: Box<A>) -> Option<ActorUnprivilegedExecutorState<A, E, M>>;
 }
 
 #[inline(never)]
@@ -306,11 +307,12 @@ impl ActorUnprivilegedExecutorCreateStageHandler {
     }
 }
 
-impl<A, E> ActorUnprivilegedExecutorStageHandler<A, E>
+impl<A, E, M> ActorUnprivilegedExecutorStageHandler<A, E, M>
     for ActorUnprivilegedExecutorCreateStageHandler
 where
-    A: Actor<E> + Actor<ActorUnprivilegedHandler>,
+    A: Actor<ActorUnprivilegedHandler>,
     E: ActorEnvironment,
+    M: ActorMessage,
 {
     fn execute(
         &self,
@@ -325,11 +327,11 @@ where
         &self,
         actor: Box<A>,
         context: ActorUnprivilegedStageExecutorContext,
-    ) -> ActorUnprivilegedExecutorState<A, E> {
+    ) -> ActorUnprivilegedExecutorState<A, E, M> {
         ActorUnprivilegedExecutorCreateState::new(actor, Some(context)).into()
     }
 
-    fn next_state(&self, actor: Box<A>) -> Option<ActorUnprivilegedExecutorState<A, E>> {
+    fn next_state(&self, actor: Box<A>) -> Option<ActorUnprivilegedExecutorState<A, E, M>> {
         Some(ActorUnprivilegedExecutorReceiveState::new(actor).into())
     }
 }
@@ -366,11 +368,12 @@ impl ActorUnprivilegedExecutorDestroyStageHandler {
     }
 }
 
-impl<A, E> ActorUnprivilegedExecutorStageHandler<A, E>
+impl<A, E, M> ActorUnprivilegedExecutorStageHandler<A, E, M>
     for ActorUnprivilegedExecutorDestroyStageHandler
 where
-    A: Actor<E> + Actor<ActorUnprivilegedHandler>,
+    A: Actor<ActorUnprivilegedHandler>,
     E: ActorEnvironment,
+    M: ActorMessage,
 {
     fn execute(
         &self,
@@ -385,11 +388,11 @@ where
         &self,
         actor: Box<A>,
         context: ActorUnprivilegedStageExecutorContext,
-    ) -> ActorUnprivilegedExecutorState<A, E> {
+    ) -> ActorUnprivilegedExecutorState<A, E, M> {
         ActorUnprivilegedExecutorDestroyState::new(actor, Some(context)).into()
     }
 
-    fn next_state(&self, actor: Box<A>) -> Option<ActorUnprivilegedExecutorState<A, E>> {
+    fn next_state(&self, actor: Box<A>) -> Option<ActorUnprivilegedExecutorState<A, E, M>> {
         None
     }
 }
@@ -398,22 +401,24 @@ where
 
 #[pin_project]
 #[derive(Constructor)]
-pub struct ActorUnprivilegedExecutor<A, E>
+pub struct ActorUnprivilegedExecutor<A, E, M>
 where
-    A: Actor<E> + Actor<ActorUnprivilegedHandler>,
+    A: Actor<ActorUnprivilegedHandler>,
     E: ActorEnvironment,
+    M: ActorMessage,
 {
-    state: Option<ActorUnprivilegedExecutorState<A, E>>,
-    receiver: ActorMessageChannelReceiver<<A as Actor<E>>::Message>,
+    state: Option<ActorUnprivilegedExecutorState<A, E, M>>,
+    receiver: ActorMessageChannelReceiver<M>,
     deadline_in_milliseconds: Option<NonZero<usize>>,
     #[Constructor(default)]
     marker: PhantomData<E>,
 }
 
-impl<A, E> ActorUnprivilegedExecutor<A, E>
+impl<A, E, M> ActorUnprivilegedExecutor<A, E, M>
 where
-    A: Actor<E> + Actor<ActorUnprivilegedHandler>,
+    A: Actor<ActorUnprivilegedHandler>,
     E: ActorEnvironment,
+    M: ActorMessage,
 {
     fn enable_deadline(&mut self) {
         if let Some(deadline_in_milliseconds) = self.deadline_in_milliseconds {
@@ -433,7 +438,7 @@ where
         handler: S,
     ) -> Option<Poll<()>>
     where
-        S: ActorUnprivilegedExecutorStageHandler<A, E>,
+        S: ActorUnprivilegedExecutorStageHandler<A, E, M>,
     {
         self.enable_deadline();
 
@@ -565,10 +570,11 @@ where
     }
 }
 
-impl<A, E> Future for ActorUnprivilegedExecutor<A, E>
+impl<A, E, M> Future for ActorUnprivilegedExecutor<A, E, M>
 where
-    A: Actor<E> + Actor<ActorUnprivilegedHandler>,
+    A: Actor<ActorUnprivilegedHandler>,
     E: ActorEnvironment,
+    M: ActorMessage,
 {
     type Output = ();
 

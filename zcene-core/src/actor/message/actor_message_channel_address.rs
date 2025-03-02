@@ -1,6 +1,6 @@
 use crate::actor::{
-    Actor, ActorAddress, ActorFuture, ActorEnvironment, ActorMessageChannelSender, ActorMessageSender,
-    ActorSendError,
+    Actor, ActorAddress, ActorEnvironment, ActorFuture, ActorMessageChannelSender,
+    ActorMessageSender, ActorSendError,
 };
 use core::marker::PhantomData;
 use ztd::Constructor;

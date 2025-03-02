@@ -1,6 +1,6 @@
 use crate::actor::{
-    Actor, ActorCommonBounds, ActorCreateError, ActorDestroyError, ActorFuture, ActorHandleError,
-    ActorEnvironment, ActorMessage,
+    Actor, ActorCommonBounds, ActorCreateError, ActorDestroyError, ActorEnvironment, ActorFuture,
+    ActorHandleError, ActorMessage,
 };
 use core::marker::PhantomData;
 

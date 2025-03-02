@@ -1,6 +1,6 @@
 use crate::actor::{
-    Actor, ActorEnterError, ActorEnvironmentEnterable, ActorEnvironment,
-    ActorSpawnError, ActorSystemCreateError, ActorSystemReference, ActorEnvironmentSpawnable, ActorEnvironmentAllocator
+    Actor, ActorEnterError, ActorEnvironment, ActorEnvironmentAllocator, ActorEnvironmentEnterable,
+    ActorEnvironmentSpawnable, ActorSpawnError, ActorSystemCreateError, ActorSystemReference,
 };
 use ztd::{Constructor, Method};
 
@@ -30,10 +30,7 @@ where
             .map_err(ActorSystemCreateError::from)
     }
 
-    pub fn spawn<A, S>(
-        &self,
-        spawnable: S
-    ) -> Result<E::Address<A>, ActorSpawnError>
+    pub fn spawn<A, S>(&self, spawnable: S) -> Result<E::Address<A>, ActorSpawnError>
     where
         A: Actor<E>,
         S: ActorEnvironmentSpawnable<A, E>,

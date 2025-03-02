@@ -1,6 +1,6 @@
 use crate::actor::{
-    Actor, ActorEnvironmentAllocator, ActorCreateError, ActorFuture, ActorHandleError, ActorEnvironment,
-    ActorMailbox, RootActorMessage,
+    Actor, ActorCreateError, ActorEnvironment, ActorEnvironmentAllocator, ActorFuture,
+    ActorHandleError, ActorMailbox, RootActorMessage,
 };
 use alloc::vec::Vec;
 

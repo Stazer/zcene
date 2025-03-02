@@ -1,5 +1,6 @@
 use crate::actor::{
-    ActorEnvironment, ActorEnvironmentAllocator, ActorMailbox, ActorMailboxMessageSender, ActorMessage,
+    ActorEnvironment, ActorEnvironmentAllocator, ActorMailbox, ActorMailboxMessageSender,
+    ActorMessage,
 };
 use alloc::sync::Weak;
 use core::fmt::{self, Debug, Formatter};

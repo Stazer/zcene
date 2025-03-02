@@ -10,7 +10,7 @@ use ztd::{Constructor, Inner};
 #[derive(Constructor, Inner)]
 pub struct ActorUnprivilegedExecutorCreateState<A, E>
 where
-    A: Actor<E> + Actor<ActorUnprivilegedHandler>,
+    A: Actor<ActorUnprivilegedHandler>,
     E: ActorEnvironment,
 {
     actor: Box<A>,

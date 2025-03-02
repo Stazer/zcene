@@ -1,7 +1,7 @@
 use crate::actor::{
-    Actor, ActorEnvironment, ActorAddressReference, ActorCommonHandleContext, ActorEnterError,
-    ActorMessage, ActorMessageChannel, ActorMessageChannelAddress,
-    ActorSpawnError, ActorEnvironmentAllocator, ActorEnvironmentEnterable, ActorEnvironmentSpawnable,
+    Actor, ActorAddressReference, ActorCommonHandleContext, ActorEnterError, ActorEnvironment,
+    ActorEnvironmentAllocator, ActorEnvironmentEnterable, ActorEnvironmentSpawnable, ActorMessage,
+    ActorMessageChannel, ActorMessageChannelAddress, ActorSpawnError,
 };
 use crate::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
 use ztd::Constructor;
@@ -80,9 +80,12 @@ where
                 };
 
                 // TODO: Handle result
-                self
-                    .handle(<FutureRuntimeActorEnvironment<H> as ActorEnvironment>::HandleContext::<A::Message>::new(message))
-                    .await;
+                self.handle(
+                    <FutureRuntimeActorEnvironment<H> as ActorEnvironment>::HandleContext::<
+                        A::Message,
+                    >::new(message),
+                )
+                .await;
             }
 
             // TODO: Handle result
