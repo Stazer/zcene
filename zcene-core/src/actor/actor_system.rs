@@ -1,6 +1,6 @@
 use crate::actor::{
-    Actor, ActorAllocatorHandler, ActorEnterError, ActorEnterHandler, ActorEnvironment,
-    ActorSpawnError, ActorSystemCreateError, ActorSystemReference, ActorSpawnable, ActorSpawner
+    Actor, ActorEnterError, ActorEnterable, ActorEnvironment,
+    ActorSpawnError, ActorSystemCreateError, ActorSystemReference, ActorSpawnable, ActorEnvironmentAllocator
 };
 use ztd::{Constructor, Method};
 
@@ -22,7 +22,7 @@ where
 {
     pub fn try_new(environment: E) -> Result<ActorSystemReference<E>, ActorSystemCreateError>
     where
-        E: ActorAllocatorHandler,
+        E: ActorEnvironmentAllocator,
     {
         let allocator = environment.allocator().clone();
 
@@ -36,24 +36,22 @@ where
     ) -> Result<E::Address<A>, ActorSpawnError>
     where
         A: Actor<E>,
-        E: ActorSpawner<A, E>,
         S: ActorSpawnable<A, E>,
     {
-        self.environment.spawn(spawnable)
+        spawnable.spawn(&self.environment)
     }
 
-    pub fn enter(&self, specification: E::EnterSpecification) -> Result<(), ActorEnterError>
+    pub fn enter<S>(&self, enterable: S) -> Result<(), ActorEnterError>
     where
-        E: ActorEnterHandler,
+        S: ActorEnterable<E>,
     {
-        self.environment.enter(specification)
+        enterable.enter(&self.environment)
     }
 
     pub fn enter_default(&self) -> Result<(), ActorEnterError>
     where
-        E: ActorEnterHandler,
-        E::EnterSpecification: Default,
+        (): ActorEnterable<E>,
     {
-        self.enter(E::EnterSpecification::default())
+        self.enter(())
     }
 }

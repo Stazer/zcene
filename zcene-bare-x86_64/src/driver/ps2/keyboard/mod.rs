@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use pc_keyboard::DecodedKey;
 use zcene_core::actor::{
-    Actor, ActorAllocatorHandler, ActorContextMessageProvider, ActorFuture, ActorHandleError,
+    Actor, ActorContextMessageProvider, ActorEnvironmentAllocator, ActorFuture, ActorHandleError,
     ActorEnvironment, ActorMailbox,
 };
 
@@ -11,17 +11,17 @@ use zcene_core::actor::{
 pub struct KeyboardDecodedKeyMessage(DecodedKey);
 
 #[derive(Debug)]
-pub enum KeyboardMessage<H>
+pub enum KeyboardMessage<E>
 where
-    H: ActorEnvironment + ActorAllocatorHandler,
+    E: ActorEnvironment + ActorEnvironmentAllocator,
 {
-    Subscription(ActorMailbox<KeyboardDecodedKeyMessage, H>),
+    Subscription(ActorMailbox<KeyboardDecodedKeyMessage, E>),
     Byte(u16),
 }
 
-impl<H> Clone for KeyboardMessage<H>
+impl<E> Clone for KeyboardMessage<E>
 where
-    H: ActorEnvironment + ActorAllocatorHandler,
+    E: ActorEnvironment + ActorEnvironmentAllocator,
 {
     fn clone(&self) -> Self {
         match self {
@@ -31,29 +31,30 @@ where
     }
 }
 
-pub struct KeyboardActor<H>
+pub struct KeyboardActor<E>
 where
-    H: ActorEnvironment + ActorAllocatorHandler,
+    E: ActorEnvironment + ActorEnvironmentAllocator,
 {
-    subscriptions: Vec<ActorMailbox<KeyboardDecodedKeyMessage, H>, H::Allocator>,
+    subscriptions: Vec<ActorMailbox<KeyboardDecodedKeyMessage, E>, E::Allocator>,
 }
 
-impl<H> Actor<H> for KeyboardActor<H>
+impl<E> Actor<E> for KeyboardActor<E>
 where
-    H: ActorEnvironment + ActorAllocatorHandler,
-    H::HandleContext<KeyboardMessage<H>>: ActorContextMessageProvider<KeyboardMessage<H>>,
+    E: ActorEnvironment + ActorEnvironmentAllocator,
+    E::HandleContext<KeyboardMessage<E>>: ActorContextMessageProvider<KeyboardMessage<E>>,
 {
-    type Message = KeyboardMessage<H>;
+    type Message = KeyboardMessage<E>;
 
     fn handle(
         &mut self,
-        context: H::HandleContext<Self::Message>,
+        context: E::HandleContext<Self::Message>,
     ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
         async move {
             match context.message() {
                 KeyboardMessage::Subscription(mailbox) => self.subscriptions.push(mailbox.clone()),
                 KeyboardMessage::Byte(_byte) => {}
             }
+
             Ok(())
         }
     }

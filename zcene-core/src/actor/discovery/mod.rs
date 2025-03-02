@@ -1,4 +1,4 @@
-use crate::actor::{ActorAllocatorHandler, ActorEnvironment, ActorMessage, ActorWeakMailbox};
+use crate::actor::{ActorEnvironmentAllocator, ActorEnvironment, ActorMessage, ActorWeakMailbox};
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
@@ -7,24 +7,24 @@ use core::marker::PhantomData;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub type ActorDiscoveryBucket<M, H> =
-    Vec<ActorWeakMailbox<M, H>, <H as ActorAllocatorHandler>::Allocator>;
+pub type ActorDiscoveryBucket<M, E> =
+    Vec<ActorWeakMailbox<M, E>, <E as ActorEnvironmentAllocator>::Allocator>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct ActorMailboxDiscovery<H>
+pub struct ActorMailboxDiscovery<E>
 where
-    H: ActorEnvironment + ActorAllocatorHandler,
+    E: ActorEnvironment + ActorEnvironmentAllocator,
 {
     bucket_resolvers: BTreeMap<TypeId, Box<dyn Any + Send>>,
-    types: PhantomData<H>,
+    types: PhantomData<E>,
 }
 
-impl<H> ActorMailboxDiscovery<H>
+impl<E> ActorMailboxDiscovery<E>
 where
-    H: ActorEnvironment + ActorAllocatorHandler,
+    E: ActorEnvironment + ActorEnvironmentAllocator,
 {
-    pub fn bucket<M>(&self) -> Option<&ActorDiscoveryBucket<M, H>>
+    pub fn bucket<M>(&self) -> Option<&ActorDiscoveryBucket<M, E>>
     where
         M: ActorMessage,
     {
@@ -33,10 +33,10 @@ where
             None => return None,
         };
 
-        bucket_resolver.downcast_ref::<ActorDiscoveryBucket<M, H>>()
+        bucket_resolver.downcast_ref::<ActorDiscoveryBucket<M, E>>()
     }
 
-    pub fn bucket_mut<M>(&mut self) -> Option<&mut ActorDiscoveryBucket<M, H>>
+    pub fn bucket_mut<M>(&mut self) -> Option<&mut ActorDiscoveryBucket<M, E>>
     where
         M: ActorMessage,
     {
@@ -45,10 +45,10 @@ where
             None => return None,
         };
 
-        bucket_resolver.downcast_mut::<ActorDiscoveryBucket<M, H>>()
+        bucket_resolver.downcast_mut::<ActorDiscoveryBucket<M, E>>()
     }
 
-    pub fn lookup<M>(&self) -> impl Iterator<Item = &ActorWeakMailbox<M, H>>
+    pub fn lookup<M>(&self) -> impl Iterator<Item = &ActorWeakMailbox<M, E>>
     where
         M: ActorMessage,
     {

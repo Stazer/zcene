@@ -3,7 +3,6 @@ mod actor_allocator;
 mod actor_box_future;
 mod actor_common_bounds;
 mod actor_future;
-mod actor_spawner;
 mod actor_spawnable;
 mod actor_system;
 mod actor_system_reference;
@@ -16,9 +15,13 @@ mod inline_actor;
 mod mailbox;
 mod message;
 mod root_actor;
+mod actor_environment;
+mod actor_enterable;
+
+pub use actor_environment::*;
+pub use actor_enterable::*;
 
 pub use actor::*;
-pub use actor_spawner::*;
 pub use actor_spawnable::*;
 pub use actor_allocator::*;
 pub use actor_box_future::*;

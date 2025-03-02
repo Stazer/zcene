@@ -1,5 +1,5 @@
 use crate::actor::{
-    Actor, ActorAllocatorHandler, ActorCreateError, ActorFuture, ActorHandleError, ActorEnvironment,
+    Actor, ActorEnvironmentAllocator, ActorCreateError, ActorFuture, ActorHandleError, ActorEnvironment,
     ActorMailbox, RootActorMessage,
 };
 use alloc::vec::Vec;
@@ -8,14 +8,14 @@ use alloc::vec::Vec;
 
 pub struct RootActor<E>
 where
-    E: ActorEnvironment + ActorAllocatorHandler,
+    E: ActorEnvironment + ActorEnvironmentAllocator,
 {
     children: Vec<ActorMailbox<(), E>, E::Allocator>,
 }
 
 impl<E> Actor<E> for RootActor<E>
 where
-    E: ActorEnvironment + ActorAllocatorHandler,
+    E: ActorEnvironment + ActorEnvironmentAllocator,
     E::CreateContext: Into<ActorMailbox<(), E>>,
     E::HandleContext<RootActorMessage<E>>: Into<RootActorMessage<E>>,
 {

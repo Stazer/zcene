@@ -4,17 +4,23 @@ use crate::actor::{
 };
 use alloc::boxed::Box;
 use zcene_core::actor::{
-    self, Actor, ActorAddressReference, ActorAllocatorHandler, ActorCommonContextBuilder,
-    ActorCommonHandleContext, ActorEnterError, ActorEnterHandler,
-    ActorMailbox, ActorMessage, ActorMessageChannel, ActorMessageChannelAddress, ActorSpawnError,
+    self, Actor, ActorAddressReference, ActorCommonContextBuilder,
+    ActorCommonHandleContext,
+    ActorMailbox, ActorMessage, ActorMessageChannel, ActorMessageChannelAddress, ActorSpawnError, ActorEnvironmentAllocator,
 
 };
 use zcene_core::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
-use ztd::Constructor;
+use ztd::{Constructor, Method};
+use zcene_core::actor::{ActorSpawnable};
+use zcene_core::actor::ActorCommonBounds;
+use alloc::vec::Vec;
+use core::marker::PhantomData;
+use core::num::NonZero;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Constructor)]
+#[derive(Constructor, Method)]
+#[Method(accessors)]
 pub struct ActorHandler<H>
 where
     H: FutureRuntimeHandler,
@@ -39,7 +45,10 @@ where
     type DestroyContext = ();
 }
 
-impl<H> ActorAllocatorHandler for ActorHandler<H>
+use zcene_core::actor::ActorEnterable;
+use zcene_core::actor::ActorEnterError;
+
+impl<H> ActorEnvironmentAllocator for ActorHandler<H>
 where
     H: FutureRuntimeHandler,
 {
@@ -50,21 +59,16 @@ where
     }
 }
 
-impl<H> ActorEnterHandler for ActorHandler<H>
+impl<H> ActorEnterable<ActorHandler<H>> for ()
 where
     H: FutureRuntimeHandler,
 {
-    type EnterSpecification = ();
+    fn enter(self, environment: &ActorHandler<H>) -> Result<(), ActorEnterError> {
+        environment.future_runtime.run();
 
-    fn enter(&self, specification: Self::EnterSpecification) -> Result<(), ActorEnterError> {
-        Ok(self.future_runtime.run())
+        Ok(())
     }
 }
-
-use zcene_core::actor::ActorCommonBounds;
-use alloc::vec::Vec;
-use core::marker::PhantomData;
-use core::num::NonZero;
 
 /*impl<H> ActorSpawnHandler<ActorHandler<H>> for ActorHandler<H>
 where

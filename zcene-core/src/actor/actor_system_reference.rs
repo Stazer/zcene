@@ -1,6 +1,6 @@
-use crate::actor::{ActorAllocatorHandler, ActorSystem};
+use crate::actor::{ActorSystem, ActorEnvironmentAllocator};
 use alloc::sync::Arc;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub type ActorSystemReference<H> = Arc<ActorSystem<H>, <H as ActorAllocatorHandler>::Allocator>;
+pub type ActorSystemReference<E> = Arc<ActorSystem<E>, <E as ActorEnvironmentAllocator>::Allocator>;
