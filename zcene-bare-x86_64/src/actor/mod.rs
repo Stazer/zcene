@@ -1,9 +1,5 @@
-mod actor_handler;
-mod isolated;
+mod isolation;
 mod root;
-mod unprivileged;
 
-pub use actor_handler::*;
+pub use isolation::*;
 pub use root::*;
-pub use unprivileged::*;
-pub use isolated::*;

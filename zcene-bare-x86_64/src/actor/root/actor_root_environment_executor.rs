@@ -10,9 +10,7 @@ use core::num::NonZero;
 use core::pin::{pin, Pin};
 use core::task::{Context, Poll};
 use pin_project::pin_project;
-use zcene_core::actor::{
-    Actor, ActorContextBuilder, ActorMessageChannelReceiver,
-};
+use zcene_core::actor::{Actor, ActorContextBuilder, ActorMessageChannelReceiver};
 use zcene_core::future::runtime::FutureRuntimeHandler;
 use zcene_core::future::FutureExt;
 use ztd::Constructor;

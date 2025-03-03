@@ -13,7 +13,7 @@ use ztd::Constructor;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Constructor)]
-pub struct ActorRootEnvironmentSpawnSpecification<A, H>
+pub struct ActorRootSpawnSpecification<A, H>
 where
     A: Actor<ActorRootEnvironment<H>>,
     H: FutureRuntimeHandler,
@@ -25,7 +25,7 @@ where
 }
 
 impl<A, H> ActorEnvironmentSpawnable<A, ActorRootEnvironment<H>>
-    for ActorRootEnvironmentSpawnSpecification<A, H>
+    for ActorRootSpawnSpecification<A, H>
 where
     A: Actor<ActorRootEnvironment<H>>,
     H: FutureRuntimeHandler,

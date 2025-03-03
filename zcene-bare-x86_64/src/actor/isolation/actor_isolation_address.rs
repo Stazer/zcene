@@ -1,3 +1,4 @@
+use crate::actor::ActorIsolationEnvironment;
 use core::arch::asm;
 use core::marker::PhantomData;
 use zcene_core::actor::{
@@ -5,37 +6,36 @@ use zcene_core::actor::{
     ActorMessageSender, ActorSendError,
 };
 use ztd::Constructor;
-use crate::actor::ActorIsolatedEnvironment;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Constructor)]
-pub struct ActorIsolatedAddress<A>
+pub struct ActorIsolationAddress<A>
 where
-    A: Actor<ActorIsolatedEnvironment>,
+    A: Actor<ActorIsolationEnvironment>,
 {
     descriptor: usize,
     #[Constructor(default)]
     marker: PhantomData<A::Message>,
 }
 
-impl<A> Clone for ActorIsolatedAddress<A>
+impl<A> Clone for ActorIsolationAddress<A>
 where
-    A: Actor<ActorIsolatedEnvironment>,
+    A: Actor<ActorIsolationEnvironment>,
 {
     fn clone(&self) -> Self {
         Self::new(self.descriptor)
     }
 }
 
-impl<A> ActorAddress<A, ActorIsolatedEnvironment> for ActorIsolatedAddress<A> where
-    A: Actor<ActorIsolatedEnvironment>
+impl<A> ActorAddress<A, ActorIsolationEnvironment> for ActorIsolationAddress<A> where
+    A: Actor<ActorIsolationEnvironment>,
 {
 }
 
-impl<A> ActorMessageSender<A::Message> for ActorIsolatedAddress<A>
+impl<A> ActorMessageSender<A::Message> for ActorIsolationAddress<A>
 where
-    A: Actor<ActorIsolatedEnvironment>,
+    A: Actor<ActorIsolationEnvironment>,
 {
     fn send(&self, message: A::Message) -> impl ActorFuture<'_, Result<(), ActorSendError>> {
         async move {

@@ -1,6 +1,3 @@
-use crate::actor::{
-    ActorEnvironmentTransformer, ActorUnprivilegedAddress, ActorUnprivilegedHandler,
-};
 use crate::kernel::future::runtime::{KernelFutureRuntime, KernelFutureRuntimeHandler};
 use crate::kernel::interrupt::KernelInterruptManager;
 use crate::kernel::logger::println;
@@ -97,7 +94,6 @@ where
 }
 
 #[derive(Debug)]
-// #[derive(ActorEnvironmentTransformer(ActorUnprivilegedEnvironment))]
 pub struct UnprivilegedActor<H>
 where
     H: actor::ActorEnvironment,
@@ -141,7 +137,7 @@ where
     }
 }
 
-impl<H> ActorEnvironmentTransformer<ActorUnprivilegedHandler> for UnprivilegedActor<H>
+/*impl<H> ActorEnvironmentTransformer<ActorUnprivilegedHandler> for UnprivilegedActor<H>
 where
     H: ActorEnvironment,
     H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
@@ -151,7 +147,7 @@ where
     fn transform(self) -> Self::Output {
         Self::Output::new(ActorUnprivilegedAddress::new(0))
     }
-}
+}*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -187,28 +183,33 @@ impl Kernel {
             wrmsr(IA32_EFER, rdmsr(IA32_EFER) | 1);
         }
 
-        use crate::actor::ActorRootEnvironmentSpawnSpecification;
-        
+        use crate::actor::{
+            ActorIsolationEnvironment,
+            ActorRootEnvironment,
+            ActorIsolationSpawnSpecification,
+            ActorIsolationAddress,
+            ActorRootSpawnSpecification,
+        };
 
         let print_actor = Kernel::get()
             .actor_system()
-            .spawn(ActorRootEnvironmentSpawnSpecification::new(
+            .spawn(ActorRootSpawnSpecification::new(
                 PrintActor::default(),
                 None,
             ))
             .unwrap();
 
-        /*let address =
-            Kernel::get()
-                .actor_system()
-                .spawn(ActorUnprivilegedHandlerSpawnSpecification::new(
-                    UnprivilegedActor::new(print_actor.clone()),
-                    None,
-                ));
+        let actor = UnprivilegedActor::<ActorIsolationEnvironment>::new(
+            ActorIsolationAddress::<PrintActor>::new(0),
+        );
 
-        use crate::actor::ActorUnprivilegedHandler;*/
-
-        
+        let unpriv_actor = Kernel::get()
+            .actor_system()
+            .spawn(ActorIsolationSpawnSpecification::<UnprivilegedActor<ActorIsolationEnvironment>, UnprivilegedActor<ActorRootEnvironment<_>>, _>::new(
+                actor,
+                None,
+            ))
+            .unwrap();
 
         Kernel::get().run();
 
