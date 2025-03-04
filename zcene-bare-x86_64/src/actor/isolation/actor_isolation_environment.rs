@@ -9,7 +9,7 @@ pub struct ActorIsolationEnvironment;
 
 impl ActorEnvironment for ActorIsolationEnvironment
 where
-    //A::Message: IntoBytes,
+//A::Message: IntoBytes,
 {
     type Address<A>
         = ActorIsolationAddress<A>

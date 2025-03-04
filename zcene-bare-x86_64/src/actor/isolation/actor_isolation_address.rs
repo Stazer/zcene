@@ -28,9 +28,8 @@ where
     }
 }
 
-impl<A> ActorAddress<A, ActorIsolationEnvironment> for ActorIsolationAddress<A>
-where
-    A: Actor<ActorIsolationEnvironment>,
+impl<A> ActorAddress<A, ActorIsolationEnvironment> for ActorIsolationAddress<A> where
+    A: Actor<ActorIsolationEnvironment>
 {
 }
 

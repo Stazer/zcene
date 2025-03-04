@@ -204,17 +204,26 @@ impl Kernel {
             ActorRootEnvironment, ActorRootSpawnSpecification,
         };
 
-        let print_actor = Kernel::get()
-            .actor_system()
-            .spawn(ActorRootSpawnSpecification::new(
-                PrintActor::default(),
-                None,
-            ))
-            .unwrap();
+        use crate::actor::ActorIsolationMessageHandler;
+        use alloc::boxed::Box;
+        use alloc::vec;
+        use alloc::vec::Vec;
+        use zcene_core::actor::ActorMessageChannelAddress;
+
+        let print_actor_address: ActorMessageChannelAddress<PrintActor, ActorRootEnvironment<_>> =
+            Kernel::get()
+                .actor_system()
+                .spawn(ActorRootSpawnSpecification::new(
+                    PrintActor::default(),
+                    None,
+                ))
+                .unwrap();
 
         let actor = UnprivilegedActor::<ActorIsolationEnvironment>::new(ActorIsolationAddress::<
             PrintActor,
         >::new(0));
+
+        let a = Box::<dyn ActorIsolationMessageHandler>::new(());
 
         let unpriv_actor = Kernel::get()
             .actor_system()
@@ -222,7 +231,16 @@ impl Kernel {
                 UnprivilegedActor<ActorIsolationEnvironment>,
                 UnprivilegedActor<ActorRootEnvironment<_>>,
                 _,
-            >::new(actor, None))
+            >::new(
+                actor,
+                None,
+                Vec::default(),
+                /*vec![Box::<dyn ActorIsolationMessageHandler>::new(
+                    (),
+                    //print_actor_address,
+                    //Kernel::get().actor_system().allocator(),
+                )],*/
+            ))
             .unwrap();
 
         Kernel::get().run();
@@ -265,6 +283,7 @@ impl Kernel {
         );
 
         //use crate::kernel::actor::actor_system_call_entry_point;
+        use alloc::boxed::Box;
         use x86::msr::wrmsr;
         use x86::msr::{IA32_FMASK, IA32_LSTAR, IA32_STAR};
         use x86_64::instructions::segmentation::Segment;
@@ -273,7 +292,6 @@ impl Kernel {
         use x86_64::structures::gdt::GlobalDescriptorTable;
         use x86_64::structures::gdt::{Descriptor, DescriptorFlags};
         use x86_64::structures::tss::TaskStateSegment;
-        use alloc::boxed::Box;
         use x86_64::VirtAddr;
 
         let ring0_stack = memory_manager

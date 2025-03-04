@@ -30,6 +30,13 @@ where
             .map_err(ActorSystemCreateError::from)
     }
 
+    pub fn allocator(&self) -> &E::Allocator
+    where
+        E: ActorEnvironmentAllocator,
+    {
+        self.environment.allocator()
+    }
+
     pub fn spawn<A, S>(&self, spawnable: S) -> Result<E::Address<A>, ActorSpawnError>
     where
         A: Actor<E>,

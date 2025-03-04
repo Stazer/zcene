@@ -3,13 +3,13 @@ use crate::actor::{
     ActorIsolationExecutorDeadlinePreemptionContext, ActorIsolationExecutorDeadlinePreemptionEvent,
     ActorIsolationExecutorDeadlinePreemptionEventInner, ActorIsolationExecutorDestroyState,
     ActorIsolationExecutorEvent, ActorIsolationExecutorHandleState,
-    ActorIsolationExecutorReceiveState, ActorIsolationExecutorState,
+    ActorIsolationExecutorReceiveState, ActorIsolationExecutorResult, ActorIsolationExecutorState,
     ActorIsolationExecutorStateHandler, ActorIsolationExecutorSystemCallContext,
     ActorIsolationExecutorSystemCallEvent, ActorIsolationExecutorSystemCallEventInner,
-    ActorIsolationExecutorSystemCallType, ActorRootEnvironment,
-    ActorIsolationExecutorResult,
+    ActorIsolationExecutorSystemCallType, ActorIsolationMessageHandler, ActorRootEnvironment,
 };
 use alloc::boxed::Box;
+use alloc::vec::Vec;
 use core::arch::asm;
 use core::future::Future;
 use core::marker::PhantomData;
@@ -21,7 +21,8 @@ use core::time::Duration;
 use pin_project::pin_project;
 use zcene_bare::common::As;
 use zcene_core::actor::{
-    Actor, ActorEnvironment, ActorMessageChannel, ActorMessageChannelReceiver,
+    Actor, ActorEnvironment, ActorEnvironmentAllocator, ActorMessageChannel,
+    ActorMessageChannelReceiver,
 };
 use zcene_core::future::runtime::FutureRuntimeHandler;
 use ztd::Constructor;
@@ -101,9 +102,17 @@ where
     AR: Actor<ActorRootEnvironment<H>>,
     H: FutureRuntimeHandler,
 {
+    allocator: <ActorRootEnvironment<H> as ActorEnvironmentAllocator>::Allocator,
     state: Option<ActorIsolationExecutorState<AI, AR, H>>,
     receiver: ActorMessageChannelReceiver<AR::Message>,
     deadline_in_milliseconds: Option<NonZero<usize>>,
+    message_handlers: Vec<
+        Box<
+            dyn ActorIsolationMessageHandler,
+            //<ActorRootEnvironment<H> as ActorEnvironmentAllocator>::Allocator,
+        >,
+        <ActorRootEnvironment<H> as ActorEnvironmentAllocator>::Allocator,
+    >,
     #[Constructor(default)]
     marker: PhantomData<(AR, H)>,
 }
@@ -231,12 +240,19 @@ where
                             break ActorIsolationExecutorResult::Next;
                         }
                         ActorIsolationExecutorSystemCallType::SendMessageCopy(mailbox, message) => {
+                            match self.message_handlers.get(mailbox) {
+                                Some(handler) => {
+                                    handler.send(/*&self.allocator,*/ message);
+                                }
+                                None => todo!(),
+                            }
+
                             Self::continue_from_system_call(
                                 actor,
                                 &mut event,
                                 &system_call_context,
                             );
-                        },
+                        }
                         ActorIsolationExecutorSystemCallType::Unknown(_) => {
                             // error
                             todo!()
@@ -491,7 +507,6 @@ pub extern "C" fn actor_deadline_preemption_restore(
     *event = Some(ActorIsolationExecutorDeadlinePreemptionEvent::new(context.clone()).into());
 }
 
-
 /*#[no_mangle]
 #[inline(never)]
 pub extern "C" fn actor_system_call_entry_point() -> ! {
@@ -556,7 +571,6 @@ pub unsafe fn actor_system_call_entry_point() -> ! {
         "ret",
         emergency_halt!(),
     )
-
 }
 
 #[no_mangle]
@@ -571,7 +585,7 @@ pub extern "C" fn actor_system_call_restore(
     let rsp: u64;
     let rflags: u64;
 
-    unsafe { 
+    unsafe {
         asm!(
             "mov {}, r9",
             "mov {}, r10",
@@ -588,9 +602,10 @@ pub extern "C" fn actor_system_call_restore(
                 0 => ActorIsolationExecutorSystemCallType::Continue,
                 1 => ActorIsolationExecutorSystemCallType::Preempt,
                 2 => ActorIsolationExecutorSystemCallType::Poll(Poll::Ready(())),
-                3 => {
-                    ActorIsolationExecutorSystemCallType::SendMessageCopy(argument0 as _, argument1 as _)
-                }
+                3 => ActorIsolationExecutorSystemCallType::SendMessageCopy(
+                    argument0 as _,
+                    argument1 as _,
+                ),
                 system_call_identifier => {
                     ActorIsolationExecutorSystemCallType::Unknown(system_call_identifier)
                 }
@@ -603,10 +618,5 @@ pub extern "C" fn actor_system_call_restore(
 
 #[inline(never)]
 pub extern "C" fn actor_exception_entry_point() -> ! {
-    unsafe {
-        asm!(
-            "hlt",
-            options(noreturn),
-        )
-    }
+    unsafe { asm!("hlt", options(noreturn),) }
 }
