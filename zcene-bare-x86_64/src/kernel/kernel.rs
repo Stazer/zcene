@@ -184,11 +184,8 @@ impl Kernel {
         }
 
         use crate::actor::{
-            ActorIsolationEnvironment,
-            ActorRootEnvironment,
-            ActorIsolationSpawnSpecification,
-            ActorIsolationAddress,
-            ActorRootSpawnSpecification,
+            ActorIsolationAddress, ActorIsolationEnvironment, ActorIsolationSpawnSpecification,
+            ActorRootEnvironment, ActorRootSpawnSpecification,
         };
 
         let print_actor = Kernel::get()
@@ -199,16 +196,17 @@ impl Kernel {
             ))
             .unwrap();
 
-        let actor = UnprivilegedActor::<ActorIsolationEnvironment>::new(
-            ActorIsolationAddress::<PrintActor>::new(0),
-        );
+        let actor = UnprivilegedActor::<ActorIsolationEnvironment>::new(ActorIsolationAddress::<
+            PrintActor,
+        >::new(0));
 
         let unpriv_actor = Kernel::get()
             .actor_system()
-            .spawn(ActorIsolationSpawnSpecification::<UnprivilegedActor<ActorIsolationEnvironment>, UnprivilegedActor<ActorRootEnvironment<_>>, _>::new(
-                actor,
-                None,
-            ))
+            .spawn(ActorIsolationSpawnSpecification::<
+                UnprivilegedActor<ActorIsolationEnvironment>,
+                UnprivilegedActor<ActorRootEnvironment<_>>,
+                _,
+            >::new(actor, None))
             .unwrap();
 
         Kernel::get().run();
