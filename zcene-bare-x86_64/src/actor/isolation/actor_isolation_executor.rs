@@ -7,6 +7,7 @@ use crate::actor::{
     ActorIsolationExecutorStateHandler, ActorIsolationExecutorSystemCallContext,
     ActorIsolationExecutorSystemCallEvent, ActorIsolationExecutorSystemCallEventInner,
     ActorIsolationExecutorSystemCallType, ActorRootEnvironment,
+    ActorIsolationExecutorResult,
 };
 use alloc::boxed::Box;
 use core::arch::asm;
@@ -88,13 +89,6 @@ macro_rules! emergency_halt {
             hlt;
         "#
     };
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-pub enum ActorIsolationExecutorResult {
-    Pending,
-    Next,
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -203,7 +197,7 @@ where
         }
 
         loop {
-            crate::kernel::logger::println!("{:?}", event);
+            crate::kernel::logger::println!("{:X?}", event);
 
             match replace(&mut event, None) {
                 None => break ActorIsolationExecutorResult::Next,
@@ -236,9 +230,7 @@ where
 
                             break ActorIsolationExecutorResult::Next;
                         }
-                        ActorIsolationExecutorSystemCallType::SendMessageCopy(()) => {
-                            todo!();
-
+                        ActorIsolationExecutorSystemCallType::SendMessageCopy(mailbox, message) => {
                             Self::continue_from_system_call(
                                 actor,
                                 &mut event,
@@ -499,15 +491,54 @@ pub extern "C" fn actor_deadline_preemption_restore(
     *event = Some(ActorIsolationExecutorDeadlinePreemptionEvent::new(context.clone()).into());
 }
 
+
+/*#[no_mangle]
+#[inline(never)]
+pub extern "C" fn actor_system_call_entry_point() -> ! {
+    unsafe {
+        asm!(
+            // rdi = system call identifier
+            // rsi = argument 0
+            //  r8 = argument 1
+
+            // rcx = instruction address
+            // r11 = flags
+
+            //
+            // Store user context
+            //
+            "mov r9, rcx",
+            "mov r10, rsp",
+
+            //
+            // Load kernel stack
+            //
+            "mov rcx, 0xC0000102",
+            "rdmsr",
+            "shl rdx, 32",
+            "or rax, rdx",
+            "mov rsp, rax",
+
+            "mov rdx, r8",
+            "pop rcx",
+            "call {}",
+            "ret",
+            emergency_halt!(),
+
+            sym actor_system_call_restore,
+            options(noreturn),
+        )
+    }
+}*/
+
 #[naked]
-#[no_mangle]
-pub unsafe extern "C" fn actor_system_call_entry_point() {
+pub unsafe fn actor_system_call_entry_point() -> ! {
     naked_asm!(
         //
         // Store user context
         //
-        "mov rsi, rsp",
-        "mov r8, rcx",
+        "mov r9, rcx",
+        "mov r10, rsp",
         //
         // Load kernel stack
         //
@@ -517,38 +548,51 @@ pub unsafe extern "C" fn actor_system_call_entry_point() {
         "or rax, rdx",
         "mov rsp, rax",
         //
-        // Perform restore
+        // Restore
         //
         "mov rdx, r8",
-        "mov rcx, r11",
-        "pop r8",
+        "pop rcx",
         "call actor_system_call_restore",
         "ret",
-        //
-        // Emergency halt
-        //
-        "hlt",
+        emergency_halt!(),
     )
+
 }
 
 #[no_mangle]
 #[inline(never)]
 pub extern "C" fn actor_system_call_restore(
-    system_call_number: usize,
-    rsp: u64,
-    rip: u64,
-    rflags: u64,
+    system_call_identifier: usize,
+    argument0: u64,
+    argument1: u64,
     event: &mut Option<ActorIsolationExecutorEvent>,
 ) {
+    let rip: u64;
+    let rsp: u64;
+    let rflags: u64;
+
+    unsafe { 
+        asm!(
+            "mov {}, r9",
+            "mov {}, r10",
+            "mov {}, r11",
+            out(reg) rip,
+            out(reg) rsp,
+            out(reg) rflags,
+        );
+    }
+
     *event = Some(
         ActorIsolationExecutorSystemCallEvent::new(
-            match system_call_number {
+            match system_call_identifier {
                 0 => ActorIsolationExecutorSystemCallType::Continue,
                 1 => ActorIsolationExecutorSystemCallType::Preempt,
                 2 => ActorIsolationExecutorSystemCallType::Poll(Poll::Ready(())),
-                3 => ActorIsolationExecutorSystemCallType::SendMessageCopy(()),
-                system_call_number => {
-                    ActorIsolationExecutorSystemCallType::Unknown(system_call_number)
+                3 => {
+                    ActorIsolationExecutorSystemCallType::SendMessageCopy(argument0 as _, argument1 as _)
+                }
+                system_call_identifier => {
+                    ActorIsolationExecutorSystemCallType::Unknown(system_call_identifier)
                 }
             },
             ActorIsolationExecutorSystemCallContext::new(rsp, rip, rflags),
@@ -557,12 +601,12 @@ pub extern "C" fn actor_system_call_restore(
     );
 }
 
-#[naked]
-pub unsafe extern "C" fn actor_exception_entry_point() {
-    naked_asm!(
-        //
-        // Emergency halt
-        //
-        "hlt",
-    )
+#[inline(never)]
+pub extern "C" fn actor_exception_entry_point() -> ! {
+    unsafe {
+        asm!(
+            "hlt",
+            options(noreturn),
+        )
+    }
 }

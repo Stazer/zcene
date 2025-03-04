@@ -7,6 +7,6 @@ pub enum ActorIsolationExecutorSystemCallType {
     Continue,
     Preempt,
     Poll(Poll<()>),
-    SendMessageCopy(()),
+    SendMessageCopy(usize, usize),
     Unknown(usize),
 }

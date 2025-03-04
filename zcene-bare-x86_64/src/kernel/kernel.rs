@@ -120,6 +120,28 @@ where
     type Message = ();
 
     async fn create(&mut self, context: H::CreateContext) -> Result<(), ActorCreateError> {
+        for i in 1..3 {
+            unsafe {
+                core::arch::asm!(
+                    "push rbx",
+                    "push rbp",
+                    "push r12",
+                    "push r13",
+                    "push r14",
+                    "push r15",
+                    "syscall",
+                    "pop r15",
+                    "pop r14",
+                    "pop r13",
+                    "pop r12",
+                    "pop rbp",
+                    "pop rbx",
+                    in ("rdi") 0,
+                    clobber_abi("C"),
+                );
+            }
+        }
+
         self.printer.send(55).await;
 
         Ok(())
@@ -175,12 +197,6 @@ impl Kernel {
                 .as_mut()
                 .unwrap()
                 .write(Kernel::new(boot_info).unwrap());
-        }
-
-        unsafe {
-            use x86::msr::{rdmsr, wrmsr, IA32_EFER};
-
-            wrmsr(IA32_EFER, rdmsr(IA32_EFER) | 1);
         }
 
         use crate::actor::{
@@ -257,6 +273,7 @@ impl Kernel {
         use x86_64::structures::gdt::GlobalDescriptorTable;
         use x86_64::structures::gdt::{Descriptor, DescriptorFlags};
         use x86_64::structures::tss::TaskStateSegment;
+        use alloc::boxed::Box;
         use x86_64::VirtAddr;
 
         let ring0_stack = memory_manager
@@ -271,7 +288,11 @@ impl Kernel {
             .initial_memory_address()
             .as_u64();
 
-        use alloc::boxed::Box;
+        unsafe {
+            use x86::msr::{rdmsr, wrmsr, IA32_EFER};
+
+            wrmsr(IA32_EFER, rdmsr(IA32_EFER) | 1);
+        }
 
         let mut gdt = Box::new(GlobalDescriptorTable::new());
 

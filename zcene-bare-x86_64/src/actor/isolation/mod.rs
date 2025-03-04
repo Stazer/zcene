@@ -1,6 +1,7 @@
 mod actor_isolation_address;
 mod actor_isolation_environment;
 mod actor_isolation_executor;
+mod actor_isolation_executor_result;
 mod actor_isolation_executor_context;
 mod actor_isolation_executor_create_state;
 mod actor_isolation_executor_deadline_preemption_context;
@@ -19,6 +20,7 @@ mod actor_isolation_spawn_specification;
 pub use actor_isolation_address::*;
 pub use actor_isolation_environment::*;
 pub use actor_isolation_executor::*;
+pub use actor_isolation_executor_result::*;
 pub use actor_isolation_executor_context::*;
 pub use actor_isolation_executor_create_state::*;
 pub use actor_isolation_executor_deadline_preemption_context::*;
@@ -34,6 +36,17 @@ pub use actor_isolation_executor_system_call_event::*;
 pub use actor_isolation_executor_system_call_type::*;
 pub use actor_isolation_spawn_specification::*;
 
-pub trait ActorIsolationAddressExt {
-    fn into_address(self);
+use zcene_core::actor::{ActorMessageChannelSender, ActorMessage};
+
+pub trait ActorIsolationMessageHandler {
+    fn send(&self, address: usize);
+}
+
+impl<M> ActorIsolationMessageHandler for ActorMessageChannelSender<M>
+where
+    M: ActorMessage
+{
+    fn send(&self, address: usize) {
+
+    }
 }

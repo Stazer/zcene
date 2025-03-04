@@ -28,7 +28,8 @@ where
     }
 }
 
-impl<A> ActorAddress<A, ActorIsolationEnvironment> for ActorIsolationAddress<A> where
+impl<A> ActorAddress<A, ActorIsolationEnvironment> for ActorIsolationAddress<A>
+where
     A: Actor<ActorIsolationEnvironment>,
 {
 }
@@ -47,7 +48,6 @@ where
                     "push r13",
                     "push r14",
                     "push r15",
-                    "mov rdi, 3",
                     "syscall",
                     "pop r15",
                     "pop r14",
@@ -56,8 +56,8 @@ where
                     "pop rbp",
                     "pop rbx",
                     in ("rdi") 3,
-                    in ("rsi") &message,
-                    in ("rdx") size_of::<A::Message>(),
+                    in ("rsi") 0,
+                    in ("r8") &message,
                     clobber_abi("C"),
                 );
             }
