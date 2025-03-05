@@ -38,35 +38,37 @@ pub use actor_isolation_spawn_specification::*;
 
 use crate::actor::ActorRootEnvironment;
 use alloc::boxed::Box;
+use core::fmt::Debug;
 use zcene_core::actor::{
     Actor, ActorBoxFuture, ActorCommonBounds, ActorEnvironment, ActorEnvironmentAllocator,
-    ActorMessage, ActorMessageChannelAddress, ActorMessageChannelSender,
+    ActorMessage, ActorMessageChannelAddress, ActorMessageChannelSender, ActorMessageSender,
 };
 use zcene_core::future::runtime::FutureRuntimeHandler;
 
-pub trait ActorIsolationMessageHandler: Send + Sync/*: ActorCommonBounds*/
-//where
-    //E: ActorEnvironment + ActorEnvironmentAllocator,
-{
-    fn send(&self, address: usize) /*-> ActorBoxFuture<'static, (), E>*/;
-}
-
-/*impl<A, E> ActorIsolationMessageHandler<E> for ActorMessageChannelAddress<A, E>
+pub trait ActorIsolationMessageHandler<E>: ActorCommonBounds
 where
-    A: Actor<E>,
     E: ActorEnvironment + ActorEnvironmentAllocator,
 {
-    fn send(&self, allocator: &E::Allocator, address: usize) -> ActorBoxFuture<'static, (), E> {
-        Box::pin_in(async move { todo!() }, allocator.clone())
-    }
-}*/
+    fn send(&self, allocator: &E::Allocator, message: *const ()) -> ActorBoxFuture<'static, (), E>;
+}
 
-impl ActorIsolationMessageHandler for ()
-//where
-    //E: ActorEnvironment + ActorEnvironmentAllocator,
+impl<A, E> ActorIsolationMessageHandler<E> for ActorMessageChannelAddress<A, E>
+where
+    A: Actor<E>,
+    A::Message: Debug,
+    E: ActorEnvironment + ActorEnvironmentAllocator,
 {
-    fn send(&self, address: usize) /*-> ActorBoxFuture<'static, (), E>*/ {
-        todo!()
-        //Box::pin_in(async move { todo!() }, allocator.clone())
+    fn send(&self, allocator: &E::Allocator, message: *const ()) -> ActorBoxFuture<'static, (), E> {
+        let sender = self.clone();
+
+        // TODO: check address and length!
+        let message = unsafe { message.cast::<A::Message>().as_ref().unwrap() }.clone();
+
+        Box::pin_in(
+            async move {
+                <Self as ActorMessageSender<_>>::send(&sender, message).await;
+            },
+            allocator.clone(),
+        )
     }
 }

@@ -108,8 +108,8 @@ where
     deadline_in_milliseconds: Option<NonZero<usize>>,
     message_handlers: Vec<
         Box<
-            dyn ActorIsolationMessageHandler,
-            //<ActorRootEnvironment<H> as ActorEnvironmentAllocator>::Allocator,
+            dyn ActorIsolationMessageHandler<ActorRootEnvironment<H>>,
+            <ActorRootEnvironment<H> as ActorEnvironmentAllocator>::Allocator,
         >,
         <ActorRootEnvironment<H> as ActorEnvironmentAllocator>::Allocator,
     >,
@@ -242,7 +242,11 @@ where
                         ActorIsolationExecutorSystemCallType::SendMessageCopy(mailbox, message) => {
                             match self.message_handlers.get(mailbox) {
                                 Some(handler) => {
-                                    handler.send(/*&self.allocator,*/ message);
+                                    let mut pinned = pin!(handler.send(&self.allocator, message));
+                                    crate::kernel::logger::println!(
+                                        "{:?}",
+                                        pinned.as_mut().poll(future_context)
+                                    );
                                 }
                                 None => todo!(),
                             }

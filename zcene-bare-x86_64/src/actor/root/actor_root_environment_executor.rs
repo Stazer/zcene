@@ -42,17 +42,19 @@ where
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
-        if let Some(_) = self.deadline_in_milliseconds {
+        let this = self.project();
+
+        if !matches!(this.deadline_in_milliseconds, None) {
             todo!()
         }
 
         loop {
-            match self.state.take() {
+            match this.state.take() {
                 Some(ActorRootEnvironmentExecutorState::Create(state)) => {
                     let mut actor = state.into_inner().actor;
 
                     let result = {
-                        let create_context = self.context_builder.build_create_context(&actor);
+                        let create_context = this.context_builder.build_create_context(&actor);
                         let mut pinned = pin!(actor.create(create_context));
 
                         pinned.as_mut().poll(context)
@@ -60,40 +62,41 @@ where
 
                     match result {
                         Poll::Pending => {
-                            self.state =
+                            *this.state =
                                 Some(ActorRootEnvironmentExecutorCreateState::new(actor).into());
 
                             return Poll::Pending;
                         }
                         // TODO: Handle result
                         Poll::Ready(_result) => {
-                            self.state =
+                            *this.state =
                                 Some(ActorRootEnvironmentExecutorReceiveState::new(actor).into());
                         }
                     }
                 }
                 Some(ActorRootEnvironmentExecutorState::Receive(state)) => {
+                    crate::kernel::logger::println!("receive...");
+
                     let actor = state.into_inner().actor;
 
-                    let result = {
-                        let mut pinned = pin!(self.receiver.receive());
-
-                        pinned.as_mut().poll(context)
-                    };
+                    let mut pinned = pin!(this.receiver.receive());
+                    let result = pinned.as_mut().poll(context);
 
                     match result {
                         Poll::Pending => {
-                            self.state =
+                            *this.state =
                                 Some(ActorRootEnvironmentExecutorReceiveState::new(actor).into());
 
                             return Poll::Pending;
                         }
                         Poll::Ready(None) => {
-                            self.state =
+                            *this.state =
                                 Some(ActorRootEnvironmentExecutorDestroyState::new(actor).into());
                         }
                         Poll::Ready(Some(message)) => {
-                            self.state = Some(
+                            crate::kernel::logger::println!("received message");
+
+                            *this.state = Some(
                                 ActorRootEnvironmentExecutorHandleState::new(actor, message).into(),
                             );
                         }
@@ -106,7 +109,7 @@ where
 
                     let result = {
                         let handle_context =
-                            self.context_builder.build_handle_context(&actor, &message);
+                            this.context_builder.build_handle_context(&actor, &message);
                         let mut pinned = pin!(actor.handle(handle_context));
 
                         pinned.as_mut().poll(context)
@@ -114,23 +117,24 @@ where
 
                     match result {
                         Poll::Pending => {
-                            self.state =
+                            *this.state =
                                 Some(ActorRootEnvironmentExecutorReceiveState::new(actor).into());
 
                             return Poll::Pending;
                         }
                         // TODO: Handle result
                         Poll::Ready(_result) => {
-                            self.state =
+                            *this.state =
                                 Some(ActorRootEnvironmentExecutorReceiveState::new(actor).into());
                         }
                     }
                 }
                 Some(ActorRootEnvironmentExecutorState::Destroy(state)) => {
                     let actor = state.into_inner().actor;
-                    let destroy_context = self.context_builder.build_destroy_context(&actor);
+                    let destroy_context = this.context_builder.build_destroy_context(&actor);
                     let mut pinned = pin!(actor.destroy(destroy_context));
 
+                    // TODO
                     pinned.as_mut().complete();
                 }
                 None => return Poll::Ready(()),

@@ -2,10 +2,6 @@
 #![feature(trait_alias)]
 #![feature(allocator_api)]
 #![feature(arbitrary_self_types)]
-#![feature(fn_traits)]
-#![feature(unboxed_closures)]
-#![feature(associated_type_defaults)]
-#![feature(more_maybe_bounds)]
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

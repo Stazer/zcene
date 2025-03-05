@@ -26,10 +26,8 @@ where
     deadline_in_milliseconds: Option<NonZero<usize>>,
     message_handlers: Vec<
         Box<
-            //dyn ActorIsolationMessageHandler<ActorRootEnvironment<H>>,
-            //
-            dyn ActorIsolationMessageHandler,
-            //<ActorRootEnvironment<H> as ActorEnvironmentAllocator>::Allocator,
+            dyn ActorIsolationMessageHandler<ActorRootEnvironment<H>>,
+            <ActorRootEnvironment<H> as ActorEnvironmentAllocator>::Allocator,
         >,
         <ActorRootEnvironment<H> as ActorEnvironmentAllocator>::Allocator,
     >,

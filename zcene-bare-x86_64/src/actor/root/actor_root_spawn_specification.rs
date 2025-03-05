@@ -31,19 +31,33 @@ where
     H: FutureRuntimeHandler,
 {
     fn spawn(
-        self,
+        mut self,
         environment: &ActorRootEnvironment<H>,
     ) -> Result<<ActorRootEnvironment<H> as ActorEnvironment>::Address<A>, ActorSpawnError> {
         let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
 
-        environment
-            .future_runtime()
-            .spawn(ActorRootEnvironmentExecutor::new(
+        environment.future_runtime().spawn(
+            /*async move {
+                self.actor.create(()).await;
+
+                loop {
+                    let message = match receiver.receive().await {
+                        Some(message) => message,
+                        None => break,
+                    };
+
+                    self.actor.handle(zcene_core::actor::ActorCommonHandleContext::new(message)).await;
+                }
+
+                self.actor.destroy(()).await;
+            }*/
+            ActorRootEnvironmentExecutor::new(
                 Some(ActorRootEnvironmentExecutorCreateState::new(self.actor).into()),
                 receiver,
                 ActorCommonContextBuilder::default(),
                 None,
-            ))?;
+            ),
+        )?;
 
         Ok(<ActorRootEnvironment<H> as ActorEnvironment>::Address::new(
             sender,

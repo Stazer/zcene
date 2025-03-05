@@ -1,9 +1,11 @@
+use crate::actor::ActorIsolationMessageHandler;
 use crate::kernel::future::runtime::{KernelFutureRuntime, KernelFutureRuntimeHandler};
 use crate::kernel::interrupt::KernelInterruptManager;
 use crate::kernel::logger::println;
 use crate::kernel::logger::KernelLogger;
 use crate::kernel::memory::{KernelMemoryManager, KernelMemoryManagerInitializeError};
 use crate::kernel::KernelTimer;
+use alloc::boxed::Box;
 use bootloader_api::BootInfo;
 use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
 use bootloader_x86_64_common::serial::SerialPort;
@@ -38,7 +40,11 @@ pub enum KernelInitializeError {
 #[derive(Debug, Constructor, Default)]
 pub struct PrintActor;
 
-pub type PrintActorMessage = usize;
+#[derive(Debug, Constructor, Clone)]
+pub struct PrintActorMessage {
+    value0: usize,
+    value1: usize,
+}
 
 impl<H> Actor<H> for PrintActor
 where
@@ -48,7 +54,7 @@ where
     type Message = PrintActorMessage;
 
     async fn create(&mut self, context: H::CreateContext) -> Result<(), ActorCreateError> {
-        println!("zup");
+        println!("create");
         Ok(())
     }
 
@@ -56,93 +62,37 @@ where
         &mut self,
         context: H::HandleContext<Self::Message>,
     ) -> Result<(), ActorHandleError> {
-        println!("Received {}", context.message());
+        println!("Received {:?}", context.message());
 
         Ok(())
     }
 
     async fn destroy(self, context: H::DestroyContext) -> Result<(), ActorDestroyError> {
+        println!("destroy");
         Ok(())
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug)]
-pub struct EmptyActor;
-
-impl<H> Actor<H> for EmptyActor
-where
-    H: actor::ActorEnvironment,
-{
-    type Message = ();
-
-    async fn create(&mut self, context: H::CreateContext) -> Result<(), ActorCreateError> {
-        Ok(())
-    }
-
-    async fn handle(
-        &mut self,
-        _context: H::HandleContext<Self::Message>,
-    ) -> Result<(), ActorHandleError> {
-        Ok(())
-    }
-
-    async fn destroy(self, context: H::DestroyContext) -> Result<(), ActorDestroyError> {
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
+#[derive(Constructor, Debug)]
 pub struct UnprivilegedActor<H>
 where
-    H: actor::ActorEnvironment,
+    H: ActorEnvironment,
     H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
 {
     printer: H::Address<PrintActor>,
 }
 
-impl<H> UnprivilegedActor<H>
-where
-    H: actor::ActorEnvironment,
-    H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
-{
-    pub fn new(printer: H::Address<PrintActor>) -> Self {
-        Self { printer }
-    }
-}
-
 impl<H> Actor<H> for UnprivilegedActor<H>
 where
-    H: actor::ActorEnvironment,
+    H: ActorEnvironment,
     H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
 {
     type Message = ();
 
     async fn create(&mut self, context: H::CreateContext) -> Result<(), ActorCreateError> {
-        for i in 1..3 {
-            unsafe {
-                core::arch::asm!(
-                    "push rbx",
-                    "push rbp",
-                    "push r12",
-                    "push r13",
-                    "push r14",
-                    "push r15",
-                    "syscall",
-                    "pop r15",
-                    "pop r14",
-                    "pop r13",
-                    "pop r12",
-                    "pop rbp",
-                    "pop rbx",
-                    in ("rdi") 0,
-                    clobber_abi("C"),
-                );
-            }
-        }
-
-        self.printer.send(55).await;
+        self.printer.send(PrintActorMessage::new(1337, 1338)).await;
 
         Ok(())
     }
@@ -158,18 +108,6 @@ where
         Ok(())
     }
 }
-
-/*impl<H> ActorEnvironmentTransformer<ActorUnprivilegedHandler> for UnprivilegedActor<H>
-where
-    H: ActorEnvironment,
-    H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
-{
-    type Output = UnprivilegedActor<ActorUnprivilegedHandler>;
-
-    fn transform(self) -> Self::Output {
-        Self::Output::new(ActorUnprivilegedAddress::new(0))
-    }
-}*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -219,12 +157,6 @@ impl Kernel {
                 ))
                 .unwrap();
 
-        let actor = UnprivilegedActor::<ActorIsolationEnvironment>::new(ActorIsolationAddress::<
-            PrintActor,
-        >::new(0));
-
-        let a = Box::<dyn ActorIsolationMessageHandler>::new(());
-
         let unpriv_actor = Kernel::get()
             .actor_system()
             .spawn(ActorIsolationSpawnSpecification::<
@@ -232,16 +164,27 @@ impl Kernel {
                 UnprivilegedActor<ActorRootEnvironment<_>>,
                 _,
             >::new(
-                actor,
+                UnprivilegedActor::<ActorIsolationEnvironment>::new(ActorIsolationAddress::<
+                    PrintActor,
+                >::new(0)),
                 None,
-                Vec::default(),
-                /*vec![Box::<dyn ActorIsolationMessageHandler>::new(
-                    (),
-                    //print_actor_address,
-                    //Kernel::get().actor_system().allocator(),
-                )],*/
+                vec![Box::<dyn ActorIsolationMessageHandler<_>>::from(
+                    Box::new_in(
+                        print_actor_address.clone(),
+                        *Kernel::get().actor_system().allocator(),
+                    ),
+                )],
             ))
             .unwrap();
+
+        /*let unpriv2: ActorMessageChannelAddress<UnprivilegedActor<_>, ActorRootEnvironment<_>> =
+        Kernel::get()
+            .actor_system()
+            .spawn(ActorRootSpawnSpecification::new(
+                UnprivilegedActor::<ActorRootEnvironment<_>>::new(print_actor_address),
+                None,
+            ))
+            .unwrap();*/
 
         Kernel::get().run();
 
