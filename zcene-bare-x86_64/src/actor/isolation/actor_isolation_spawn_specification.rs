@@ -1,5 +1,5 @@
 use crate::actor::{
-    ActorIsolationEnvironment, ActorIsolationExecutor, ActorIsolationExecutorCreateState,
+    ActorIsolationEnvironment, ActorIsolationExecutor,
     ActorIsolationMessageHandler, ActorRootEnvironment,
 };
 use alloc::boxed::Box;
@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::num::NonZero;
 use zcene_core::actor::{
-    Actor, ActorCommonContextBuilder, ActorEnvironment, ActorEnvironmentAllocator,
+    Actor, ActorEnvironment, ActorEnvironmentAllocator,
     ActorEnvironmentSpawnable, ActorMessageChannel, ActorSpawnError,
 };
 use zcene_core::future::runtime::FutureRuntimeHandler;
@@ -52,11 +52,12 @@ where
             .future_runtime()
             .spawn(ActorIsolationExecutor::<AI, AR, H>::new(
                 environment.allocator().clone(),
-                Some(ActorIsolationExecutorCreateState::new(Box::new(self.actor), None).into()),
+                Box::new(self.actor),
+                None,
                 receiver,
                 self.deadline_in_milliseconds,
                 self.message_handlers,
-            ))?;
+            ).run())?;
 
         Ok(<ActorRootEnvironment<H> as ActorEnvironment>::Address::new(
             sender,

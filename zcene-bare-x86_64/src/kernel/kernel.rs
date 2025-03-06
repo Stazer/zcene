@@ -5,7 +5,6 @@ use crate::kernel::logger::println;
 use crate::kernel::logger::KernelLogger;
 use crate::kernel::memory::{KernelMemoryManager, KernelMemoryManagerInitializeError};
 use crate::kernel::KernelTimer;
-use alloc::boxed::Box;
 use bootloader_api::BootInfo;
 use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
 use bootloader_x86_64_common::serial::SerialPort;
@@ -145,7 +144,7 @@ impl Kernel {
         use crate::actor::ActorIsolationMessageHandler;
         use alloc::boxed::Box;
         use alloc::vec;
-        use alloc::vec::Vec;
+        
         use zcene_core::actor::ActorMessageChannelAddress;
 
         let print_actor_address: ActorMessageChannelAddress<PrintActor, ActorRootEnvironment<_>> =

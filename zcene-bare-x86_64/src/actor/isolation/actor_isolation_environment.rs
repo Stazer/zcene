@@ -3,14 +3,9 @@ use zcene_core::actor::{Actor, ActorCommonHandleContext, ActorEnvironment, Actor
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use zerocopy::IntoBytes;
-
 pub struct ActorIsolationEnvironment;
 
-impl ActorEnvironment for ActorIsolationEnvironment
-where
-//A::Message: IntoBytes,
-{
+impl ActorEnvironment for ActorIsolationEnvironment {
     type Address<A>
         = ActorIsolationAddress<A>
     where

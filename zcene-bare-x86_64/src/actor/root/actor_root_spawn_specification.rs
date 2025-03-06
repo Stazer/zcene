@@ -1,5 +1,5 @@
 use crate::actor::{
-    ActorRootEnvironment, ActorRootEnvironmentExecutor, ActorRootEnvironmentExecutorCreateState,
+    ActorRootEnvironment, ActorRootEnvironmentExecutor,
 };
 use core::marker::PhantomData;
 use core::num::NonZero;
@@ -31,7 +31,7 @@ where
     H: FutureRuntimeHandler,
 {
     fn spawn(
-        mut self,
+        self,
         environment: &ActorRootEnvironment<H>,
     ) -> Result<<ActorRootEnvironment<H> as ActorEnvironment>::Address<A>, ActorSpawnError> {
         let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
@@ -52,11 +52,12 @@ where
                 self.actor.destroy(()).await;
             }*/
             ActorRootEnvironmentExecutor::new(
-                Some(ActorRootEnvironmentExecutorCreateState::new(self.actor).into()),
+                //Some(ActorRootEnvironmentExecutorCreateState::new(self.actor).into()),
+                self.actor,
                 receiver,
                 ActorCommonContextBuilder::default(),
                 None,
-            ),
+            ).run(),
         )?;
 
         Ok(<ActorRootEnvironment<H> as ActorEnvironment>::Address::new(

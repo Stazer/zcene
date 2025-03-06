@@ -1,27 +1,26 @@
 use crate::actor::{
     ActorIsolationEnvironment, ActorIsolationExecutorContext,
     ActorIsolationExecutorDeadlinePreemptionContext, ActorIsolationExecutorDeadlinePreemptionEvent,
-    ActorIsolationExecutorDeadlinePreemptionEventInner, ActorIsolationExecutorDestroyState,
-    ActorIsolationExecutorEvent, ActorIsolationExecutorHandleState,
-    ActorIsolationExecutorReceiveState, ActorIsolationExecutorResult, ActorIsolationExecutorState,
-    ActorIsolationExecutorStateHandler, ActorIsolationExecutorSystemCallContext,
+    ActorIsolationExecutorDeadlinePreemptionEventInner,
+    ActorIsolationExecutorEvent, ActorIsolationExecutorResult, ActorIsolationExecutorSystemCallContext,
     ActorIsolationExecutorSystemCallEvent, ActorIsolationExecutorSystemCallEventInner,
     ActorIsolationExecutorSystemCallType, ActorIsolationMessageHandler, ActorRootEnvironment,
 };
 use alloc::boxed::Box;
+use zcene_bare::memory::{LeakingAllocator, LeakingBox};
+use core::arch::naked_asm;
 use alloc::vec::Vec;
 use core::arch::asm;
-use core::future::Future;
+use core::future::{poll_fn, Future};
 use core::marker::PhantomData;
 use core::mem::replace;
 use core::num::NonZero;
-use core::pin::{pin, Pin};
-use core::task::{Context, Poll};
+use core::pin::pin;
+use core::task::{Context, Poll, Waker};
 use core::time::Duration;
-use pin_project::pin_project;
 use zcene_bare::common::As;
 use zcene_core::actor::{
-    Actor, ActorEnvironment, ActorEnvironmentAllocator, ActorMessageChannel,
+    Actor, ActorEnvironmentAllocator,
     ActorMessageChannelReceiver,
 };
 use zcene_core::future::runtime::FutureRuntimeHandler;
@@ -95,7 +94,6 @@ macro_rules! emergency_halt {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Constructor)]
-#[pin_project]
 pub struct ActorIsolationExecutor<AI, AR, H>
 where
     AI: Actor<ActorIsolationEnvironment>,
@@ -103,7 +101,8 @@ where
     H: FutureRuntimeHandler,
 {
     allocator: <ActorRootEnvironment<H> as ActorEnvironmentAllocator>::Allocator,
-    state: Option<ActorIsolationExecutorState<AI, AR, H>>,
+    actor: Box<AI>,
+    execution_context: Option<ActorIsolationExecutorContext>,
     receiver: ActorMessageChannelReceiver<AR::Message>,
     deadline_in_milliseconds: Option<NonZero<usize>>,
     message_handlers: Vec<
@@ -117,45 +116,68 @@ where
     marker: PhantomData<(AR, H)>,
 }
 
-impl<AI, AR, H> Future for ActorIsolationExecutor<AI, AR, H>
-where
-    AI: Actor<ActorIsolationEnvironment>,
-    AR: Actor<ActorRootEnvironment<H>>,
-    H: FutureRuntimeHandler,
-{
-    type Output = ();
-
-    fn poll(mut self: Pin<&mut Self>, future_context: &mut Context<'_>) -> Poll<Self::Output> {
-        loop {
-            let result = match self.state.take() {
-                Some(ActorIsolationExecutorState::Create(state)) => {
-                    self.handle(future_context, state)
-                }
-                Some(ActorIsolationExecutorState::Receive(state)) => {
-                    self.handle_receive(future_context, state)
-                }
-                Some(ActorIsolationExecutorState::Handle(state)) => {
-                    ActorIsolationExecutorResult::Next
-                }
-                Some(ActorIsolationExecutorState::Destroy(state)) => {
-                    self.handle(future_context, state)
-                }
-                None => break Poll::Ready(()),
-            };
-
-            if matches!(result, ActorIsolationExecutorResult::Pending) {
-                break Poll::Pending;
-            }
-        }
-    }
-}
-
 impl<AI, AR, H> ActorIsolationExecutor<AI, AR, H>
 where
     AI: Actor<ActorIsolationEnvironment>,
     AR: Actor<ActorRootEnvironment<H>>,
     H: FutureRuntimeHandler,
 {
+    pub async fn run(mut self) {
+        poll_fn(|context| {
+            match self.handle(context, Self::create_main) {
+                ActorIsolationExecutorResult::Next => {
+                    Poll::Ready(())
+                }
+                ActorIsolationExecutorResult::Pending => Poll::Pending
+            }
+        }).await;
+
+        loop {
+            let message = match self.receiver.receive().await {
+                None => break,
+                Some(message) => message,
+            };
+        }
+
+        poll_fn(|context| {
+            match self.handle(context, Self::destroy_main) {
+                ActorIsolationExecutorResult::Next => {
+                    Poll::Ready(())
+                }
+                ActorIsolationExecutorResult::Pending => Poll::Pending
+            }
+        }).await;
+
+    }
+
+    extern "C" fn create_main(actor: *mut AI) -> ! {
+        let mut actor = unsafe { LeakingBox::from_raw_in(actor, LeakingAllocator) };
+
+        let mut future_context = Context::from_waker(Waker::noop());
+        let mut pinned = pin!(actor.create(()));
+
+        let result = match pinned.as_mut().poll(&mut future_context) {
+            Poll::Pending => 0,
+            Poll::Ready(result) => 0,
+        };
+
+        unsafe { asm!("mov rdi, 0x2", "syscall", options(noreturn)) }
+    }
+
+    extern "C" fn destroy_main(actor: *mut AI) -> ! {
+        let actor = unsafe { LeakingBox::from_raw_in(actor, LeakingAllocator) };
+
+        let mut future_context = Context::from_waker(Waker::noop());
+        let mut pinned = pin!(actor.destroy(()));
+
+        let result = match pinned.as_mut().poll(&mut future_context) {
+            Poll::Pending => 0,
+            Poll::Ready(result) => 0,
+        };
+
+        unsafe { asm!("mov rdi, 0x2", "syscall", options(noreturn)) }
+    }
+
     fn enable_deadline(&mut self) {
         if let Some(deadline_in_milliseconds) = self.deadline_in_milliseconds {
             crate::kernel::Kernel::get()
@@ -166,21 +188,13 @@ where
         }
     }
 
-    fn handle<S>(
-        &mut self,
-        future_context: &mut Context<'_>,
-        mut state: S,
-    ) -> ActorIsolationExecutorResult
-    where
-        S: ActorIsolationExecutorStateHandler<AI, AR, H>,
-    {
+    #[inline(never)]
+    fn handle(&mut self, future_context: &mut Context<'_>, function: extern "C" fn(*mut AI) -> !) -> ActorIsolationExecutorResult {
         self.enable_deadline();
 
         let mut event: Option<ActorIsolationExecutorEvent> = None;
 
-        let actor = Box::as_mut_ptr(state.actor_mut());
-
-        match state.context() {
+        match self.execution_context.take() {
             None => {
                 let user_stack = crate::kernel::Kernel::get()
                     .memory_manager()
@@ -189,16 +203,16 @@ where
                     .initial_memory_address()
                     .as_u64();
 
-                Self::execute(actor, &mut event, user_stack, S::main);
-            }
+                Self::execute(Box::as_mut_ptr(&mut self.actor), &mut event, user_stack, Self::create_main);
+            },
             Some(ActorIsolationExecutorContext::SystemCall(ref system_call_context)) => {
-                Self::continue_from_system_call(actor, &mut event, &system_call_context);
+                Self::continue_from_system_call(Box::as_mut_ptr(&mut self.actor), &mut event, &system_call_context);
             }
             Some(ActorIsolationExecutorContext::DeadlinePreemption(
                 deadline_preemption_context,
             )) => {
                 Self::continue_from_deadline_preemption(
-                    actor,
+                    Box::as_mut_ptr(&mut self.actor),
                     &mut event,
                     &deadline_preemption_context,
                 );
@@ -219,13 +233,13 @@ where
                     match r#type {
                         ActorIsolationExecutorSystemCallType::Continue => {
                             Self::continue_from_system_call(
-                                actor,
+                                Box::as_mut_ptr(&mut self.actor),
                                 &mut event,
                                 &system_call_context,
                             );
                         }
                         ActorIsolationExecutorSystemCallType::Preempt => {
-                            self.state = Some(state.preemption_state(system_call_context.into()));
+                            self.execution_context = Some(system_call_context.into());
 
                             future_context.waker().wake_by_ref();
 
@@ -235,24 +249,20 @@ where
                             todo!()
                         }
                         ActorIsolationExecutorSystemCallType::Poll(Poll::Ready(())) => {
-                            self.state = state.next_state();
-
                             break ActorIsolationExecutorResult::Next;
                         }
                         ActorIsolationExecutorSystemCallType::SendMessageCopy(mailbox, message) => {
                             match self.message_handlers.get(mailbox) {
                                 Some(handler) => {
-                                    let mut pinned = pin!(handler.send(&self.allocator, message));
-                                    crate::kernel::logger::println!(
-                                        "{:?}",
-                                        pinned.as_mut().poll(future_context)
-                                    );
+                                    // TODO
+                                    let pinned = pin!(handler.send(&self.allocator, message));
+                                    let _result = pinned.poll(future_context);
                                 }
                                 None => todo!(),
                             }
 
                             Self::continue_from_system_call(
-                                actor,
+                                Box::as_mut_ptr(&mut self.actor),
                                 &mut event,
                                 &system_call_context,
                             );
@@ -268,7 +278,7 @@ where
                         context: deadline_preemption_context,
                     } = deadline_preemption.into_inner();
 
-                    self.state = Some(state.preemption_state(deadline_preemption_context.into()));
+                    self.execution_context = Some(deadline_preemption_context.into());
 
                     future_context.waker().wake_by_ref();
 
@@ -281,35 +291,6 @@ where
                 Some(ActorIsolationExecutorEvent::Exception) => {
                     todo!()
                 }
-            }
-        }
-    }
-
-    fn handle_receive(
-        &mut self,
-        future_context: &mut Context<'_>,
-        state: ActorIsolationExecutorReceiveState<AI, AR, H>,
-    ) -> ActorIsolationExecutorResult {
-        let result = {
-            let mut pinned = pin!(self.receiver.receive());
-
-            pinned.as_mut().poll(future_context)
-        };
-
-        let actor = state.into_inner().actor;
-
-        match result {
-            Poll::Pending => {
-                self.state = Some(ActorIsolationExecutorReceiveState::new(actor).into());
-                ActorIsolationExecutorResult::Pending
-            }
-            Poll::Ready(None) => {
-                self.state = Some(ActorIsolationExecutorDestroyState::new(actor, None).into());
-                ActorIsolationExecutorResult::Next
-            }
-            Poll::Ready(Some(message)) => {
-                self.state = Some(ActorIsolationExecutorHandleState::new(actor, message).into());
-                ActorIsolationExecutorResult::Next
             }
         }
     }
@@ -455,7 +436,6 @@ where
     }
 }
 
-use core::arch::naked_asm;
 
 #[naked]
 pub unsafe extern "C" fn actor_deadline_preemption_entry_point() {
@@ -510,45 +490,6 @@ pub extern "C" fn actor_deadline_preemption_restore(
 ) {
     *event = Some(ActorIsolationExecutorDeadlinePreemptionEvent::new(context.clone()).into());
 }
-
-/*#[no_mangle]
-#[inline(never)]
-pub extern "C" fn actor_system_call_entry_point() -> ! {
-    unsafe {
-        asm!(
-            // rdi = system call identifier
-            // rsi = argument 0
-            //  r8 = argument 1
-
-            // rcx = instruction address
-            // r11 = flags
-
-            //
-            // Store user context
-            //
-            "mov r9, rcx",
-            "mov r10, rsp",
-
-            //
-            // Load kernel stack
-            //
-            "mov rcx, 0xC0000102",
-            "rdmsr",
-            "shl rdx, 32",
-            "or rax, rdx",
-            "mov rsp, rax",
-
-            "mov rdx, r8",
-            "pop rcx",
-            "call {}",
-            "ret",
-            emergency_halt!(),
-
-            sym actor_system_call_restore,
-            options(noreturn),
-        )
-    }
-}*/
 
 #[naked]
 pub unsafe fn actor_system_call_entry_point() -> ! {
