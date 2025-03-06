@@ -1,6 +1,4 @@
-use crate::actor::{
-    ActorRootEnvironment, ActorRootEnvironmentExecutor,
-};
+use crate::actor::{ActorRootEnvironment, ActorRootEnvironmentExecutor};
 use core::marker::PhantomData;
 use core::num::NonZero;
 use zcene_core::actor::{
@@ -57,7 +55,8 @@ where
                 receiver,
                 ActorCommonContextBuilder::default(),
                 None,
-            ).run(),
+            )
+            .run(),
         )?;
 
         Ok(<ActorRootEnvironment<H> as ActorEnvironment>::Address::new(

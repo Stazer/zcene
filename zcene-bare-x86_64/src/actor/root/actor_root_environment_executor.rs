@@ -3,7 +3,7 @@ use core::future::Future;
 use core::marker::PhantomData;
 use core::num::NonZero;
 use core::pin::pin;
-use zcene_core::actor::{ActorFuture, Actor, ActorContextBuilder, ActorMessageChannelReceiver};
+use zcene_core::actor::{Actor, ActorContextBuilder, ActorFuture, ActorMessageChannelReceiver};
 use zcene_core::future::runtime::FutureRuntimeHandler;
 use ztd::Constructor;
 
@@ -49,9 +49,13 @@ where
             //let _result = self.actor.handle(self.context_builder.build_handle_context(&self.actor, &message)).await;
 
             core::future::poll_fn(|context| {
-                let mut pinned = pin!(self.actor.handle(self.context_builder.build_handle_context(&self.actor, &message)));
+                let mut pinned = pin!(self.actor.handle(
+                    self.context_builder
+                        .build_handle_context(&self.actor, &message)
+                ));
                 pinned.as_mut().poll(context)
-            }).await;
+            })
+            .await;
         }
 
         // TODO: Handle result

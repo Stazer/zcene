@@ -87,8 +87,9 @@ impl<H> Actor<H> for UnprivilegedActor<H>
 where
     H: ActorEnvironment,
     H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
+    H::HandleContext<usize>: ActorContextMessageProvider<usize>,
 {
-    type Message = ();
+    type Message = usize;
 
     async fn create(&mut self, context: H::CreateContext) -> Result<(), ActorCreateError> {
         self.printer.send(PrintActorMessage::new(1337, 1338)).await;
@@ -98,8 +99,10 @@ where
 
     async fn handle(
         &mut self,
-        _context: H::HandleContext<Self::Message>,
+        context: H::HandleContext<Self::Message>,
     ) -> Result<(), ActorHandleError> {
+        self.printer.send(PrintActorMessage::new(context.message() + 1, 1338)).await;
+
         Ok(())
     }
 
@@ -144,7 +147,7 @@ impl Kernel {
         use crate::actor::ActorIsolationMessageHandler;
         use alloc::boxed::Box;
         use alloc::vec;
-        
+
         use zcene_core::actor::ActorMessageChannelAddress;
 
         let print_actor_address: ActorMessageChannelAddress<PrintActor, ActorRootEnvironment<_>> =
@@ -175,15 +178,6 @@ impl Kernel {
                 )],
             ))
             .unwrap();
-
-        /*let unpriv2: ActorMessageChannelAddress<UnprivilegedActor<_>, ActorRootEnvironment<_>> =
-        Kernel::get()
-            .actor_system()
-            .spawn(ActorRootSpawnSpecification::new(
-                UnprivilegedActor::<ActorRootEnvironment<_>>::new(print_actor_address),
-                None,
-            ))
-            .unwrap();*/
 
         Kernel::get().run();
 
