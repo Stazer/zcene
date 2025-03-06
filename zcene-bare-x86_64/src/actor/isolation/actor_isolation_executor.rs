@@ -129,8 +129,6 @@ where
             );
         }).await;
 
-        crate::kernel::logger::println!("after...");
-
         loop {
             let message = match self.receiver.receive().await {
                 None => break,
