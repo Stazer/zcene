@@ -7,5 +7,7 @@ where
     A: Actor<E>,
     E: ActorEnvironment,
 {
-    fn spawn(self, environment: &E) -> Result<E::Address<A>, ActorSpawnError>;
+    type Address = E::Address<A>;
+
+    fn spawn(self, environment: &E) -> Result<Self::Address, ActorSpawnError>;
 }

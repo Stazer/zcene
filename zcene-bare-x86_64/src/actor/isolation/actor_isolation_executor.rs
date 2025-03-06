@@ -19,7 +19,7 @@ use core::task::{Context, Poll, Waker};
 use core::time::Duration;
 use zcene_bare::common::As;
 use zcene_bare::memory::{LeakingAllocator, LeakingBox};
-use zcene_core::actor::{Actor, ActorEnvironmentAllocator, ActorMessageChannelReceiver};
+use zcene_core::actor::{Actor, ActorCommonHandleContext, ActorEnvironmentAllocator, ActorMessageChannelReceiver};
 use zcene_core::future::r#yield;
 use zcene_core::future::runtime::FutureRuntimeHandler;
 use ztd::Constructor;
@@ -95,7 +95,7 @@ macro_rules! emergency_halt {
 pub struct ActorIsolationExecutor<AI, AR, H>
 where
     AI: Actor<ActorIsolationEnvironment>,
-    AR: Actor<ActorRootEnvironment<H>>,
+    AR: Actor<ActorRootEnvironment<H>, Message = AI::Message>,
     H: FutureRuntimeHandler,
 {
     allocator: <ActorRootEnvironment<H> as ActorEnvironmentAllocator>::Allocator,
@@ -116,20 +116,46 @@ where
 impl<AI, AR, H> ActorIsolationExecutor<AI, AR, H>
 where
     AI: Actor<ActorIsolationEnvironment>,
-    AR: Actor<ActorRootEnvironment<H>>,
+    AR: Actor<ActorRootEnvironment<H>, Message = AI::Message>,
     H: FutureRuntimeHandler,
 {
     pub async fn run(mut self) {
-        self.handle(Self::create_main).await;
+        self.handle(|actor, event, stack| {
+            Self::execute(
+                Box::as_mut_ptr(actor),
+                event,
+                stack,
+                Self::create_main,
+            );
+        }).await;
+
+        crate::kernel::logger::println!("after...");
 
         loop {
             let message = match self.receiver.receive().await {
                 None => break,
                 Some(message) => message,
             };
+
+            self.handle(move |actor, event, stack| {
+                Self::execute2(
+                    Box::as_mut_ptr(actor),
+                    unsafe { message },
+                    event,
+                    stack,
+                    Self::handle_main,
+                );
+            }).await;
         }
 
-        self.handle(Self::destroy_main).await;
+        self.handle(|actor, event, stack| {
+            Self::execute(
+                Box::as_mut_ptr(actor),
+                event,
+                stack,
+                Self::destroy_main,
+            );
+        }).await;
     }
 
     extern "C" fn create_main(actor: *mut AI) -> ! {
@@ -137,6 +163,20 @@ where
 
         let mut future_context = Context::from_waker(Waker::noop());
         let mut pinned = pin!(actor.create(()));
+
+        let result = match pinned.as_mut().poll(&mut future_context) {
+            Poll::Pending => 0,
+            Poll::Ready(result) => 0,
+        };
+
+        unsafe { asm!("mov rdi, 0x2", "syscall", options(noreturn)) }
+    }
+
+    extern "C" fn handle_main(actor: *mut AI, message: &AI::Message) -> ! {
+        let mut actor = unsafe { LeakingBox::from_raw_in(actor, LeakingAllocator) };
+
+        let mut future_context = Context::from_waker(Waker::noop());
+        let mut pinned = pin!(actor.handle(ActorCommonHandleContext::new(message.clone())));
 
         let result = match pinned.as_mut().poll(&mut future_context) {
             Poll::Pending => 0,
@@ -171,7 +211,10 @@ where
     }
 
     #[inline(never)]
-    async fn handle(&mut self, function: extern "C" fn(*mut AI) -> !) {
+    async fn handle<F>(&mut self, execute_function: F)
+    where
+        F: FnOnce(&mut Box<AI>, &mut Option<ActorIsolationExecutorEvent>, u64)
+    {
         let mut event: Option<ActorIsolationExecutorEvent> = None;
 
         let user_stack = crate::kernel::Kernel::get()
@@ -183,16 +226,19 @@ where
 
         self.enable_deadline();
 
-        Self::execute(
+        execute_function(
+            &mut self.actor,
+            &mut event,
+            user_stack,
+        );
+        /*Self::execute(
             Box::as_mut_ptr(&mut self.actor),
             &mut event,
             user_stack,
             Self::create_main,
-        );
+        );*/
 
         loop {
-            crate::kernel::logger::println!("{:X?}", event);
-
             match event.take() {
                 None => break,
                 Some(ActorIsolationExecutorEvent::SystemCall(system_call)) => {
@@ -307,6 +353,56 @@ where
                 pop_callee_saved_registers!(),
                 in("rdi") actor,
                 in("rsi") event,
+                in("rdx") stack,
+                in("rcx") function,
+                clobber_abi("C"),
+            )
+        }
+    }
+
+    #[inline(never)]
+    extern "C" fn execute2(
+        actor: *mut AI,
+        message: AI::Message,
+        event: &mut Option<ActorIsolationExecutorEvent>,
+        stack: u64,
+        function: extern "C" fn(*mut AI, &AI::Message) -> !,
+    ) {
+        unsafe {
+            asm!(
+                push_callee_saved_registers!(),
+                push_inline_return_address!(),
+                //push_event_address!(),
+                "push r8",
+                //
+                // Temporarily save current kernel stack
+                //
+                "mov rax, rsp",
+                //
+                // Create interrupt frame for returning into unprivileged mode
+                //
+                "push 32 | 3",
+                "push rdx",
+                "push 0x200",
+                "push 40 | 3",
+                "push rcx",
+                //
+                // Store previously temporarily saved kernel stack
+                //
+                "mov rdx, rax",
+                "shr rdx, 32",
+                "mov rcx, 0xC0000102",
+                "wrmsr",
+                //
+                // Perform return
+                //
+                "iretq",
+                emergency_halt!(),
+                "2:",
+                pop_callee_saved_registers!(),
+                in("rdi") actor,
+                in("rsi") &message,
+                in("r8") event,
                 in("rdx") stack,
                 in("rcx") function,
                 clobber_abi("C"),

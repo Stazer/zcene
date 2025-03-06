@@ -37,7 +37,7 @@ where
         self.environment.allocator()
     }
 
-    pub fn spawn<A, S>(&self, spawnable: S) -> Result<E::Address<A>, ActorSpawnError>
+    pub fn spawn<A, S>(&self, spawnable: S) -> Result<S::Address, ActorSpawnError>
     where
         A: Actor<E>,
         S: ActorEnvironmentSpawnable<A, E>,

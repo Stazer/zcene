@@ -113,6 +113,36 @@ where
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Constructor)]
+pub struct LastActor<H>
+where
+    H: ActorEnvironment,
+    H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
+    H::HandleContext<usize>: ActorContextMessageProvider<usize>,
+{
+    unpriv: H::Address<UnprivilegedActor<H>>,
+}
+
+impl<H> Actor<H> for LastActor<H>
+where
+    H: ActorEnvironment,
+    H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
+    H::HandleContext<usize>: ActorContextMessageProvider<usize>,
+{
+    type Message = ();
+
+    async fn create(
+        &mut self,
+        context: H::CreateContext,
+    ) -> Result<(), ActorCreateError> {
+        self.unpriv.send(42).await;
+
+        Ok(())
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 use crate::actor::ActorRootEnvironment;
 use zcene_core::actor::ActorContextMessageProvider;
 use zcene_core::actor::{ActorSystem, ActorSystemReference};
@@ -162,8 +192,8 @@ impl Kernel {
         let unpriv_actor = Kernel::get()
             .actor_system()
             .spawn(ActorIsolationSpawnSpecification::<
-                UnprivilegedActor<ActorIsolationEnvironment>,
-                UnprivilegedActor<ActorRootEnvironment<_>>,
+                UnprivilegedActor<_>,
+                UnprivilegedActor<_>,
                 _,
             >::new(
                 UnprivilegedActor::<ActorIsolationEnvironment>::new(ActorIsolationAddress::<
@@ -178,6 +208,13 @@ impl Kernel {
                 )],
             ))
             .unwrap();
+
+        let last_actor = Kernel::get()
+            .actor_system()
+            .spawn(ActorRootSpawnSpecification::new(
+                LastActor::new(unpriv_actor),
+                None,
+            )).unwrap();
 
         Kernel::get().run();
 
