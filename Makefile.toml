@@ -11,39 +11,39 @@ args = [
 ]
 command = "cargo"
 
-[tasks.build-bare-x86_64]
+[tasks.build-bare-metal]
 #env = { "RUSTFLAGS" = "--cfg no_global_oom_handling" }
 args = [
     "build",
-    "--package", "zcene-bare-x86_64",
+    "--package", "zcene-bare-metal",
     "--release",
-    "--target", "zcene-bare-x86_64/x86_64.json",
+    "--target", "zcene-bare-metal/x86_64.json",
     "-Z", "build-std=core,alloc,compiler_builtins",
     "-Z", "build-std-features=compiler-builtins-mem",
 ]
 command = "cargo"
 
-[tasks.build-bare-x86_64-uefi]
+[tasks.build-bare-metal-x86_64]
 args = [
     "build",
-    "--package", "zcene-bare-x86_64-uefi",
+    "--package", "zcene-bare-metal-x86_64",
     "--release",
-    "--target", "zcene-bare-x86_64/x86_64.json",
+    "--target", "zcene-bare-metal/x86_64.json",
     "-Z", "build-std=core,alloc,compiler_builtins",
     "-Z", "build-std-features=compiler-builtins-mem",
 ]
 command = "cargo"
 dependencies = [
-    "build-bare-x86_64",
+    "build-bare-metal",
 ]
 
-[tasks.run-bare-x86_64]
+[tasks.run-bare-metal-x86_64-uefi]
 args = [
     #"-d", "int",
     "-no-reboot",
     "-nographic",
     "-cpu", "qemu64",
-    "-drive", "format=raw,unit=1,file=target/x86_64/release/zcene-bare-x86_64-uefi.img",
+    "-drive", "format=raw,unit=1,file=target/x86_64/release/zcene-bare-metal-86_64-uefi.img",
     "-drive", "if=pflash,format=raw,unit=0,file=QEMU_UEFI_CODE-x86_64.fd",
     "-nic", "none",
     "-m", "1024",
@@ -51,7 +51,7 @@ args = [
 ]
 command = "qemu-system-x86_64"
 dependencies = [
-    "build-bare-x86_64-uefi",
+    "build-bare-metal-x86_64",
 ]
 
 [tasks.clean]
