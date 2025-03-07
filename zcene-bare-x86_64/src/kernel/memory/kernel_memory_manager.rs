@@ -31,6 +31,37 @@ use ztd::Method;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+use core::alloc::{AllocError, GlobalAlloc, Layout};
+use core::ptr::NonNull;
+use linked_list_allocator::LockedHeap;
+
+#[derive(Constructor)]
+pub struct KernelMemoryAllocator(LockedHeap);
+
+unsafe impl Allocator for KernelMemoryAllocator {
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        NonNull::new(unsafe { self.0.alloc(layout) })
+            .map(|pointer| unsafe { NonNull::slice_from_raw_parts(pointer, layout.size()) })
+            .ok_or(AllocError)
+    }
+
+    unsafe fn deallocate(&self, mut data: NonNull<u8>, layout: Layout) {
+        self.dealloc(data.as_mut(), layout)
+    }
+}
+
+unsafe impl GlobalAlloc for KernelMemoryAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        self.0.alloc(layout)
+    }
+
+    unsafe fn dealloc(&self, data: *mut u8, layout: Layout) {
+        self.0.dealloc(data, layout)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 pub const EXECUTION_PAGE_TABLE_INDEX: usize = 256;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -84,13 +115,8 @@ where
     }
 }
 
-pub struct KernelConfiguration {}
-
 impl KernelMemoryManager {
-    pub fn new(
-        logger: &crate::kernel::logger::KernelLogger,
-        boot_info: &mut BootInfo,
-    ) -> Result<Self, KernelMemoryManagerInitializeError> {
+    pub fn new(boot_info: &mut BootInfo) -> Result<Self, KernelMemoryManagerInitializeError> {
         let physical_memory_size_in_bytes = boot_info
             .memory_regions
             .iter()

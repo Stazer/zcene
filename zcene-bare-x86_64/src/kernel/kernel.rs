@@ -101,7 +101,9 @@ where
         &mut self,
         context: H::HandleContext<Self::Message>,
     ) -> Result<(), ActorHandleError> {
-        self.printer.send(PrintActorMessage::new(context.message() + 1, 1338)).await;
+        self.printer
+            .send(PrintActorMessage::new(context.message() + 1, 1338))
+            .await;
 
         Ok(())
     }
@@ -131,10 +133,7 @@ where
 {
     type Message = ();
 
-    async fn create(
-        &mut self,
-        context: H::CreateContext,
-    ) -> Result<(), ActorCreateError> {
+    async fn create(&mut self, context: H::CreateContext) -> Result<(), ActorCreateError> {
         self.unpriv.send(42).await;
 
         Ok(())
@@ -214,7 +213,8 @@ impl Kernel {
             .spawn(ActorRootSpawnSpecification::new(
                 LastActor::new(unpriv_actor),
                 None,
-            )).unwrap();
+            ))
+            .unwrap();
 
         Kernel::get().run();
 
@@ -235,7 +235,7 @@ impl Kernel {
             Some(unsafe { SerialPort::init() }),
         );
 
-        let memory_manager = match KernelMemoryManager::new(&logger, boot_info) {
+        let memory_manager = match KernelMemoryManager::new(boot_info) {
             Ok(memory_manager) => memory_manager,
             Err(error) => {
                 logger.writer(|writer| write!(writer, "{:?}", error));
@@ -255,9 +255,10 @@ impl Kernel {
                 .map(PhysicalMemoryAddress::from),
         );
 
-        //use crate::kernel::actor::actor_system_call_entry_point;
+        use crate::actor::actor_system_call_entry_point;
         use alloc::boxed::Box;
-        use x86::msr::wrmsr;
+        use x86::current::rflags::RFlags;
+        use x86::msr::{rdmsr, wrmsr, IA32_EFER};
         use x86::msr::{IA32_FMASK, IA32_LSTAR, IA32_STAR};
         use x86_64::instructions::segmentation::Segment;
         use x86_64::instructions::tables::load_tss;
@@ -280,8 +281,6 @@ impl Kernel {
             .as_u64();
 
         unsafe {
-            use x86::msr::{rdmsr, wrmsr, IA32_EFER};
-
             wrmsr(IA32_EFER, rdmsr(IA32_EFER) | 1);
         }
 
@@ -315,15 +314,9 @@ impl Kernel {
 
             load_tss(tss_selector);
 
-            //DS::set_reg(kernel_data);
-            //SS::set_reg(kernel_data);
-
             wrmsr(IA32_STAR, selector);
-            wrmsr(
-                IA32_LSTAR,
-                crate::actor::actor_system_call_entry_point as u64,
-            );
-            wrmsr(IA32_FMASK, 0x200);
+            wrmsr(IA32_LSTAR, actor_system_call_entry_point as u64);
+            wrmsr(IA32_FMASK, RFlags::FLAGS_IF.bits());
         }
 
         /*logger.writer(|w| {
@@ -428,7 +421,7 @@ use bootloader_api::{entry_point, BootloaderConfig};
 
 static BOOTLOADER_CONFIG: BootloaderConfig = {
     let mut config = BootloaderConfig::new_default();
-    config.kernel_stack_size = 8 * 4096;
+    config.kernel_stack_size = 4 * 4096;
     config.mappings.physical_memory = Some(Mapping::Dynamic);
 
     config

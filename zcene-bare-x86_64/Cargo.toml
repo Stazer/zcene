@@ -5,21 +5,17 @@ edition = "2021"
 
 [dependencies]
 acpi = { version = "5" }
-bit_field = "*"
 bootloader-x86_64-common = { branch = "update-uart", git = "https://github.com/Stazer/bootloader.git" }
 bootloader_api = { branch = "update-uart", git = "https://github.com/Stazer/bootloader.git" }
-futures = { version = "0.3", default-features = false }
 linked_list_allocator = "*"
 log = "*"
 pc-keyboard = "*"
 pic8259 = "*"
-pin-project = "1"
 x2apic = "*"
 x86 = "*"
 x86_64 = { version = "0.15", features = ["abi_x86_interrupt", "instructions"] }
 zcene-bare = { path = "../zcene-bare" }
 zcene-core = { path = "../zcene-core" }
-zerocopy = { version = "0.8", features = ["derive"] }
 ztd = { git = "https://github.com/Stazer/ztd.git" }
 
 [build-dependencies]

@@ -12,6 +12,7 @@ args = [
 command = "cargo"
 
 [tasks.build-bare-x86_64]
+#env = { "RUSTFLAGS" = "--cfg no_global_oom_handling" }
 args = [
     "build",
     "--package", "zcene-bare-x86_64",

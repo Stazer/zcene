@@ -1,7 +1,7 @@
+use crate::future::NoOperationWaker;
 use core::future::Future;
 use core::pin::pin;
 use core::task::{Context, Poll};
-use futures::task::noop_waker;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -15,7 +15,7 @@ where
 {
     fn complete(self) -> O {
         let mut pinned_future = pin!(self);
-        let waker = noop_waker();
+        let waker = NoOperationWaker.into_waker();
         let mut context = Context::from_waker(&waker);
 
         loop {

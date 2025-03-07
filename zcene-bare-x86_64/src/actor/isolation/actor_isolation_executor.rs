@@ -19,7 +19,9 @@ use core::task::{Context, Poll, Waker};
 use core::time::Duration;
 use zcene_bare::common::As;
 use zcene_bare::memory::{LeakingAllocator, LeakingBox};
-use zcene_core::actor::{Actor, ActorCommonHandleContext, ActorEnvironmentAllocator, ActorMessageChannelReceiver};
+use zcene_core::actor::{
+    Actor, ActorCommonHandleContext, ActorEnvironmentAllocator, ActorMessageChannelReceiver,
+};
 use zcene_core::future::r#yield;
 use zcene_core::future::runtime::FutureRuntimeHandler;
 use ztd::Constructor;
@@ -121,13 +123,9 @@ where
 {
     pub async fn run(mut self) {
         self.handle(|actor, event, stack| {
-            Self::execute(
-                Box::as_mut_ptr(actor),
-                event,
-                stack,
-                Self::create_main,
-            );
-        }).await;
+            Self::execute(Box::as_mut_ptr(actor), event, stack, Self::create_main);
+        })
+        .await;
 
         loop {
             let message = match self.receiver.receive().await {
@@ -143,17 +141,14 @@ where
                     stack,
                     Self::handle_main,
                 );
-            }).await;
+            })
+            .await;
         }
 
         self.handle(|actor, event, stack| {
-            Self::execute(
-                Box::as_mut_ptr(actor),
-                event,
-                stack,
-                Self::destroy_main,
-            );
-        }).await;
+            Self::execute(Box::as_mut_ptr(actor), event, stack, Self::destroy_main);
+        })
+        .await;
     }
 
     extern "C" fn create_main(actor: *mut AI) -> ! {
@@ -211,7 +206,7 @@ where
     #[inline(never)]
     async fn handle<F>(&mut self, execute_function: F)
     where
-        F: FnOnce(&mut Box<AI>, &mut Option<ActorIsolationExecutorEvent>, u64)
+        F: FnOnce(&mut Box<AI>, &mut Option<ActorIsolationExecutorEvent>, u64),
     {
         let mut event: Option<ActorIsolationExecutorEvent> = None;
 
@@ -224,11 +219,7 @@ where
 
         self.enable_deadline();
 
-        execute_function(
-            &mut self.actor,
-            &mut event,
-            user_stack,
-        );
+        execute_function(&mut self.actor, &mut event, user_stack);
         /*Self::execute(
             Box::as_mut_ptr(&mut self.actor),
             &mut event,
@@ -557,7 +548,7 @@ pub extern "C" fn actor_deadline_preemption_restore(
 }
 
 #[naked]
-pub unsafe fn actor_system_call_entry_point() -> ! {
+pub unsafe extern "C" fn actor_system_call_entry_point() -> ! {
     naked_asm!(
         //
         // Store user context
