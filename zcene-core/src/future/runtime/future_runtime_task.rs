@@ -14,6 +14,7 @@ pub struct FutureRuntimeTask<H>
 where
     H: FutureRuntimeHandler,
 {
+    // FIXME: Remove mutex
     slot: Mutex<Option<FutureRuntimeBoxFuture<'static, H, ()>>>,
     runtime: FutureRuntimeReference<H>,
     data: H::Data,

@@ -1,6 +1,6 @@
 use crate::architecture::Stack;
 use crate::architecture::FRAME_SIZE;
-use crate::kernel::KERNEL_GLOBAL_ALLOCATOR;
+use crate::kernel::GLOBAL_ALLOCATOR;
 use alloc::alloc::Global;
 use bootloader_api::info::MemoryRegionKind;
 use bootloader_api::BootInfo;
@@ -33,7 +33,37 @@ use ztd::Method;
 
 use core::alloc::{AllocError, GlobalAlloc, Layout};
 use core::ptr::NonNull;
-use linked_list_allocator::LockedHeap;
+use linked_list_allocator::{Heap, LockedHeap};
+
+use core::mem::MaybeUninit;
+use core::cell::SyncUnsafeCell;
+
+use alloc::sync::Arc;
+
+//#[global_allocator]
+static KERNEL_GLOBAL_MEMORY_ALLOCATOR: KernelGlobalMemoryAllocator = KernelGlobalMemoryAllocator::uninitialized();
+
+pub struct KernelGlobalMemoryAllocator(SyncUnsafeCell<MaybeUninit<Arc<KernelMemoryAllocator, KernelMemoryAllocator>>>);
+
+impl KernelGlobalMemoryAllocator {
+    pub const fn uninitialized() -> Self {
+        Self(SyncUnsafeCell::new(MaybeUninit::uninit()))
+    }
+
+    pub unsafe fn initialize(&self, allocator: Arc<KernelMemoryAllocator, KernelMemoryAllocator>) {
+        *self.0.get().as_mut().unwrap() = MaybeUninit::new(allocator);
+    }
+}
+
+unsafe impl GlobalAlloc for KernelGlobalMemoryAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        unsafe { self.0.get().as_mut().unwrap().assume_init_ref() }.alloc(layout)
+    }
+
+    unsafe fn dealloc(&self, data: *mut u8, layout: Layout) {
+        unsafe { self.0.get().as_mut().unwrap().assume_init_ref() }.dealloc(data, layout)
+    }
+}
 
 #[derive(Constructor)]
 pub struct KernelMemoryAllocator(LockedHeap);
@@ -409,7 +439,14 @@ impl KernelMemoryManager {
             current_address += frame_manager.frame_byte_size().r#as();
         }
 
-        let mut allocator = KERNEL_GLOBAL_ALLOCATOR.inner().lock();
+        let allocator = KernelMemoryAllocator::new(unsafe {
+            LockedHeap::new(
+                VirtualMemoryAddress::from(start_address).cast_mut(),
+                frame_count * frame_manager.frame_byte_size(),
+            )
+        });
+
+        let mut allocator = GLOBAL_ALLOCATOR.inner().lock();
 
         unsafe {
             allocator.init(

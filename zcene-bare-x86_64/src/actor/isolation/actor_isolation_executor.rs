@@ -6,6 +6,7 @@ use crate::actor::{
     ActorIsolationExecutorSystemCallEvent, ActorIsolationExecutorSystemCallEventInner,
     ActorIsolationExecutorSystemCallType, ActorIsolationMessageHandler, ActorRootEnvironment,
 };
+use x86::current::rflags::RFlags;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::arch::asm;
@@ -63,15 +64,7 @@ macro_rules! push_inline_return_address {
     };
 }
 
-macro_rules! push_event_address {
-    () => {
-        r#"
-            push rsi;
-        "#
-    };
-}
-
-macro_rules! push_kernel_stack {
+macro_rules! save_kernel_stack {
     () => {
         r#"
             mov rax, rsp;
@@ -239,7 +232,6 @@ where
                     match r#type {
                         ActorIsolationExecutorSystemCallType::Continue => {
                             Self::continue_from_system_call(
-                                Box::as_mut_ptr(&mut self.actor),
                                 &mut event,
                                 &system_call_context,
                             );
@@ -250,7 +242,6 @@ where
                             self.enable_deadline();
 
                             Self::continue_from_system_call(
-                                Box::as_mut_ptr(&mut self.actor),
                                 &mut event,
                                 &system_call_context,
                             );
@@ -269,7 +260,6 @@ where
                             }
 
                             Self::continue_from_system_call(
-                                Box::as_mut_ptr(&mut self.actor),
                                 &mut event,
                                 &system_call_context,
                             );
@@ -313,37 +303,25 @@ where
             asm!(
                 push_callee_saved_registers!(),
                 push_inline_return_address!(),
-                push_event_address!(),
-                //
-                // Temporarily save current kernel stack
-                //
-                "mov rax, rsp",
-                //
-                // Create interrupt frame for returning into unprivileged mode
-                //
-                "push 32 | 3",
-                "push rdx",
-                "push 0x200",
-                "push 40 | 3",
-                "push rcx",
-                //
-                // Store previously temporarily saved kernel stack
-                //
-                "mov rdx, rax",
-                "shr rdx, 32",
-                "mov rcx, 0xC0000102",
-                "wrmsr",
+                "push {event}",
+                save_kernel_stack!(),
                 //
                 // Perform return
                 //
-                "iretq",
+                "mov rsp, {stack}",
+                "mov rcx, {function}",
+                "sysretq",
                 emergency_halt!(),
                 "2:",
                 pop_callee_saved_registers!(),
                 in("rdi") actor,
-                in("rsi") event,
-                in("rdx") stack,
-                in("rcx") function,
+                event = in(reg) event,
+                stack = in(reg) stack,
+                function = in(reg) function,
+                in("r11") RFlags::FLAGS_IF.bits(),
+                out("rax") _,
+                out("rdx") _,
+                out("rcx") _,
                 clobber_abi("C"),
             )
         }
@@ -361,39 +339,26 @@ where
             asm!(
                 push_callee_saved_registers!(),
                 push_inline_return_address!(),
-                //push_event_address!(),
-                "push r8",
-                //
-                // Temporarily save current kernel stack
-                //
-                "mov rax, rsp",
-                //
-                // Create interrupt frame for returning into unprivileged mode
-                //
-                "push 32 | 3",
-                "push rdx",
-                "push 0x200",
-                "push 40 | 3",
-                "push rcx",
-                //
-                // Store previously temporarily saved kernel stack
-                //
-                "mov rdx, rax",
-                "shr rdx, 32",
-                "mov rcx, 0xC0000102",
-                "wrmsr",
+                "push {event}",
+                save_kernel_stack!(),
                 //
                 // Perform return
                 //
-                "iretq",
+                "mov rsp, {stack}",
+                "mov rcx, {function}",
+                "sysretq",
                 emergency_halt!(),
                 "2:",
                 pop_callee_saved_registers!(),
                 in("rdi") actor,
                 in("rsi") &message,
-                in("r8") event,
-                in("rdx") stack,
-                in("rcx") function,
+                event = in(reg) event,
+                stack = in(reg) stack,
+                function = in(reg) function,
+                in("r11") RFlags::FLAGS_IF.bits(),
+                out("rax") _,
+                out("rdx") _,
+                out("rcx") _,
                 clobber_abi("C"),
             )
         }
@@ -409,8 +374,8 @@ where
             asm!(
                 push_callee_saved_registers!(),
                 push_inline_return_address!(),
-                push_event_address!(),
-                push_kernel_stack!(),
+                "push rsi",
+                save_kernel_stack!(),
                 //
                 // Restore user stack from context
                 //
@@ -450,7 +415,6 @@ where
 
     #[inline(never)]
     extern "C" fn continue_from_system_call(
-        actor: *mut AI,
         event: &mut Option<ActorIsolationExecutorEvent>,
         context: &ActorIsolationExecutorSystemCallContext,
     ) {
@@ -458,35 +422,24 @@ where
             asm!(
                 push_callee_saved_registers!(),
                 push_inline_return_address!(),
-                push_event_address!(),
-                //
-                // Temporarily save current kernel stack
-                //
-                "mov rax, rsp",
-                //
-                // Move arguments into temporary registers
-                //
-                "mov r9, rdx",
-                "mov r10, rcx",
-                push_kernel_stack!(),
-                //
-                // Load user stack
-                //
-                "mov rsp, r9",
-                "mov rcx, r10",
-                "mov r11, r8",
+                "push {event}",
+                save_kernel_stack!(),
                 //
                 // Perform return
                 //
+                "mov rsp, {stack}",
+                "mov rcx, {function}",
                 "sysretq",
                 emergency_halt!(),
                 "2:",
                 pop_callee_saved_registers!(),
-                in("rdi") actor,
-                in("rsi") event,
-                in("rdx") context.rsp(),
-                in("rcx") context.rip(),
-                in("r8") context.rflags(),
+                event = in(reg) event,
+                stack = in(reg) context.rsp(),
+                function = in(reg) context.rip(),
+                in("r11") context.rflags(),
+                out("rax") _,
+                out("rdx") _,
+                out("rcx") _,
                 clobber_abi("C"),
             )
         }

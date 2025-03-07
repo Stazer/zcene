@@ -5,7 +5,7 @@ use linked_list_allocator::LockedHeap;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[global_allocator]
-pub static KERNEL_GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::empty();
+pub static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::empty();
 
 pub struct GlobalAllocator(LockedHeap);
 
