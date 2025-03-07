@@ -38,3 +38,10 @@ pub mod architecture;
 pub mod driver;
 pub mod common;
 mod kernel;
+
+
+macro_rules! define_system {
+    ($exp:expr) => {
+
+    };
+}

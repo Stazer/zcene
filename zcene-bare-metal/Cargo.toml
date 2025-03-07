@@ -5,8 +5,8 @@ edition = "2024"
 
 [dependencies]
 acpi = { version = "5" }
-bootloader-x86_64-common = { branch = "update-uart", git = "https://github.com/Stazer/bootloader.git" }
-bootloader_api = { branch = "update-uart", git = "https://github.com/Stazer/bootloader.git" }
+bootloader-x86_64-common = { version = "*" }
+bootloader_api = { version = "*" }
 linked_list_allocator = "*"
 log = "*"
 pc-keyboard = "*"

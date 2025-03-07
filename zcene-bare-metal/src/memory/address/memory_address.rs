@@ -1,4 +1,4 @@
-use crate::memory::address::MemoryAddressPerspective;
+use crate::memory::address::{MemoryAddressPerspective, MemoryAddressTransformer, DefaultMemoryAddressTransformer};
 use core::fmt::{self, Debug};
 use core::marker::PhantomData;
 
@@ -6,31 +6,36 @@ use core::marker::PhantomData;
 
 #[repr(transparent)]
 #[derive(Copy, Clone)]
-pub struct MemoryAddress<P>
+pub struct MemoryAddress<P, T = DefaultMemoryAddressTransformer>
 where
     P: MemoryAddressPerspective,
+    T: MemoryAddressTransformer,
 {
-    perspective: PhantomData<P>,
     value: usize,
+    perspective: PhantomData<P>,
+    truncater: PhantomData<T>,
 }
 
-impl<P> Debug for MemoryAddress<P>
+impl<P, T> Debug for MemoryAddress<P, T>
 where
     P: MemoryAddressPerspective,
+    T: MemoryAddressTransformer,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "0x{:X}", self.value)
+        write!(formatter, "0x{:x}", self.value)
     }
 }
 
-impl<P> MemoryAddress<P>
+impl<P, T> MemoryAddress<P, T>
 where
     P: MemoryAddressPerspective,
+    T: MemoryAddressTransformer,
 {
     pub fn new(value: usize) -> Self {
         Self {
+            value: T::transform(value),
             perspective: PhantomData::<P>,
-            value,
+            truncater: PhantomData::<T>,
         }
     }
 
@@ -43,36 +48,48 @@ where
         self.value as _
     }
 
-    pub fn cast<T>(&self) -> *const T {
-        self.value as *const T
+    pub fn as_pointer(&self) -> *const () {
+        self.value as *const ()
     }
 
-    pub fn cast_mut<T>(&self) -> *mut T {
-        self.value as *mut T
+    pub fn as_mut_pointer(&self) -> *mut () {
+        self.value as *mut ()
+    }
+
+    pub fn cast<S>(&self) -> *const S {
+        self.value as *const S
+    }
+
+    pub fn cast_mut<S>(&self) -> *mut S {
+        self.value as *mut S
     }
 }
 
-impl<P> From<usize> for MemoryAddress<P>
+impl<P, T> From<usize> for MemoryAddress<P, T>
 where
     P: MemoryAddressPerspective,
+    T: MemoryAddressTransformer,
 {
     fn from(value: usize) -> Self {
         Self {
-            perspective: PhantomData::<P>,
             value,
+            perspective: PhantomData::<P>,
+            truncater: PhantomData::<T>,
         }
     }
 }
 
 #[cfg(target_pointer_width = "64")]
-impl<P> From<u64> for MemoryAddress<P>
+impl<P, T> From<u64> for MemoryAddress<P, T>
 where
     P: MemoryAddressPerspective,
+    T: MemoryAddressTransformer,
 {
     fn from(value: u64) -> Self {
         Self {
-            perspective: PhantomData::<P>,
             value: value as _,
+            perspective: PhantomData::<P>,
+            truncater: PhantomData::<T>,
         }
     }
 }

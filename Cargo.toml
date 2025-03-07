@@ -4,4 +4,5 @@ members = [
     "zcene-core",
     "zcene-bare-metal",
     "zcene-bare-metal-x86_64",
+    "zcene-bare-metal-playground",
 ]
