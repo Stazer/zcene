@@ -1,9 +1,6 @@
 use core::alloc::{AllocError, GlobalAlloc, Layout};
-use core::ptr::{null_mut, NonNull};
+use core::ptr::NonNull;
 use linked_list_allocator::{LockedHeap};
-use core::cell::SyncUnsafeCell;
-use core::mem::MaybeUninit;
-use alloc::sync::Arc;
 use core::alloc::Allocator;
 use ztd::Constructor;
 

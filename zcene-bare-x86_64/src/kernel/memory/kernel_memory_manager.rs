@@ -13,7 +13,7 @@ use x86_64::structures::paging::mapper::MapToError;
 use x86_64::structures::paging::page::AddressNotAligned;
 use x86_64::structures::paging::FrameAllocator;
 use x86_64::structures::paging::OffsetPageTable;
-use zcene_bare::memory::allocator::EmptyMemoryAllocator;
+use zcene_bare::memory::allocator::EmptyHeapMemoryAllocator;
 use x86_64::structures::paging::Page;
 use x86_64::structures::paging::PageSize;
 use x86_64::structures::paging::PageTable;
@@ -29,7 +29,6 @@ use zcene_bare::memory::address::VirtualMemoryAddressPerspective;
 use zcene_bare::memory::frame::FrameManager;
 use zcene_bare::memory::frame::FrameManagerAllocationError;
 use zcene_bare::memory::region::VirtualMemoryRegion;
-use crate::kernel::memory::KernelGlobalMemoryAllocator;
 use crate::kernel::memory::KernelMemoryAllocator;
 use ztd::Method;
 
@@ -48,11 +47,9 @@ pub struct UserStack {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use core::alloc::{AllocError, GlobalAlloc, Layout};
-use core::ptr::{null_mut, NonNull};
-use linked_list_allocator::{Heap, LockedHeap};
+use core::alloc::AllocError;
+use linked_list_allocator::LockedHeap;
 
-use core::cell::SyncUnsafeCell;
 use core::mem::MaybeUninit;
 
 use alloc::sync::Arc;
@@ -422,13 +419,11 @@ impl KernelMemoryManager {
         )?);
         unsafe { pointer.cast_mut().write(MaybeUninit::new(memory_allocator)) };
         let arc =
-            unsafe { Arc::from_raw_in(pointer.cast::<KernelMemoryAllocator>(), EmptyMemoryAllocator) };
+            unsafe { Arc::from_raw_in(pointer.cast::<KernelMemoryAllocator>(), EmptyHeapMemoryAllocator) };
 
         unsafe {
             KERNEL_GLOBAL_MEMORY_ALLOCATOR.initialize(arc);
         }
-
-        use alloc::boxed::Box;
 
         Ok(this)
     }

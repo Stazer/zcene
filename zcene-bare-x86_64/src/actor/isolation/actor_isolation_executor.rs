@@ -1,19 +1,16 @@
 use crate::actor::{
-    ActorIsolationEnvironment, ActorIsolationExecutorContext,
-    ActorIsolationExecutorDeadlinePreemptionContext, ActorIsolationExecutorDeadlinePreemptionEvent,
-    ActorIsolationExecutorDeadlinePreemptionEventInner, ActorIsolationExecutorEvent,
-    ActorIsolationExecutorResult, ActorIsolationExecutorSystemCallContext,
+    ActorIsolationEnvironment,
+    ActorIsolationExecutorDeadlinePreemptionContext, ActorIsolationExecutorDeadlinePreemptionEvent, ActorIsolationExecutorEvent, ActorIsolationExecutorSystemCallContext,
     ActorIsolationExecutorSystemCallEvent, ActorIsolationExecutorSystemCallEventInner,
     ActorIsolationExecutorSystemCallType, ActorIsolationMessageHandler, ActorRootEnvironment,
 };
 use alloc::boxed::Box;
-use zcene_bare::memory::allocator::LeakingMemoryAllocator;
+use zcene_bare::memory::allocator::LeakingHeapMemoryAllocator;
 use alloc::vec::Vec;
 use core::arch::asm;
 use core::arch::naked_asm;
-use core::future::{poll_fn, Future};
+use core::future::Future;
 use core::marker::PhantomData;
-use core::mem::replace;
 use core::num::NonZero;
 use core::pin::pin;
 use core::task::{Context, Poll, Waker};
@@ -145,7 +142,7 @@ where
     }
 
     extern "C" fn create_main(actor: *mut AI) -> ! {
-        let mut actor = unsafe { Box::from_raw_in(actor, LeakingMemoryAllocator) };
+        let mut actor = unsafe { Box::from_raw_in(actor, LeakingHeapMemoryAllocator) };
 
         let mut future_context = Context::from_waker(Waker::noop());
         let mut pinned = pin!(actor.create(()));
@@ -159,7 +156,7 @@ where
     }
 
     extern "C" fn handle_main(actor: *mut AI, message: &AI::Message) -> ! {
-        let mut actor = unsafe { Box::from_raw_in(actor, LeakingMemoryAllocator) };
+        let mut actor = unsafe { Box::from_raw_in(actor, LeakingHeapMemoryAllocator) };
 
         let mut future_context = Context::from_waker(Waker::noop());
         let mut pinned = pin!(actor.handle(ActorCommonHandleContext::new(message.clone())));
@@ -173,7 +170,7 @@ where
     }
 
     extern "C" fn destroy_main(actor: *mut AI) -> ! {
-        let mut actor = unsafe { Box::from_raw_in(actor, LeakingMemoryAllocator) };
+        let actor = unsafe { Box::from_raw_in(actor, LeakingHeapMemoryAllocator) };
 
         let mut future_context = Context::from_waker(Waker::noop());
         let mut pinned = pin!(actor.destroy(()));
@@ -213,12 +210,6 @@ where
         self.enable_deadline();
 
         execute_function(&mut self.actor, &mut event, user_stack);
-        /*Self::execute(
-            Box::as_mut_ptr(&mut self.actor),
-            &mut event,
-            user_stack,
-            Self::create_main,
-        );*/
 
         loop {
             match event.take() {
