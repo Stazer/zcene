@@ -243,6 +243,8 @@ impl Kernel {
             }
         };
 
+        logger.writer(|writer| write!(writer, "hello"));
+
         let actor_system = ActorSystem::try_new(ActorRootEnvironment::new(
             KernelFutureRuntime::new(KernelFutureRuntimeHandler::default())?,
         ))?;

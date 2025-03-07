@@ -4,8 +4,8 @@ use linked_list_allocator::LockedHeap;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[global_allocator]
-pub static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::empty();
+//#[global_allocator]
+/*pub static GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator::empty();
 
 pub struct GlobalAllocator(LockedHeap);
 
@@ -27,4 +27,4 @@ unsafe impl GlobalAlloc for GlobalAllocator {
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         self.0.dealloc(ptr, layout)
     }
-}
+}*/

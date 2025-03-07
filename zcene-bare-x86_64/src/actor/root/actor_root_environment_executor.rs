@@ -45,7 +45,13 @@ where
             };
 
             // TODO: Handle result
-            let _result = self.actor.handle(self.context_builder.build_handle_context(&self.actor, &message)).await;
+            let _result = self
+                .actor
+                .handle(
+                    self.context_builder
+                        .build_handle_context(&self.actor, &message),
+                )
+                .await;
         }
 
         // TODO: Handle result

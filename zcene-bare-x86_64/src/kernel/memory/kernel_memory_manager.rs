@@ -1,6 +1,7 @@
 use crate::architecture::Stack;
 use crate::architecture::FRAME_SIZE;
-use crate::kernel::GLOBAL_ALLOCATOR;
+use crate::kernel::memory::KERNEL_GLOBAL_MEMORY_ALLOCATOR;
+//use crate::kernel::GLOBAL_ALLOCATOR;
 use alloc::alloc::Global;
 use bootloader_api::info::MemoryRegionKind;
 use bootloader_api::BootInfo;
@@ -12,6 +13,7 @@ use x86_64::structures::paging::mapper::MapToError;
 use x86_64::structures::paging::page::AddressNotAligned;
 use x86_64::structures::paging::FrameAllocator;
 use x86_64::structures::paging::OffsetPageTable;
+use zcene_bare::memory::allocator::EmptyMemoryAllocator;
 use x86_64::structures::paging::Page;
 use x86_64::structures::paging::PageSize;
 use x86_64::structures::paging::PageTable;
@@ -27,80 +29,39 @@ use zcene_bare::memory::address::VirtualMemoryAddressPerspective;
 use zcene_bare::memory::frame::FrameManager;
 use zcene_bare::memory::frame::FrameManagerAllocationError;
 use zcene_bare::memory::region::VirtualMemoryRegion;
+use crate::kernel::memory::KernelGlobalMemoryAllocator;
+use crate::kernel::memory::KernelMemoryAllocator;
 use ztd::Method;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use core::alloc::{AllocError, GlobalAlloc, Layout};
-use core::ptr::NonNull;
-use linked_list_allocator::{Heap, LockedHeap};
-
-use core::mem::MaybeUninit;
-use core::cell::SyncUnsafeCell;
-
-use alloc::sync::Arc;
-
-//#[global_allocator]
-static KERNEL_GLOBAL_MEMORY_ALLOCATOR: KernelGlobalMemoryAllocator = KernelGlobalMemoryAllocator::uninitialized();
-
-pub struct KernelGlobalMemoryAllocator(SyncUnsafeCell<MaybeUninit<Arc<KernelMemoryAllocator, KernelMemoryAllocator>>>);
-
-impl KernelGlobalMemoryAllocator {
-    pub const fn uninitialized() -> Self {
-        Self(SyncUnsafeCell::new(MaybeUninit::uninit()))
-    }
-
-    pub unsafe fn initialize(&self, allocator: Arc<KernelMemoryAllocator, KernelMemoryAllocator>) {
-        *self.0.get().as_mut().unwrap() = MaybeUninit::new(allocator);
-    }
-}
-
-unsafe impl GlobalAlloc for KernelGlobalMemoryAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        unsafe { self.0.get().as_mut().unwrap().assume_init_ref() }.alloc(layout)
-    }
-
-    unsafe fn dealloc(&self, data: *mut u8, layout: Layout) {
-        unsafe { self.0.get().as_mut().unwrap().assume_init_ref() }.dealloc(data, layout)
-    }
-}
+use alloc::vec::Vec;
+use zcene_bare::memory::frame::FrameIdentifier;
 
 #[derive(Constructor)]
-pub struct KernelMemoryAllocator(LockedHeap);
-
-unsafe impl Allocator for KernelMemoryAllocator {
-    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        NonNull::new(unsafe { self.0.alloc(layout) })
-            .map(|pointer| unsafe { NonNull::slice_from_raw_parts(pointer, layout.size()) })
-            .ok_or(AllocError)
-    }
-
-    unsafe fn deallocate(&self, mut data: NonNull<u8>, layout: Layout) {
-        self.dealloc(data.as_mut(), layout)
-    }
+pub struct UserStack {
+    memory_manager: Arc<KernelMemoryManager>,
+    region: VirtualMemoryRegion,
+    frames: Vec<FrameIdentifier>,
+    dirty: bool,
 }
 
-unsafe impl GlobalAlloc for KernelMemoryAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        self.0.alloc(layout)
-    }
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    unsafe fn dealloc(&self, data: *mut u8, layout: Layout) {
-        self.0.dealloc(data, layout)
-    }
-}
+use core::alloc::{AllocError, GlobalAlloc, Layout};
+use core::ptr::{null_mut, NonNull};
+use linked_list_allocator::{Heap, LockedHeap};
+
+use core::cell::SyncUnsafeCell;
+use core::mem::MaybeUninit;
+
+use alloc::sync::Arc;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub const EXECUTION_PAGE_TABLE_INDEX: usize = 256;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Clone, Debug, Constructor)]
-pub struct ActorExecutorStacks {
-    kernel_stack: Stack<VirtualMemoryAddressPerspective>,
-    actor_stack: Stack<VirtualMemoryAddressPerspective>,
-}
 
 #[derive(Clone, Debug, Method)]
 pub struct KernelMemoryManager {
@@ -118,6 +79,7 @@ pub enum KernelMemoryManagerInitializeError {
     MapToErrorFrameAllocationFailed,
     MapToErrorParentEntryHugePage,
     MapToErrorPageAlreadyMapped,
+    AllocError(AllocError),
 }
 
 impl From<AddressNotAligned> for KernelMemoryManagerInitializeError {
@@ -129,6 +91,12 @@ impl From<AddressNotAligned> for KernelMemoryManagerInitializeError {
 impl From<FrameManagerAllocationError> for KernelMemoryManagerInitializeError {
     fn from(error: FrameManagerAllocationError) -> Self {
         Self::FrameAllocation(error)
+    }
+}
+
+impl From<AllocError> for KernelMemoryManagerInitializeError {
+    fn from(error: AllocError) -> Self {
+        Self::AllocError(error)
     }
 }
 
@@ -439,21 +407,28 @@ impl KernelMemoryManager {
             current_address += frame_manager.frame_byte_size().r#as();
         }
 
-        let allocator = KernelMemoryAllocator::new(unsafe {
+        let memory_allocator = KernelMemoryAllocator::new(unsafe {
             LockedHeap::new(
                 VirtualMemoryAddress::from(start_address).cast_mut(),
                 frame_count * frame_manager.frame_byte_size(),
             )
         });
 
-        let mut allocator = GLOBAL_ALLOCATOR.inner().lock();
+        let (pointer, memory_allocator) = Arc::into_raw_with_allocator(Arc::<
+            KernelMemoryAllocator,
+            KernelMemoryAllocator,
+        >::try_new_uninit_in(
+            memory_allocator
+        )?);
+        unsafe { pointer.cast_mut().write(MaybeUninit::new(memory_allocator)) };
+        let arc =
+            unsafe { Arc::from_raw_in(pointer.cast::<KernelMemoryAllocator>(), EmptyMemoryAllocator) };
 
         unsafe {
-            allocator.init(
-                VirtualMemoryAddress::from(start_address).cast_mut(),
-                frame_count * frame_manager.frame_byte_size(),
-            );
+            KERNEL_GLOBAL_MEMORY_ALLOCATOR.initialize(arc);
         }
+
+        use alloc::boxed::Box;
 
         Ok(this)
     }
@@ -546,7 +521,7 @@ impl KernelMemoryManager {
         None
     }
 
-    pub fn allocate_actor_executor_stacks(&self) -> Option<ActorExecutorStacks> {
+    pub fn allocate_actor_executor_stacks(&self) -> Option<()> {
         /*for (i, heap_frame_identifier) in frame_manager
             .unallocated_frame_identifiers()
             .take(frame_count)

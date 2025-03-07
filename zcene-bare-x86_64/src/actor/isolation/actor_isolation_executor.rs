@@ -6,8 +6,8 @@ use crate::actor::{
     ActorIsolationExecutorSystemCallEvent, ActorIsolationExecutorSystemCallEventInner,
     ActorIsolationExecutorSystemCallType, ActorIsolationMessageHandler, ActorRootEnvironment,
 };
-use x86::current::rflags::RFlags;
 use alloc::boxed::Box;
+use zcene_bare::memory::allocator::LeakingMemoryAllocator;
 use alloc::vec::Vec;
 use core::arch::asm;
 use core::arch::naked_asm;
@@ -18,8 +18,8 @@ use core::num::NonZero;
 use core::pin::pin;
 use core::task::{Context, Poll, Waker};
 use core::time::Duration;
+use x86::current::rflags::RFlags;
 use zcene_bare::common::As;
-use zcene_bare::memory::{LeakingAllocator, LeakingBox};
 use zcene_core::actor::{
     Actor, ActorCommonHandleContext, ActorEnvironmentAllocator, ActorMessageChannelReceiver,
 };
@@ -145,7 +145,7 @@ where
     }
 
     extern "C" fn create_main(actor: *mut AI) -> ! {
-        let mut actor = unsafe { LeakingBox::from_raw_in(actor, LeakingAllocator) };
+        let mut actor = unsafe { Box::from_raw_in(actor, LeakingMemoryAllocator) };
 
         let mut future_context = Context::from_waker(Waker::noop());
         let mut pinned = pin!(actor.create(()));
@@ -159,7 +159,7 @@ where
     }
 
     extern "C" fn handle_main(actor: *mut AI, message: &AI::Message) -> ! {
-        let mut actor = unsafe { LeakingBox::from_raw_in(actor, LeakingAllocator) };
+        let mut actor = unsafe { Box::from_raw_in(actor, LeakingMemoryAllocator) };
 
         let mut future_context = Context::from_waker(Waker::noop());
         let mut pinned = pin!(actor.handle(ActorCommonHandleContext::new(message.clone())));
@@ -173,7 +173,7 @@ where
     }
 
     extern "C" fn destroy_main(actor: *mut AI) -> ! {
-        let actor = unsafe { LeakingBox::from_raw_in(actor, LeakingAllocator) };
+        let mut actor = unsafe { Box::from_raw_in(actor, LeakingMemoryAllocator) };
 
         let mut future_context = Context::from_waker(Waker::noop());
         let mut pinned = pin!(actor.destroy(()));
@@ -231,20 +231,14 @@ where
 
                     match r#type {
                         ActorIsolationExecutorSystemCallType::Continue => {
-                            Self::continue_from_system_call(
-                                &mut event,
-                                &system_call_context,
-                            );
+                            Self::continue_from_system_call(&mut event, &system_call_context);
                         }
                         ActorIsolationExecutorSystemCallType::Preempt => {
                             r#yield().await;
 
                             self.enable_deadline();
 
-                            Self::continue_from_system_call(
-                                &mut event,
-                                &system_call_context,
-                            );
+                            Self::continue_from_system_call(&mut event, &system_call_context);
                         }
                         ActorIsolationExecutorSystemCallType::Poll(Poll::Pending) => {
                             todo!()
@@ -259,10 +253,7 @@ where
                                 None => todo!(),
                             }
 
-                            Self::continue_from_system_call(
-                                &mut event,
-                                &system_call_context,
-                            );
+                            Self::continue_from_system_call(&mut event, &system_call_context);
                         }
                         ActorIsolationExecutorSystemCallType::Unknown(_) => {
                             // error

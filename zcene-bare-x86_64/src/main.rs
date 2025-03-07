@@ -2,6 +2,7 @@
 #![feature(adt_const_params)]
 #![feature(allocator_api)]
 #![feature(box_as_ptr)]
+#![feature(box_uninit_write)]
 #![feature(naked_functions)]
 #![feature(non_lifetime_binders)]
 #![feature(stmt_expr_attributes)]
