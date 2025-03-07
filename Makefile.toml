@@ -43,7 +43,7 @@ args = [
     "-no-reboot",
     "-nographic",
     "-cpu", "qemu64",
-    "-drive", "format=raw,unit=1,file=target/x86_64/release/zcene-bare-metal-86_64-uefi.img",
+    "-drive", "format=raw,unit=1,file=target/x86_64/release/zcene-bare-metal-x86_64-uefi.img",
     "-drive", "if=pflash,format=raw,unit=0,file=QEMU_UEFI_CODE-x86_64.fd",
     "-nic", "none",
     "-m", "1024",
