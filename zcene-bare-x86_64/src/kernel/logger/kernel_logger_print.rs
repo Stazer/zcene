@@ -5,7 +5,7 @@ macro_rules! print {
 
             let _ = crate::kernel::Kernel::get()
                 .logger()
-                .writer(|w| writeln!(w, $format_string));
+                .writer(|w| write!(w, $format_string));
         }
     };
     ($format_string:expr, $($expressions:expr),+ ) => {
@@ -14,7 +14,9 @@ macro_rules! print {
 
             let _ = crate::kernel::Kernel::get()
                 .logger()
-                .writer(|w| writeln!(w, $format_string, $($expressions),+));
+                .writer(|w| write!(w, $format_string, $($expressions),+));
         }
     };
 }
+
+pub(crate) use print;

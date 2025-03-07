@@ -1,7 +1,6 @@
 use crate::architecture::Stack;
 use crate::architecture::FRAME_SIZE;
-use crate::kernel::memory::KERNEL_GLOBAL_MEMORY_ALLOCATOR;
-//use crate::kernel::GLOBAL_ALLOCATOR;
+use crate::kernel::memory::KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR;
 use alloc::alloc::Global;
 use bootloader_api::info::MemoryRegionKind;
 use bootloader_api::BootInfo;
@@ -29,7 +28,7 @@ use zcene_bare::memory::address::VirtualMemoryAddressPerspective;
 use zcene_bare::memory::frame::FrameManager;
 use zcene_bare::memory::frame::FrameManagerAllocationError;
 use zcene_bare::memory::region::VirtualMemoryRegion;
-use crate::kernel::memory::KernelMemoryAllocator;
+use crate::kernel::memory::KernelHeapMemoryAllocator;
 use ztd::Method;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -111,7 +110,10 @@ where
 }
 
 impl KernelMemoryManager {
-    pub fn new(boot_info: &mut BootInfo) -> Result<Self, KernelMemoryManagerInitializeError> {
+    pub fn new(
+        boot_info: &mut BootInfo,
+        logger: &mut crate::kernel::logger::KernelLogger,
+    ) -> Result<Self, KernelMemoryManagerInitializeError> {
         let physical_memory_size_in_bytes = boot_info
             .memory_regions
             .iter()
@@ -404,25 +406,25 @@ impl KernelMemoryManager {
             current_address += frame_manager.frame_byte_size().r#as();
         }
 
-        let memory_allocator = KernelMemoryAllocator::new(unsafe {
+        let allocator = KernelHeapMemoryAllocator::new(unsafe {
             LockedHeap::new(
                 VirtualMemoryAddress::from(start_address).cast_mut(),
                 frame_count * frame_manager.frame_byte_size(),
             )
         });
 
-        let (pointer, memory_allocator) = Arc::into_raw_with_allocator(Arc::<
-            KernelMemoryAllocator,
-            KernelMemoryAllocator,
+        let (pointer, allocator) = Arc::into_raw_with_allocator(Arc::<
+            KernelHeapMemoryAllocator,
+            KernelHeapMemoryAllocator,
         >::try_new_uninit_in(
-            memory_allocator
+            allocator
         )?);
-        unsafe { pointer.cast_mut().write(MaybeUninit::new(memory_allocator)) };
+        unsafe { pointer.cast_mut().write(MaybeUninit::new(allocator)) };
         let arc =
-            unsafe { Arc::from_raw_in(pointer.cast::<KernelMemoryAllocator>(), EmptyHeapMemoryAllocator) };
+            unsafe { Arc::from_raw_in(pointer.cast::<KernelHeapMemoryAllocator>(), EmptyHeapMemoryAllocator) };
 
         unsafe {
-            KERNEL_GLOBAL_MEMORY_ALLOCATOR.initialize(arc);
+            KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR.initialize(arc);
         }
 
         Ok(this)

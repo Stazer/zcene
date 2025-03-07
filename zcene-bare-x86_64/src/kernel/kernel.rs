@@ -1,4 +1,3 @@
-use crate::actor::ActorIsolationMessageHandler;
 use crate::kernel::future::runtime::{KernelFutureRuntime, KernelFutureRuntimeHandler};
 use crate::kernel::interrupt::KernelInterruptManager;
 use crate::kernel::logger::println;
@@ -15,7 +14,7 @@ use zcene_bare::memory::address::PhysicalMemoryAddress;
 use zcene_bare::memory::frame::FrameManagerAllocationError;
 use zcene_core::actor::ActorEnvironment;
 use zcene_core::actor::ActorSpawnError;
-use zcene_core::actor::{self, Actor, ActorFuture, ActorHandleError, ActorSystemCreateError};
+use zcene_core::actor::{self, Actor, ActorHandleError, ActorSystemCreateError};
 use zcene_core::actor::{ActorCreateError, ActorDestroyError, ActorMessage, ActorMessageSender};
 use zcene_core::future::runtime::FutureRuntimeCreateError;
 use ztd::From;
@@ -52,7 +51,7 @@ where
 {
     type Message = PrintActorMessage;
 
-    async fn create(&mut self, context: H::CreateContext) -> Result<(), ActorCreateError> {
+    async fn create(&mut self, _context: H::CreateContext) -> Result<(), ActorCreateError> {
         println!("create");
         Ok(())
     }
@@ -66,7 +65,7 @@ where
         Ok(())
     }
 
-    async fn destroy(self, context: H::DestroyContext) -> Result<(), ActorDestroyError> {
+    async fn destroy(self, _context: H::DestroyContext) -> Result<(), ActorDestroyError> {
         println!("destroy");
         Ok(())
     }
@@ -91,7 +90,7 @@ where
 {
     type Message = usize;
 
-    async fn create(&mut self, context: H::CreateContext) -> Result<(), ActorCreateError> {
+    async fn create(&mut self, _context: H::CreateContext) -> Result<(), ActorCreateError> {
         self.printer.send(PrintActorMessage::new(1337, 1338)).await;
 
         Ok(())
@@ -108,7 +107,7 @@ where
         Ok(())
     }
 
-    async fn destroy(self, context: H::DestroyContext) -> Result<(), ActorDestroyError> {
+    async fn destroy(self, _context: H::DestroyContext) -> Result<(), ActorDestroyError> {
         Ok(())
     }
 }
@@ -133,7 +132,7 @@ where
 {
     type Message = ();
 
-    async fn create(&mut self, context: H::CreateContext) -> Result<(), ActorCreateError> {
+    async fn create(&mut self, _context: H::CreateContext) -> Result<(), ActorCreateError> {
         self.unpriv.send(42).await;
 
         Ok(())
@@ -208,7 +207,7 @@ impl Kernel {
             ))
             .unwrap();
 
-        let last_actor = Kernel::get()
+        let _last_actor = Kernel::get()
             .actor_system()
             .spawn(ActorRootSpawnSpecification::new(
                 LastActor::new(unpriv_actor),
@@ -226,7 +225,7 @@ impl Kernel {
     }
 
     pub fn new(boot_info: &'static mut BootInfo) -> Result<Self, KernelInitializeError> {
-        let logger = KernelLogger::new(
+        let mut logger = KernelLogger::new(
             boot_info.framebuffer.take().map(|frame_buffer| {
                 let info = frame_buffer.info().clone();
 
@@ -235,7 +234,7 @@ impl Kernel {
             Some(unsafe { SerialPort::init() }),
         );
 
-        let memory_manager = match KernelMemoryManager::new(boot_info) {
+        let memory_manager = match KernelMemoryManager::new(boot_info, &mut logger) {
             Ok(memory_manager) => memory_manager,
             Err(error) => {
                 logger.writer(|writer| write!(writer, "{:?}", error));

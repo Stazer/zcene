@@ -126,7 +126,7 @@ where
             self.handle(move |actor, event, stack| {
                 Self::execute2(
                     Box::as_mut_ptr(actor),
-                    unsafe { message },
+                    message,
                     event,
                     stack,
                     Self::handle_main,
@@ -147,9 +147,10 @@ where
         let mut future_context = Context::from_waker(Waker::noop());
         let mut pinned = pin!(actor.create(()));
 
-        let result = match pinned.as_mut().poll(&mut future_context) {
-            Poll::Pending => 0,
-            Poll::Ready(result) => 0,
+        // TODO: handle result
+        let _result = match pinned.as_mut().poll(&mut future_context) {
+            Poll::Pending => todo!(),
+            Poll::Ready(result) => result,
         };
 
         unsafe { asm!("mov rdi, 0x2", "syscall", options(noreturn)) }
@@ -161,9 +162,10 @@ where
         let mut future_context = Context::from_waker(Waker::noop());
         let mut pinned = pin!(actor.handle(ActorCommonHandleContext::new(message.clone())));
 
-        let result = match pinned.as_mut().poll(&mut future_context) {
-            Poll::Pending => 0,
-            Poll::Ready(result) => 0,
+        // TODO: handle result
+        let _result = match pinned.as_mut().poll(&mut future_context) {
+            Poll::Pending => todo!(),
+            Poll::Ready(result) => result,
         };
 
         unsafe { asm!("mov rdi, 0x2", "syscall", options(noreturn)) }
@@ -175,9 +177,10 @@ where
         let mut future_context = Context::from_waker(Waker::noop());
         let mut pinned = pin!(actor.destroy(()));
 
-        let result = match pinned.as_mut().poll(&mut future_context) {
-            Poll::Pending => 0,
-            Poll::Ready(result) => 0,
+        // TODO: handle result
+        let _result = match pinned.as_mut().poll(&mut future_context) {
+            Poll::Pending => todo!(),
+            Poll::Ready(result) => result,
         };
 
         unsafe { asm!("mov rdi, 0x2", "syscall", options(noreturn)) }

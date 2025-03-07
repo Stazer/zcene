@@ -71,7 +71,7 @@ where
 
         environment.future_runtime.spawn(async move {
             // TODO: Handle result
-            self.create(()).await;
+            let _result = self.create(()).await;
 
             loop {
                 let message = match receiver.receive().await {
@@ -80,7 +80,7 @@ where
                 };
 
                 // TODO: Handle result
-                self.handle(
+                let _result = self.handle(
                     <FutureRuntimeActorEnvironment<H> as ActorEnvironment>::HandleContext::<
                         A::Message,
                     >::new(message),
@@ -89,8 +89,8 @@ where
             }
 
             // TODO: Handle result
-            self.destroy(()).await;
-        });
+            let _result = self.destroy(()).await;
+        })?;
 
         Ok(address)
     }

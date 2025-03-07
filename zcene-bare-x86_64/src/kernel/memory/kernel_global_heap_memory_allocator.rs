@@ -3,29 +3,29 @@ use core::mem::MaybeUninit;
 use zcene_bare::memory::allocator::EmptyHeapMemoryAllocator;
 use core::cell::SyncUnsafeCell;
 use alloc::sync::Arc;
-use crate::kernel::memory::KernelMemoryAllocator;
+use crate::kernel::memory::KernelHeapMemoryAllocator;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[global_allocator]
-pub static KERNEL_GLOBAL_MEMORY_ALLOCATOR: KernelGlobalMemoryAllocator =
-    KernelGlobalMemoryAllocator::uninitialized();
+pub static KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR: KernelGlobalHeapMemoryAllocator =
+    KernelGlobalHeapMemoryAllocator::uninitialized();
 
-pub struct KernelGlobalMemoryAllocator(
-    SyncUnsafeCell<MaybeUninit<Arc<KernelMemoryAllocator, EmptyHeapMemoryAllocator>>>,
+pub struct KernelGlobalHeapMemoryAllocator(
+    SyncUnsafeCell<MaybeUninit<Arc<KernelHeapMemoryAllocator, EmptyHeapMemoryAllocator>>>,
 );
 
-impl KernelGlobalMemoryAllocator {
+impl KernelGlobalHeapMemoryAllocator {
     pub const fn uninitialized() -> Self {
         Self(SyncUnsafeCell::new(MaybeUninit::uninit()))
     }
 
-    pub fn initialize(&self, allocator: Arc<KernelMemoryAllocator, EmptyHeapMemoryAllocator>) {
+    pub fn initialize(&self, allocator: Arc<KernelHeapMemoryAllocator, EmptyHeapMemoryAllocator>) {
         *unsafe { self.0.get().as_mut() }.unwrap() = MaybeUninit::new(allocator);
     }
 }
 
-unsafe impl GlobalAlloc for KernelGlobalMemoryAllocator {
+unsafe impl GlobalAlloc for KernelGlobalHeapMemoryAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         unsafe { self.0.get().as_mut().unwrap().assume_init_ref() }.alloc(layout)
     }

@@ -7,9 +7,9 @@ use ztd::Constructor;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Constructor)]
-pub struct KernelMemoryAllocator(LockedHeap);
+pub struct KernelHeapMemoryAllocator(LockedHeap);
 
-unsafe impl Allocator for KernelMemoryAllocator {
+unsafe impl Allocator for KernelHeapMemoryAllocator {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         NonNull::new(unsafe { self.0.alloc(layout) })
             .map(|pointer| unsafe { NonNull::slice_from_raw_parts(pointer, layout.size()) })
@@ -21,7 +21,7 @@ unsafe impl Allocator for KernelMemoryAllocator {
     }
 }
 
-unsafe impl GlobalAlloc for KernelMemoryAllocator {
+unsafe impl GlobalAlloc for KernelHeapMemoryAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         self.0.alloc(layout)
     }

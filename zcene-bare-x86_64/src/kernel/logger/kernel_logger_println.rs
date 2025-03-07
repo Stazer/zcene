@@ -1,20 +1,12 @@
 macro_rules! println {
     ($format_string:expr) => {
         {
-            use ::core::fmt::Write;
-
-            let _ = crate::kernel::Kernel::get()
-                .logger()
-                .writer(|w| writeln!(w, $format_string));
+            crate::kernel::logger::print!(concat!($format_string, "\n"));
         }
     };
     ($format_string:expr, $($expressions:expr),+ ) => {
         {
-            use ::core::fmt::Write;
-
-            let _ = crate::kernel::Kernel::get()
-                .logger()
-                .writer(|w| writeln!(w, $format_string, $($expressions),+));
+            crate::kernel::logger::print!(concat!($format_string, "\n"), $($expressions),+);
         }
     };
 }
