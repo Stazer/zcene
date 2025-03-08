@@ -3,6 +3,7 @@ use crate::architecture::Stack;
 use crate::common::As;
 use crate::kernel::memory::KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR;
 use crate::kernel::memory::KernelHeapMemoryAllocator;
+use crate::memory::address::DefaultMemoryAddressTransformer;
 use crate::memory::address::PhysicalMemoryAddress;
 use crate::memory::address::PhysicalMemoryAddressPerspective;
 use crate::memory::address::VirtualMemoryAddress;
@@ -412,7 +413,8 @@ impl KernelMemoryManager {
 
         let allocator = KernelHeapMemoryAllocator::new(unsafe {
             LockedHeap::new(
-                VirtualMemoryAddress::from(start_address).cast_mut(),
+                VirtualMemoryAddress::<DefaultMemoryAddressTransformer>::from(start_address)
+                    .cast_mut(),
                 frame_count * frame_manager.frame_byte_size(),
             )
         });
