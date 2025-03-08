@@ -7,6 +7,8 @@ use core::mem::MaybeUninit;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// TODO: Remove
+
 #[global_allocator]
 pub static KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR: KernelGlobalHeapMemoryAllocator =
     KernelGlobalHeapMemoryAllocator::uninitialized();
