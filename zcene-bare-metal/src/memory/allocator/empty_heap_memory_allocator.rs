@@ -1,5 +1,5 @@
-use core::alloc::{Allocator, AllocError, GlobalAlloc, Layout};
-use core::ptr::{null_mut, NonNull};
+use core::alloc::{AllocError, Allocator, GlobalAlloc, Layout};
+use core::ptr::{NonNull, null_mut};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

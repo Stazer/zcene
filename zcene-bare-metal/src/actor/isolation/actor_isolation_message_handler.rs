@@ -11,7 +11,11 @@ pub trait ActorIsolationMessageHandler<E>: ActorCommonBounds
 where
     E: ActorEnvironment + ActorEnvironmentAllocator,
 {
-    fn send(&self, allocator: &E::Allocator, message: *const ()) -> ActorBoxFuture<'static, Result<(), ActorSendError>, E>;
+    fn send(
+        &self,
+        allocator: &E::Allocator,
+        message: *const (),
+    ) -> ActorBoxFuture<'static, Result<(), ActorSendError>, E>;
 }
 
 impl<A, E> ActorIsolationMessageHandler<E> for ActorMessageChannelAddress<A, E>
@@ -20,16 +24,18 @@ where
     A::Message: Debug,
     E: ActorEnvironment + ActorEnvironmentAllocator,
 {
-    fn send(&self, allocator: &E::Allocator, message: *const ()) -> ActorBoxFuture<'static, Result<(), ActorSendError>, E> {
+    fn send(
+        &self,
+        allocator: &E::Allocator,
+        message: *const (),
+    ) -> ActorBoxFuture<'static, Result<(), ActorSendError>, E> {
         let sender = self.clone();
 
         // TODO: check address and length!
         let message = unsafe { message.cast::<A::Message>().as_ref().unwrap() }.clone();
 
         Box::pin_in(
-            async move {
-                <Self as ActorMessageSender<_>>::send(&sender, message).await
-            },
+            async move { <Self as ActorMessageSender<_>>::send(&sender, message).await },
             allocator.clone(),
         )
     }

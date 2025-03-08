@@ -1,9 +1,9 @@
 use crate::driver::acpi::hpet::{Hpet, HpetRegisters};
 use crate::kernel::memory::{KernelMemoryManager, KernelMemoryManagerAcpiHandler};
-use acpi::{AcpiTables, HpetInfo};
-use core::time::Duration;
 use crate::memory::address::PhysicalMemoryAddress;
 use crate::time::{AtomicTimer, Timer, TimerInstant};
+use acpi::{AcpiTables, HpetInfo};
+use core::time::Duration;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

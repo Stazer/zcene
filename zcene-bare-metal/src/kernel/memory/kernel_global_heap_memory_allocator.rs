@@ -1,9 +1,9 @@
-use core::alloc::{GlobalAlloc, Layout};
-use core::mem::MaybeUninit;
-use crate::memory::allocator::EmptyHeapMemoryAllocator;
-use core::cell::SyncUnsafeCell;
-use alloc::sync::Arc;
 use crate::kernel::memory::KernelHeapMemoryAllocator;
+use crate::memory::allocator::EmptyHeapMemoryAllocator;
+use alloc::sync::Arc;
+use core::alloc::{GlobalAlloc, Layout};
+use core::cell::SyncUnsafeCell;
+use core::mem::MaybeUninit;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

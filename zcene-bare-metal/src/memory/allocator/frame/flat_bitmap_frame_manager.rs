@@ -487,14 +487,16 @@ fn allocate_window_bounds_checking() {
             })
     );
 
-    assert!(manager
-        .allocate_window(manager.data_frame_count())
-        .map(|identifiers| {
-            identifiers
-                .map(|identifier| identifier.as_usize())
-                .collect::<Vec<usize>>()
-        })
-        .is_ok());
+    assert!(
+        manager
+            .allocate_window(manager.data_frame_count())
+            .map(|identifiers| {
+                identifiers
+                    .map(|identifier| identifier.as_usize())
+                    .collect::<Vec<usize>>()
+            })
+            .is_ok()
+    );
 
     assert_eq!(
         Err(FrameManagerAllocationError::Busy),

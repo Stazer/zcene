@@ -1,9 +1,7 @@
 use crate::actor::ActorIsolationEnvironment;
 use core::arch::asm;
 use core::marker::PhantomData;
-use zcene_core::actor::{
-    Actor, ActorAddress, ActorFuture, ActorMessageSender, ActorSendError,
-};
+use zcene_core::actor::{Actor, ActorAddress, ActorFuture, ActorMessageSender, ActorSendError};
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

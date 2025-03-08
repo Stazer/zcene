@@ -1,7 +1,7 @@
 use crate::kernel::memory::KernelMemoryManager;
+use crate::memory::address::PhysicalMemoryAddress;
 use acpi::{AcpiHandler, PhysicalMapping};
 use core::ptr::NonNull;
-use crate::memory::address::PhysicalMemoryAddress;
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

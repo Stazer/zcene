@@ -1,5 +1,5 @@
-use x86_64::structures::DescriptorTablePointer;
 use x86_64::VirtAddr;
+use x86_64::structures::DescriptorTablePointer;
 use ztd::Method;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

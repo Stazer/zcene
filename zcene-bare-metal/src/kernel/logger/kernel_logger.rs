@@ -1,9 +1,9 @@
 use crate::kernel::logger::KernelLoggerWriter;
+use crate::synchronization::Mutex;
 use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
 use bootloader_x86_64_common::serial::SerialPort;
 use core::fmt::{Result, Write};
 use x86_64::instructions::interrupts::without_interrupts;
-use crate::synchronization::Mutex;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

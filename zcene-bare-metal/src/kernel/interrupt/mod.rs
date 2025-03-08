@@ -1,9 +1,10 @@
 use crate::architecture::ExecutionUnitIdentifier;
 use crate::driver::xapic::XApic;
 use crate::driver::xapic::XApicRegisters;
+use crate::kernel::KernelTimer;
 use crate::kernel::logger::println;
 use crate::kernel::memory::KernelMemoryManager;
-use crate::kernel::KernelTimer;
+use crate::synchronization::Mutex;
 use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
@@ -12,7 +13,6 @@ use pic8259::ChainedPics;
 use x86::cpuid::CpuId;
 use x86_64::structures::idt::InterruptDescriptorTable;
 use x86_64::structures::idt::InterruptStackFrame;
-use crate::synchronization::Mutex;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

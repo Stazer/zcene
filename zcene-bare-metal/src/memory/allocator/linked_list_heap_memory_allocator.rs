@@ -1,5 +1,5 @@
-use core::alloc::{Allocator, AllocError, GlobalAlloc, Layout};
-use core::ptr::{null_mut, NonNull};
+use core::alloc::{AllocError, Allocator, GlobalAlloc, Layout};
+use core::ptr::{NonNull, null_mut};
 use linked_list_allocator::LockedHeap;
 use ztd::Constructor;
 
@@ -8,7 +8,7 @@ use ztd::Constructor;
 #[derive(Constructor)]
 pub struct LinkedListHeapMemoryAllocator(LockedHeap);
 
-unsafe impl Allocator for LinkedListHeapMemoryAllocator{
+unsafe impl Allocator for LinkedListHeapMemoryAllocator {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         NonNull::new(unsafe { self.0.alloc(layout) })
             .map(|pointer| unsafe { NonNull::slice_from_raw_parts(pointer, layout.size()) })

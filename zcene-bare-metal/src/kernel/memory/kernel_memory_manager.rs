@@ -1,40 +1,40 @@
-use crate::architecture::Stack;
 use crate::architecture::FRAME_SIZE;
+use crate::architecture::Stack;
+use crate::common::As;
 use crate::kernel::memory::KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR;
+use crate::kernel::memory::KernelHeapMemoryAllocator;
+use crate::memory::address::PhysicalMemoryAddress;
+use crate::memory::address::PhysicalMemoryAddressPerspective;
+use crate::memory::address::VirtualMemoryAddress;
+use crate::memory::address::VirtualMemoryAddressPerspective;
+use crate::memory::allocator::EmptyHeapMemoryAllocator;
+use crate::memory::allocator::FrameManager;
+use crate::memory::allocator::FrameManagerAllocationError;
+use crate::memory::region::VirtualMemoryRegion;
 use alloc::alloc::Global;
-use bootloader_api::info::MemoryRegionKind;
 use bootloader_api::BootInfo;
+use bootloader_api::info::MemoryRegionKind;
 use core::alloc::Allocator;
 use core::iter::once;
 use core::slice::from_raw_parts_mut;
 use x86_64::registers::control::Cr3;
-use x86_64::structures::paging::mapper::MapToError;
-use x86_64::structures::paging::page::AddressNotAligned;
 use x86_64::structures::paging::FrameAllocator;
 use x86_64::structures::paging::OffsetPageTable;
-use crate::memory::allocator::EmptyHeapMemoryAllocator;
 use x86_64::structures::paging::Page;
 use x86_64::structures::paging::PageSize;
 use x86_64::structures::paging::PageTable;
 use x86_64::structures::paging::PageTableFlags;
 use x86_64::structures::paging::Size4KiB;
+use x86_64::structures::paging::mapper::MapToError;
+use x86_64::structures::paging::page::AddressNotAligned;
 use x86_64::structures::paging::{Mapper, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
-use crate::common::As;
-use crate::memory::address::PhysicalMemoryAddress;
-use crate::memory::address::PhysicalMemoryAddressPerspective;
-use crate::memory::address::VirtualMemoryAddress;
-use crate::memory::address::VirtualMemoryAddressPerspective;
-use crate::memory::allocator::FrameManager;
-use crate::memory::allocator::FrameManagerAllocationError;
-use crate::memory::region::VirtualMemoryRegion;
-use crate::kernel::memory::KernelHeapMemoryAllocator;
 use ztd::Method;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use alloc::vec::Vec;
 use crate::memory::allocator::FrameIdentifier;
+use alloc::vec::Vec;
 
 #[derive(Constructor)]
 pub struct UserStack {
@@ -417,15 +417,18 @@ impl KernelMemoryManager {
             )
         });
 
-        let (pointer, allocator) = Arc::into_raw_with_allocator(Arc::<
-            KernelHeapMemoryAllocator,
-            KernelHeapMemoryAllocator,
-        >::try_new_uninit_in(
-            allocator
-        )?);
+        let (pointer, allocator) =
+            Arc::into_raw_with_allocator(Arc::<
+                KernelHeapMemoryAllocator,
+                KernelHeapMemoryAllocator,
+            >::try_new_uninit_in(allocator)?);
         unsafe { pointer.cast_mut().write(MaybeUninit::new(allocator)) };
-        let arc =
-            unsafe { Arc::from_raw_in(pointer.cast::<KernelHeapMemoryAllocator>(), EmptyHeapMemoryAllocator) };
+        let arc = unsafe {
+            Arc::from_raw_in(
+                pointer.cast::<KernelHeapMemoryAllocator>(),
+                EmptyHeapMemoryAllocator,
+            )
+        };
 
         unsafe {
             KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR.initialize(arc);

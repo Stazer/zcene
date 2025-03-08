@@ -1,7 +1,7 @@
+use core::alloc::Allocator;
 use core::alloc::{AllocError, GlobalAlloc, Layout};
 use core::ptr::NonNull;
-use linked_list_allocator::{LockedHeap};
-use core::alloc::Allocator;
+use linked_list_allocator::LockedHeap;
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

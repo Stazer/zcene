@@ -80,12 +80,13 @@ where
                 };
 
                 // TODO: Handle result
-                let _result = self.handle(
-                    <FutureRuntimeActorEnvironment<H> as ActorEnvironment>::HandleContext::<
-                        A::Message,
-                    >::new(message),
-                )
-                .await;
+                let _result = self
+                    .handle(
+                        <FutureRuntimeActorEnvironment<H> as ActorEnvironment>::HandleContext::<
+                            A::Message,
+                        >::new(message),
+                    )
+                    .await;
             }
 
             // TODO: Handle result

@@ -1,9 +1,9 @@
 use crate::driver::xapic::XApicRegisters;
-use core::time::Duration;
-use x86::msr::rdmsr;
-use x86::msr::APIC_BASE;
 use crate::memory::address::PhysicalMemoryAddress;
 use crate::time::Timer;
+use core::time::Duration;
+use x86::msr::APIC_BASE;
+use x86::msr::rdmsr;
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

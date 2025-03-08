@@ -27,22 +27,22 @@ extern crate alloc;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+pub mod actor;
+pub mod architecture;
+pub mod common;
+pub mod driver;
+pub mod kernel;
 pub mod memory;
 pub mod synchronization;
 pub mod time;
-pub mod actor;
-pub mod architecture;
-pub mod driver;
-pub mod common;
-pub mod kernel;
 
 pub mod r#extern {
     pub use bootloader_api;
 }
 
 use crate::kernel::Kernel;
-use core::mem::MaybeUninit;
 use core::cell::SyncUnsafeCell;
+use core::mem::MaybeUninit;
 
 pub static KERNEL: SyncUnsafeCell<MaybeUninit<Kernel>> = SyncUnsafeCell::new(MaybeUninit::zeroed());
 
@@ -50,9 +50,11 @@ pub static KERNEL: SyncUnsafeCell<MaybeUninit<Kernel>> = SyncUnsafeCell::new(May
 macro_rules! define_system {
     ($exp:expr) => {
         static BOOTLOADER_CONFIG: ::zcene_bare_metal::r#extern::bootloader_api::BootloaderConfig = {
-            let mut config = ::zcene_bare_metal::r#extern::bootloader_api::BootloaderConfig::new_default();
+            let mut config =
+                ::zcene_bare_metal::r#extern::bootloader_api::BootloaderConfig::new_default();
             config.kernel_stack_size = 4 * 4096;
-            config.mappings.physical_memory = Some(::zcene_bare_metal::r#extern::bootloader_api::config::Mapping::Dynamic);
+            config.mappings.physical_memory =
+                Some(::zcene_bare_metal::r#extern::bootloader_api::config::Mapping::Dynamic);
 
             config
         };

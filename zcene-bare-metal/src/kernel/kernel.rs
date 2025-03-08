@@ -1,19 +1,19 @@
+use crate::KERNEL;
+use crate::kernel::KernelTimer;
 use crate::kernel::future::runtime::{KernelFutureRuntime, KernelFutureRuntimeHandler};
 use crate::kernel::interrupt::KernelInterruptManager;
-use crate::kernel::logger::println;
 use crate::kernel::logger::KernelLogger;
+use crate::kernel::logger::println;
 use crate::kernel::memory::{KernelMemoryManager, KernelMemoryManagerInitializeError};
-use crate::kernel::KernelTimer;
+use crate::memory::address::PhysicalMemoryAddress;
+use crate::memory::allocator::FrameManagerAllocationError;
 use bootloader_api::BootInfo;
 use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
 use bootloader_x86_64_common::serial::SerialPort;
 use core::cell::SyncUnsafeCell;
 use core::fmt::{self, Write};
 use core::mem::MaybeUninit;
-use crate::memory::address::PhysicalMemoryAddress;
-use crate::memory::allocator::FrameManagerAllocationError;
 use zcene_core::actor::ActorEnvironment;
-use crate::KERNEL;
 use zcene_core::actor::ActorSpawnError;
 use zcene_core::actor::{self, Actor, ActorHandleError, ActorSystemCreateError};
 use zcene_core::actor::{ActorCreateError, ActorDestroyError, ActorMessage, ActorMessageSender};
@@ -260,15 +260,15 @@ impl Kernel {
         use crate::actor::actor_system_call_entry_point;
         use alloc::boxed::Box;
         use x86::current::rflags::RFlags;
-        use x86::msr::{rdmsr, wrmsr, IA32_EFER};
+        use x86::msr::{IA32_EFER, rdmsr, wrmsr};
         use x86::msr::{IA32_FMASK, IA32_LSTAR, IA32_STAR};
+        use x86_64::VirtAddr;
         use x86_64::instructions::segmentation::Segment;
         use x86_64::instructions::tables::load_tss;
         use x86_64::registers::segmentation::CS;
         use x86_64::structures::gdt::GlobalDescriptorTable;
         use x86_64::structures::gdt::{Descriptor, DescriptorFlags};
         use x86_64::structures::tss::TaskStateSegment;
-        use x86_64::VirtAddr;
 
         let ring0_stack = memory_manager
             .allocate_stack()
@@ -292,7 +292,7 @@ impl Kernel {
             DescriptorFlags::KERNEL_CODE64.bits(),
         )); // 8
         let kernel_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_DATA.bits())); // 16
-                                                                                                    // order is very important!
+        // order is very important!
         let user_code32 = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE32.bits())); // 24
         let user_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_DATA.bits())); // 32
         let user_code64 = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits())); // 40

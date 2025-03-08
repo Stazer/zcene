@@ -1,7 +1,7 @@
+use crate::memory::address::{MemoryAddress, MemoryAddressPerspective};
 use core::arch::asm;
 use x86_64::registers::rflags::RFlags;
 use x86_64::structures::gdt::SegmentSelector;
-use crate::memory::address::{MemoryAddress, MemoryAddressPerspective};
 use ztd::Method;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
