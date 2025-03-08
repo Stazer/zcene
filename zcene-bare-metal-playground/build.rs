@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("cargo:rerun-if-changed=build.rs");
     println!(
-        "cargo:rustc-link-arg-bins=--script={}/linker.ld",
+        "cargo:rustc-link-arg-bins=--script={}/../zcene-bare-metal/linker.ld",
         manifest_dir.display(),
     );
 

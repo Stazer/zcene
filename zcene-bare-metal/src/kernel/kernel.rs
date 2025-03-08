@@ -13,6 +13,7 @@ use core::mem::MaybeUninit;
 use crate::memory::address::PhysicalMemoryAddress;
 use crate::memory::frame::FrameManagerAllocationError;
 use zcene_core::actor::ActorEnvironment;
+use crate::KERNEL;
 use zcene_core::actor::ActorSpawnError;
 use zcene_core::actor::{self, Actor, ActorHandleError, ActorSystemCreateError};
 use zcene_core::actor::{ActorCreateError, ActorDestroyError, ActorMessage, ActorMessageSender};
@@ -411,7 +412,7 @@ impl Kernel {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub static KERNEL: SyncUnsafeCell<MaybeUninit<Kernel>> = SyncUnsafeCell::new(MaybeUninit::zeroed());
+/*pub static KERNEL: SyncUnsafeCell<MaybeUninit<Kernel>> = SyncUnsafeCell::new(MaybeUninit::zeroed());
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -433,4 +434,4 @@ static BOOTLOADER_CONFIG: BootloaderConfig = {
 entry_point!(
     Kernel::bootstrap_processor_entry_point,
     config = &BOOTLOADER_CONFIG
-);
+);*/

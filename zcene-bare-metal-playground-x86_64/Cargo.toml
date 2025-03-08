@@ -1,5 +1,5 @@
 [package]
-name = "zcene-bare-metal-x86_64"
+name = "zcene-bare-metal-playground-x86_64"
 version = "0.0.0"
 edition = "2021"
 

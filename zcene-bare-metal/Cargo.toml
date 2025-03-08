@@ -1,6 +1,6 @@
 [package]
 name = "zcene-bare-metal"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2024"
 
 [dependencies]
@@ -17,6 +17,3 @@ x86_64 = { version = "0.15", features = ["abi_x86_interrupt", "instructions"] }
 zcene-core = { path = "../zcene-core" }
 spin = "*"
 ztd = { git = "https://github.com/Stazer/ztd.git" }
-
-[build-dependencies]
-glob = "*"

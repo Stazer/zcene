@@ -13,9 +13,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("cargo:rerun-if-changed={}", target_path.display());
 
-    let image_builder = DiskImageBuilder::new(target_path.join("zcene-bare-metal"));
-    image_builder.create_uefi_image(&target_path.join("zcene-bare-metal-x86_64-uefi.img"))?;
-    image_builder.create_bios_image(&target_path.join("zcene-bare-metal-x86_64-bios.img"))?;
+    let image_builder = DiskImageBuilder::new(target_path.join("zcene-bare-metal-playground"));
+    image_builder.create_uefi_image(&target_path.join("zcene-bare-metal-playground-x86_64-uefi.img"))?;
+    image_builder.create_bios_image(&target_path.join("zcene-bare-metal-playground-x86_64-bios.img"))?;
 
     Ok(())
 }
