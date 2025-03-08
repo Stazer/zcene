@@ -1,5 +1,5 @@
 use core::alloc::{AllocError, Allocator, GlobalAlloc, Layout};
-use core::ptr::{NonNull, null_mut};
+use core::ptr::NonNull;
 use linked_list_allocator::LockedHeap;
 use ztd::Constructor;
 
@@ -15,17 +15,17 @@ unsafe impl Allocator for LinkedListHeapMemoryAllocator {
             .ok_or(AllocError)
     }
 
-    unsafe fn deallocate(&self, mut data: NonNull<u8>, layout: Layout) {
+    unsafe fn deallocate(&self, mut data: NonNull<u8>, layout: Layout) { unsafe {
         self.dealloc(data.as_mut(), layout)
-    }
+    }}
 }
 
 unsafe impl GlobalAlloc for LinkedListHeapMemoryAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 { unsafe {
         self.0.alloc(layout)
-    }
+    }}
 
-    unsafe fn dealloc(&self, data: *mut u8, layout: Layout) {
+    unsafe fn dealloc(&self, data: *mut u8, layout: Layout) { unsafe {
         self.0.dealloc(data, layout)
-    }
+    }}
 }

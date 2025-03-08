@@ -26,11 +26,11 @@ impl KernelGlobalHeapMemoryAllocator {
 }
 
 unsafe impl GlobalAlloc for KernelGlobalHeapMemoryAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 { unsafe {
         unsafe { self.0.get().as_mut().unwrap().assume_init_ref() }.alloc(layout)
-    }
+    }}
 
-    unsafe fn dealloc(&self, data: *mut u8, layout: Layout) {
+    unsafe fn dealloc(&self, data: *mut u8, layout: Layout) { unsafe {
         unsafe { self.0.get().as_mut().unwrap().assume_init_ref() }.dealloc(data, layout)
-    }
+    }}
 }

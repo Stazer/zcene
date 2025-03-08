@@ -14,7 +14,7 @@ impl AcpiHandler for PhysicalMemoryOffsetAcpiHandler {
         &self,
         physical_address: usize,
         size: usize,
-    ) -> PhysicalMapping<Self, T> {
+    ) -> PhysicalMapping<Self, T> { unsafe {
         PhysicalMapping::new(
             physical_address,
             NonNull::new((physical_address + self.physical_memory_offset) as *mut T).unwrap(),
@@ -22,7 +22,7 @@ impl AcpiHandler for PhysicalMemoryOffsetAcpiHandler {
             size,
             self.clone(),
         )
-    }
+    }}
 
     fn unmap_physical_region<T>(region: &PhysicalMapping<Self, T>) {}
 }

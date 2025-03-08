@@ -434,7 +434,7 @@ where
 }
 
 #[naked]
-pub unsafe extern "C" fn actor_deadline_preemption_entry_point() {
+pub unsafe extern "C" fn actor_deadline_preemption_entry_point() { unsafe {
     naked_asm!(
         //
         // Save user context
@@ -473,7 +473,7 @@ pub unsafe extern "C" fn actor_deadline_preemption_entry_point() {
         "jmp actor_deadline_preemption_restore",
         emergency_halt!(),
     )
-}
+}}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn actor_deadline_preemption_restore(
@@ -484,7 +484,7 @@ pub extern "C" fn actor_deadline_preemption_restore(
 }
 
 #[naked]
-pub unsafe extern "C" fn actor_system_call_entry_point() -> ! {
+pub unsafe extern "C" fn actor_system_call_entry_point() -> ! { unsafe {
     naked_asm!(
         //
         // Store user context
@@ -507,7 +507,7 @@ pub unsafe extern "C" fn actor_system_call_entry_point() -> ! {
         "jmp actor_system_call_restore",
         emergency_halt!(),
     )
-}
+}}
 
 #[unsafe(no_mangle)]
 #[inline(never)]

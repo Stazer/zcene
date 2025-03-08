@@ -38,9 +38,12 @@ use crate::memory::allocator::FrameIdentifier;
 use alloc::vec::Vec;
 
 #[derive(Constructor)]
-pub struct UserStack {
+pub struct UserStack<A>
+where
+    A: Allocator,
+{
     region: VirtualMemoryRegion,
-    frames: Vec<FrameIdentifier>,
+    frames: Vec<FrameIdentifier, A>,
     dirty: bool,
 }
 
