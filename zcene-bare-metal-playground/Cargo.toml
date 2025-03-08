@@ -4,6 +4,7 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
+zcene-core = { path = "../zcene-core" }
 zcene-bare-metal = { path = "../zcene-bare-metal" }
 
 [build-dependencies]

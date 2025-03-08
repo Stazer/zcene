@@ -25,8 +25,8 @@ use crate::memory::address::PhysicalMemoryAddress;
 use crate::memory::address::PhysicalMemoryAddressPerspective;
 use crate::memory::address::VirtualMemoryAddress;
 use crate::memory::address::VirtualMemoryAddressPerspective;
-use crate::memory::frame::FrameManager;
-use crate::memory::frame::FrameManagerAllocationError;
+use crate::memory::allocator::FrameManager;
+use crate::memory::allocator::FrameManagerAllocationError;
 use crate::memory::region::VirtualMemoryRegion;
 use crate::kernel::memory::KernelHeapMemoryAllocator;
 use ztd::Method;
@@ -34,7 +34,7 @@ use ztd::Method;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 use alloc::vec::Vec;
-use crate::memory::frame::FrameIdentifier;
+use crate::memory::allocator::FrameIdentifier;
 
 #[derive(Constructor)]
 pub struct UserStack {

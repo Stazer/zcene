@@ -241,6 +241,7 @@ where
                         ActorIsolationExecutorSystemCallType::SendMessageCopy(mailbox, message) => {
                             match self.message_handlers.get(mailbox) {
                                 Some(handler) => {
+                                    // TODO: Handle reset
                                     let _result =
                                         handler.send(&self.allocator, message as *const ()).await;
                                 }
@@ -468,12 +469,8 @@ pub unsafe extern "C" fn actor_deadline_preemption_entry_point() {
         // Perform restore
         //
         "pop rsi",
-        "call actor_deadline_preemption_restore",
-        "ret",
-        //
-        // Emergency halt
-        //
-        "hlt",
+        "jmp actor_deadline_preemption_restore",
+        emergency_halt!(),
     )
 }
 
@@ -506,8 +503,7 @@ pub unsafe extern "C" fn actor_system_call_entry_point() -> ! {
         //
         "mov rdx, r8",
         "pop rcx",
-        "call actor_system_call_restore",
-        "ret",
+        "jmp actor_system_call_restore",
         emergency_halt!(),
     )
 }

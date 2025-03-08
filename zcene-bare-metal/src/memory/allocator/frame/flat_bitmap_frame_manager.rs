@@ -1,6 +1,6 @@
 use crate::common::bits::{BitField, BitFieldLeftToRight};
 use crate::memory::address::{MemoryAddress, MemoryAddressPerspective};
-use crate::memory::frame::FrameIdentifier;
+use crate::memory::allocator::frame::FrameIdentifier;
 use core::marker::PhantomData;
 use core::ops::Range;
 

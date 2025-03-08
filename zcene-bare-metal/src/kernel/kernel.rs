@@ -11,7 +11,7 @@ use core::cell::SyncUnsafeCell;
 use core::fmt::{self, Write};
 use core::mem::MaybeUninit;
 use crate::memory::address::PhysicalMemoryAddress;
-use crate::memory::frame::FrameManagerAllocationError;
+use crate::memory::allocator::FrameManagerAllocationError;
 use zcene_core::actor::ActorEnvironment;
 use crate::KERNEL;
 use zcene_core::actor::ActorSpawnError;

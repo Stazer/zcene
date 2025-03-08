@@ -1,5 +1,5 @@
 use crate::memory::address::MemoryAddressPerspective;
-use crate::memory::frame::FlatBitmapFrameManager;
+use crate::memory::allocator::FlatBitmapFrameManager;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
