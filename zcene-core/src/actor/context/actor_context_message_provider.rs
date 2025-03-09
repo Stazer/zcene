@@ -8,3 +8,10 @@ where
 {
     fn message(&self) -> &M;
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub trait ActorContextExtension<T>: ActorCommonBounds
+{
+    fn resolve(&self) -> T;
+}
