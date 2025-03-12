@@ -8,8 +8,9 @@ pub trait ActorEnvironment: ActorCommonBounds + Sized {
         A: Actor<Self>;
 
     type CreateContext: ActorCommonBounds;
-    type DestroyContext: ActorCommonBounds;
+    type CreateContext2<'a>: Send + Sync = ();
     type HandleContext<M>: ActorCommonBounds
     where
         M: ActorMessage;
+    type DestroyContext: ActorCommonBounds;
 }

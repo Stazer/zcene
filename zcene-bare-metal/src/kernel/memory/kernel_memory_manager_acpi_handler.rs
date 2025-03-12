@@ -16,19 +16,21 @@ impl<'a> AcpiHandler for KernelMemoryManagerAcpiHandler<'a> {
         &self,
         physical_address: usize,
         size: usize,
-    ) -> PhysicalMapping<Self, T> { unsafe {
-        let address = self
-            .memory_manager
-            .translate_physical_memory_address(PhysicalMemoryAddress::from(physical_address));
+    ) -> PhysicalMapping<Self, T> {
+        unsafe {
+            let address = self
+                .memory_manager
+                .translate_physical_memory_address(PhysicalMemoryAddress::from(physical_address));
 
-        PhysicalMapping::new(
-            physical_address,
-            NonNull::new(address.cast_mut::<T>()).unwrap(),
-            size,
-            size,
-            self.clone(),
-        )
-    }}
+            PhysicalMapping::new(
+                physical_address,
+                NonNull::new(address.cast_mut::<T>()).unwrap(),
+                size,
+                size,
+                self.clone(),
+            )
+        }
+    }
 
     fn unmap_physical_region<T>(_region: &PhysicalMapping<Self, T>) {}
 }

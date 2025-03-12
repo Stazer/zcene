@@ -1,9 +1,10 @@
-macro_rules! print {
+#[macro_export]
+macro_rules! __print {
     ($format_string:expr) => {
         {
             use ::core::fmt::Write;
 
-            let _ = crate::kernel::Kernel::get()
+            let _ = $crate::kernel::Kernel::get()
                 .logger()
                 .writer(|w| write!(w, $format_string));
         }
@@ -12,11 +13,11 @@ macro_rules! print {
         {
             use ::core::fmt::Write;
 
-            let _ = crate::kernel::Kernel::get()
+            let _ = $crate::kernel::Kernel::get()
                 .logger()
                 .writer(|w| write!(w, $format_string, $($expressions),+));
         }
     };
 }
 
-pub(crate) use print;
+pub use __print as print;

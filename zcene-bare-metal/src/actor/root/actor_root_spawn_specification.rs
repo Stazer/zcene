@@ -2,8 +2,8 @@ use crate::actor::{ActorRootEnvironment, ActorRootEnvironmentExecutor};
 use core::marker::PhantomData;
 use core::num::NonZero;
 use zcene_core::actor::{
-    Actor, ActorCommonContextBuilder, ActorEnvironment, ActorEnvironmentSpawnable,
-    ActorMessageChannel, ActorSpawnError,
+    Actor, ActorEnvironment, ActorEnvironmentSpawnable,
+    ActorMessageChannel, ActorSpawnError, ActorSystemReference,
 };
 use zcene_core::future::runtime::FutureRuntimeHandler;
 use ztd::Constructor;
@@ -30,33 +30,12 @@ where
 {
     fn spawn(
         self,
-        environment: &ActorRootEnvironment<H>,
+        system: &ActorSystemReference<ActorRootEnvironment<H>>,
     ) -> Result<<ActorRootEnvironment<H> as ActorEnvironment>::Address<A>, ActorSpawnError> {
         let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
 
-        environment.future_runtime().spawn(
-            /*async move {
-                self.actor.create(()).await;
-
-                loop {
-                    let message = match receiver.receive().await {
-                        Some(message) => message,
-                        None => break,
-                    };
-
-                    self.actor.handle(zcene_core::actor::ActorCommonHandleContext::new(message)).await;
-                }
-
-                self.actor.destroy(()).await;
-            }*/
-            ActorRootEnvironmentExecutor::new(
-                //Some(ActorRootEnvironmentExecutorCreateState::new(self.actor).into()),
-                self.actor,
-                receiver,
-                ActorCommonContextBuilder::default(),
-                None,
-            )
-            .run(),
+        system.environment().future_runtime().spawn(
+            ActorRootEnvironmentExecutor::new(system.clone(), self.actor, receiver, None).run(),
         )?;
 
         Ok(<ActorRootEnvironment<H> as ActorEnvironment>::Address::new(

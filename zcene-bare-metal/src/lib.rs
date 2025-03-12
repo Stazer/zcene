@@ -41,14 +41,17 @@ pub mod r#extern {
 }
 
 use crate::kernel::Kernel;
+use alloc::alloc::Global;
+use alloc::sync::Arc;
 use core::cell::SyncUnsafeCell;
 use core::mem::MaybeUninit;
 
-pub static KERNEL: SyncUnsafeCell<MaybeUninit<Kernel>> = SyncUnsafeCell::new(MaybeUninit::zeroed());
+pub static KERNEL: SyncUnsafeCell<MaybeUninit<Arc<Kernel, Global>>> =
+    SyncUnsafeCell::new(MaybeUninit::zeroed());
 
 #[macro_export]
 macro_rules! define_system {
-    ($exp:expr) => {
+    ($root_actor:expr) => {
         static BOOTLOADER_CONFIG: ::zcene_bare_metal::r#extern::bootloader_api::BootloaderConfig = {
             let mut config =
                 ::zcene_bare_metal::r#extern::bootloader_api::BootloaderConfig::new_default();
@@ -59,8 +62,17 @@ macro_rules! define_system {
             config
         };
 
+        fn entry_point(
+            boot_info: &'static mut ::zcene_bare_metal::r#extern::bootloader_api::BootInfo,
+        ) -> ! {
+            ::zcene_bare_metal::kernel::Kernel::bootstrap_processor_entry_point(
+                boot_info,
+                $root_actor,
+            )
+        }
+
         ::zcene_bare_metal::r#extern::bootloader_api::entry_point!(
-            ::zcene_bare_metal::kernel::Kernel::bootstrap_processor_entry_point,
+            entry_point,
             config = &BOOTLOADER_CONFIG
         );
     };

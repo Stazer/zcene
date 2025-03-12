@@ -694,7 +694,7 @@ impl KernelMemoryManager {
         Some(Stack::new(first_address, stack_size))
     }
 
-    pub fn heap_allocator(&self) -> impl Allocator {
+    pub fn heap_allocator(&self) -> impl Allocator + Clone {
         Global
     }
 }

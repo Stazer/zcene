@@ -434,46 +434,48 @@ where
 }
 
 #[naked]
-pub unsafe extern "C" fn actor_deadline_preemption_entry_point() { unsafe {
-    naked_asm!(
-        //
-        // Save user context
-        //
-        "push r15",
-        "push r14",
-        "push r13",
-        "push r12",
-        "push r11",
-        "push r10",
-        "push r9",
-        "push r8",
-        "push rbp",
-        "push rdi",
-        "push rsi",
-        "push rdx",
-        "push rcx",
-        "push rbx",
-        "push rax",
-        //
-        // Save interrupt stack
-        //
-        "mov rdi, rsp",
-        //
-        // Load kernel stack
-        //
-        "mov rcx, 0xC0000102",
-        "rdmsr",
-        "shl rdx, 32",
-        "or rax, rdx",
-        "mov rsp, rax",
-        //
-        // Perform restore
-        //
-        "pop rsi",
-        "jmp actor_deadline_preemption_restore",
-        emergency_halt!(),
-    )
-}}
+pub unsafe extern "C" fn actor_deadline_preemption_entry_point() {
+    unsafe {
+        naked_asm!(
+            //
+            // Save user context
+            //
+            "push r15",
+            "push r14",
+            "push r13",
+            "push r12",
+            "push r11",
+            "push r10",
+            "push r9",
+            "push r8",
+            "push rbp",
+            "push rdi",
+            "push rsi",
+            "push rdx",
+            "push rcx",
+            "push rbx",
+            "push rax",
+            //
+            // Save interrupt stack
+            //
+            "mov rdi, rsp",
+            //
+            // Load kernel stack
+            //
+            "mov rcx, 0xC0000102",
+            "rdmsr",
+            "shl rdx, 32",
+            "or rax, rdx",
+            "mov rsp, rax",
+            //
+            // Perform restore
+            //
+            "pop rsi",
+            "jmp actor_deadline_preemption_restore",
+            emergency_halt!(),
+        )
+    }
+}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn actor_deadline_preemption_restore(
@@ -484,30 +486,32 @@ pub extern "C" fn actor_deadline_preemption_restore(
 }
 
 #[naked]
-pub unsafe extern "C" fn actor_system_call_entry_point() -> ! { unsafe {
-    naked_asm!(
-        //
-        // Store user context
-        //
-        "mov r9, rcx",
-        "mov r10, rsp",
-        //
-        // Load kernel stack
-        //
-        "mov rcx, 0xC0000102",
-        "rdmsr",
-        "shl rdx, 32",
-        "or rax, rdx",
-        "mov rsp, rax",
-        //
-        // Restore
-        //
-        "mov rdx, r8",
-        "pop rcx",
-        "jmp actor_system_call_restore",
-        emergency_halt!(),
-    )
-}}
+pub unsafe extern "C" fn actor_system_call_entry_point() -> ! {
+    unsafe {
+        naked_asm!(
+            //
+            // Store user context
+            //
+            "mov r9, rcx",
+            "mov r10, rsp",
+            //
+            // Load kernel stack
+            //
+            "mov rcx, 0xC0000102",
+            "rdmsr",
+            "shl rdx, 32",
+            "or rax, rdx",
+            "mov rsp, rax",
+            //
+            // Restore
+            //
+            "mov rdx, r8",
+            "pop rcx",
+            "jmp actor_system_call_restore",
+            emergency_halt!(),
+        )
+    }
+}
 
 #[unsafe(no_mangle)]
 #[inline(never)]

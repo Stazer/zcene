@@ -1,7 +1,7 @@
 use crate::actor::{
     Actor, ActorCommonHandleContext, ActorEnterError, ActorEnvironment, ActorEnvironmentAllocator,
     ActorEnvironmentEnterable, ActorEnvironmentSpawnable, ActorMessage, ActorMessageChannel,
-    ActorMessageChannelAddress, ActorSpawnError,
+    ActorMessageChannelAddress, ActorSpawnError, ActorSystemReference,
 };
 use crate::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
 use ztd::Constructor;
@@ -48,8 +48,11 @@ impl<H> ActorEnvironmentEnterable<FutureRuntimeActorEnvironment<H>> for ()
 where
     H: FutureRuntimeHandler,
 {
-    fn enter(self, environment: &FutureRuntimeActorEnvironment<H>) -> Result<(), ActorEnterError> {
-        environment.future_runtime.run();
+    fn enter(
+        self,
+        environment: &ActorSystemReference<FutureRuntimeActorEnvironment<H>>,
+    ) -> Result<(), ActorEnterError> {
+        environment.environment().future_runtime.run();
 
         Ok(())
     }
@@ -62,14 +65,14 @@ where
 {
     fn spawn(
         mut self,
-        environment: &FutureRuntimeActorEnvironment<H>,
+        system: &ActorSystemReference<FutureRuntimeActorEnvironment<H>>,
     ) -> Result<<FutureRuntimeActorEnvironment<H> as ActorEnvironment>::Address<A>, ActorSpawnError>
     {
         let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
 
         let address = <FutureRuntimeActorEnvironment<H> as ActorEnvironment>::Address::new(sender);
 
-        environment.future_runtime.spawn(async move {
+        system.environment().future_runtime.spawn(async move {
             // TODO: Handle result
             let _result = self.create(()).await;
 
@@ -81,11 +84,7 @@ where
 
                 // TODO: Handle result
                 let _result = self
-                    .handle(
-                        <FutureRuntimeActorEnvironment<H> as ActorEnvironment>::HandleContext::<
-                            A::Message,
-                        >::new(message),
-                    )
+                    .handle(ActorCommonHandleContext::new(message))
                     .await;
             }
 

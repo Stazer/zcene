@@ -37,30 +37,40 @@ where
         self.environment.allocator()
     }
 
-    pub fn spawn<A, S>(&self, spawnable: S) -> Result<S::Address, ActorSpawnError>
+    pub fn spawn<A, S>(
+        self: &ActorSystemReference<E>,
+        spawnable: S,
+    ) -> Result<S::Address, ActorSpawnError>
     where
         A: Actor<E>,
+        E: ActorEnvironmentAllocator,
         S: ActorEnvironmentSpawnable<A, E>,
     {
-        spawnable.spawn(&self.environment)
+        spawnable.spawn(&self)
     }
 
-    pub fn enter_with<S>(&self, enterable: S) -> Result<(), ActorEnterError>
+    pub fn enter_with<S>(
+        self: &ActorSystemReference<E>,
+        enterable: S,
+    ) -> Result<(), ActorEnterError>
     where
+        E: ActorEnvironmentAllocator,
         S: ActorEnvironmentEnterable<E>,
     {
-        enterable.enter(&self.environment)
+        enterable.enter(self)
     }
 
-    pub fn enter_default<S>(&self) -> Result<(), ActorEnterError>
+    pub fn enter_default<S>(self: &ActorSystemReference<E>) -> Result<(), ActorEnterError>
     where
+        E: ActorEnvironmentAllocator,
         S: ActorEnvironmentEnterable<E> + Default,
     {
-        S::default().enter(&self.environment)
+        S::default().enter(self)
     }
 
-    pub fn enter(&self) -> Result<(), ActorEnterError>
+    pub fn enter(self: &ActorSystemReference<E>) -> Result<(), ActorEnterError>
     where
+        E: ActorEnvironmentAllocator,
         (): ActorEnvironmentEnterable<E>,
     {
         self.enter_with(())

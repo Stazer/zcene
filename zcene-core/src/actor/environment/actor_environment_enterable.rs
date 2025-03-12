@@ -1,10 +1,12 @@
-pub use crate::actor::{ActorEnterError, ActorEnvironment};
+pub use crate::actor::{
+    ActorEnterError, ActorEnvironment, ActorEnvironmentAllocator, ActorSystemReference,
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub trait ActorEnvironmentEnterable<E>
 where
-    E: ActorEnvironment,
+    E: ActorEnvironment + ActorEnvironmentAllocator,
 {
-    fn enter(self, environment: &E) -> Result<(), ActorEnterError>;
+    fn enter(self, system: &ActorSystemReference<E>) -> Result<(), ActorEnterError>;
 }

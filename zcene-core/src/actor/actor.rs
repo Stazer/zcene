@@ -5,6 +5,8 @@ use crate::actor::{
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+use core::future::Future;
+
 pub trait Actor<E>: ActorCommonBounds + Sized
 where
     E: ActorEnvironment,
@@ -15,6 +17,13 @@ where
         &mut self,
         _context: E::CreateContext,
     ) -> impl ActorFuture<'_, Result<(), ActorCreateError>> {
+        async { Ok(()) }
+    }
+
+    fn create2<'a>(
+        &'a mut self,
+        _context: E::CreateContext2<'a>,
+    ) -> impl ActorFuture<'a, Result<(), ActorCreateError>> {
         async { Ok(()) }
     }
 

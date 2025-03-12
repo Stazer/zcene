@@ -23,17 +23,17 @@ impl Step for FrameIdentifier {
         Self::new(<usize as Step>::forward(start.0, count))
     }
 
-    unsafe fn forward_unchecked(start: Self, count: usize) -> Self { unsafe {
-        Self::new(<usize as Step>::forward_unchecked(start.0, count))
-    }}
+    unsafe fn forward_unchecked(start: Self, count: usize) -> Self {
+        unsafe { Self::new(<usize as Step>::forward_unchecked(start.0, count)) }
+    }
 
     fn backward(start: Self, count: usize) -> Self {
         Self::new(<usize as Step>::backward(start.0, count))
     }
 
-    unsafe fn backward_unchecked(start: Self, count: usize) -> Self { unsafe {
-        Self::new(<usize as Step>::backward_unchecked(start.0, count))
-    }}
+    unsafe fn backward_unchecked(start: Self, count: usize) -> Self {
+        unsafe { Self::new(<usize as Step>::backward_unchecked(start.0, count)) }
+    }
 }
 
 impl FrameIdentifier {

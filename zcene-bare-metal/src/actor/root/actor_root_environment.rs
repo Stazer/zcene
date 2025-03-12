@@ -1,9 +1,39 @@
 use zcene_core::actor::{
     Actor, ActorCommonHandleContext, ActorEnterError, ActorEnvironment, ActorEnvironmentAllocator,
-    ActorEnvironmentEnterable, ActorMessage, ActorMessageChannelAddress,
+    ActorEnvironmentEnterable, ActorMessage, ActorMessageChannelAddress, ActorSystemReference,
 };
 use zcene_core::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
 use ztd::{Constructor, Method};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Constructor, Method)]
+#[Method(accessors)]
+pub struct ActorRootEnvironmentCreateContext<H>
+where
+    H: FutureRuntimeHandler,
+{
+    system: ActorSystemReference<ActorRootEnvironment<H>>,
+}
+
+#[derive(Constructor, Method)]
+#[Method(accessors)]
+pub struct ActorRootEnvironmentCreateContext2<'a, H>
+where
+    H: FutureRuntimeHandler,
+{
+    system: &'a ActorSystemReference<ActorRootEnvironment<H>>,
+}
+
+
+#[derive(Constructor, Method)]
+#[Method(accessors)]
+pub struct ActorRootEnvironmentDestroyContext<H>
+where
+    H: FutureRuntimeHandler,
+{
+    system: ActorSystemReference<ActorRootEnvironment<H>>,
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -25,7 +55,8 @@ where
     where
         A: Actor<Self>;
 
-    type CreateContext = ();
+    type CreateContext = ActorRootEnvironmentCreateContext<H>;
+    type CreateContext2<'a> = ActorRootEnvironmentCreateContext2<'a, H>;
     type HandleContext<M>
         = ActorCommonHandleContext<M>
     where
@@ -48,8 +79,11 @@ impl<H> ActorEnvironmentEnterable<ActorRootEnvironment<H>> for ()
 where
     H: FutureRuntimeHandler,
 {
-    fn enter(self, environment: &ActorRootEnvironment<H>) -> Result<(), ActorEnterError> {
-        environment.future_runtime.run();
+    fn enter(
+        self,
+        system: &ActorSystemReference<ActorRootEnvironment<H>>,
+    ) -> Result<(), ActorEnterError> {
+        system.environment().future_runtime.run();
 
         Ok(())
     }

@@ -1,4 +1,11 @@
 use crate::KERNEL;
+use crate::actor::ActorIsolationMessageHandler;
+use crate::actor::ActorRootEnvironment;
+use crate::actor::actor_system_call_entry_point;
+use crate::actor::{
+    ActorIsolationAddress, ActorIsolationEnvironment, ActorIsolationSpawnSpecification,
+    ActorRootSpawnSpecification,
+};
 use crate::kernel::KernelTimer;
 use crate::kernel::future::runtime::{KernelFutureRuntime, KernelFutureRuntimeHandler};
 use crate::kernel::interrupt::KernelInterruptManager;
@@ -7,16 +14,39 @@ use crate::kernel::logger::println;
 use crate::kernel::memory::{KernelMemoryManager, KernelMemoryManagerInitializeError};
 use crate::memory::address::PhysicalMemoryAddress;
 use crate::memory::allocator::FrameManagerAllocationError;
+use alloc::alloc::Global;
+use alloc::boxed::Box;
+use alloc::sync::Arc;
+use alloc::vec;
 use bootloader_api::BootInfo;
 use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
 use bootloader_x86_64_common::serial::SerialPort;
+use core::alloc::AllocError;
 use core::fmt::{self, Write};
+use x86::current::rflags::RFlags;
+use x86::msr::{IA32_EFER, rdmsr, wrmsr};
+use x86::msr::{IA32_FMASK, IA32_LSTAR, IA32_STAR};
+use x86_64::VirtAddr;
+use x86_64::instructions::segmentation::Segment;
+use x86_64::instructions::tables::load_tss;
+use x86_64::registers::segmentation::CS;
+use x86_64::structures::gdt::GlobalDescriptorTable;
+use x86_64::structures::gdt::{Descriptor, DescriptorFlags};
+use x86_64::structures::tss::TaskStateSegment;
+use zcene_core::actor::ActorContextMessageProvider;
 use zcene_core::actor::ActorEnvironment;
+use zcene_core::actor::ActorMessageChannelAddress;
 use zcene_core::actor::ActorSpawnError;
 use zcene_core::actor::{self, Actor, ActorHandleError, ActorSystemCreateError};
 use zcene_core::actor::{ActorCreateError, ActorDestroyError, ActorMessage, ActorMessageSender};
+use zcene_core::actor::{ActorSystem, ActorSystemReference};
 use zcene_core::future::runtime::FutureRuntimeCreateError;
+use ztd::Constructor;
 use ztd::From;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub type KernelReference = Arc<Kernel, Global>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -31,6 +61,7 @@ pub enum KernelInitializeError {
     KernelMemoryManagerInitialize(KernelMemoryManagerInitializeError),
     ActorSpawn(ActorSpawnError),
     FutureRuntimeCreate(FutureRuntimeCreateError),
+    Allocation(AllocError),
     ActorSystemCreate(ActorSystemCreateError),
 }
 
@@ -140,24 +171,19 @@ where
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use crate::actor::ActorRootEnvironment;
-use zcene_core::actor::ActorContextMessageProvider;
-use zcene_core::actor::{ActorSystem, ActorSystemReference};
-use ztd::Constructor;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
 pub struct Kernel {
     logger: KernelLogger,
     memory_manager: KernelMemoryManager,
     actor_system: ActorSystemReference<ActorRootEnvironment<KernelFutureRuntimeHandler>>,
     interrupt_manager: KernelInterruptManager,
     timer: KernelTimer<'static>,
-    //timer_actor: KernelActorAddressReference<TimerActor>,
 }
 
 impl Kernel {
-    pub fn bootstrap_processor_entry_point(boot_info: &'static mut BootInfo) -> ! {
+    pub fn bootstrap_processor_entry_point<A>(boot_info: &'static mut BootInfo, actor: A) -> !
+    where
+        A: Actor<ActorRootEnvironment<KernelFutureRuntimeHandler>>,
+    {
         unsafe {
             KERNEL
                 .get()
@@ -165,17 +191,6 @@ impl Kernel {
                 .unwrap()
                 .write(Kernel::new(boot_info).unwrap());
         }
-
-        use crate::actor::{
-            ActorIsolationAddress, ActorIsolationEnvironment, ActorIsolationSpawnSpecification,
-            ActorRootEnvironment, ActorRootSpawnSpecification,
-        };
-
-        use crate::actor::ActorIsolationMessageHandler;
-        use alloc::boxed::Box;
-        use alloc::vec;
-
-        use zcene_core::actor::ActorMessageChannelAddress;
 
         let print_actor_address: ActorMessageChannelAddress<PrintActor, ActorRootEnvironment<_>> =
             Kernel::get()
@@ -185,6 +200,11 @@ impl Kernel {
                     None,
                 ))
                 .unwrap();
+
+        Kernel::get()
+            .actor_system()
+            .spawn(ActorRootSpawnSpecification::new(actor, None))
+            .unwrap();
 
         let unpriv_actor = Kernel::get()
             .actor_system()
@@ -223,7 +243,7 @@ impl Kernel {
         loop {}
     }
 
-    pub fn new(boot_info: &'static mut BootInfo) -> Result<Self, KernelInitializeError> {
+    pub fn new(boot_info: &'static mut BootInfo) -> Result<KernelReference, KernelInitializeError> {
         let mut logger = KernelLogger::new(
             boot_info.framebuffer.take().map(|frame_buffer| {
                 let info = frame_buffer.info().clone();
@@ -254,19 +274,6 @@ impl Kernel {
                 .into_option()
                 .map(PhysicalMemoryAddress::from),
         );
-
-        use crate::actor::actor_system_call_entry_point;
-        use alloc::boxed::Box;
-        use x86::current::rflags::RFlags;
-        use x86::msr::{IA32_EFER, rdmsr, wrmsr};
-        use x86::msr::{IA32_FMASK, IA32_LSTAR, IA32_STAR};
-        use x86_64::VirtAddr;
-        use x86_64::instructions::segmentation::Segment;
-        use x86_64::instructions::tables::load_tss;
-        use x86_64::registers::segmentation::CS;
-        use x86_64::structures::gdt::GlobalDescriptorTable;
-        use x86_64::structures::gdt::{Descriptor, DescriptorFlags};
-        use x86_64::structures::tss::TaskStateSegment;
 
         let ring0_stack = memory_manager
             .allocate_stack()
@@ -319,30 +326,8 @@ impl Kernel {
             wrmsr(IA32_FMASK, RFlags::FLAGS_IF.bits());
         }
 
-        /*logger.writer(|w| {
-            write!(
-                w,
-                "{:X?} {:X?} {:X?} {:X?} {:X?}\n",
-                ring0_stack,
-                gdt,
-                tss,
-                [kernel_code, kernel_data, user_code, user_data, tss_selector,],
-                [kernel_code.0, kernel_data.0, user_code.0, user_data.0,]
-            )
-        });*/
-
         Box::into_raw(tss);
-
         Box::into_raw(gdt);
-
-        /*logger.writer(|w| {
-            write!(
-                w,
-                "{:X?} {:X?}\n",
-                DescriptorFlags::USER_CODE64,
-                DescriptorFlags::USER_DATA
-            )
-        });*/
 
         let mut interrupt_manager = KernelInterruptManager::new();
         interrupt_manager.bootstrap_local_interrupt_manager({
@@ -370,7 +355,7 @@ impl Kernel {
             interrupt_manager,
         };
 
-        Ok(this)
+        Ok(KernelReference::try_new_in(this, Global.clone())?)
     }
 
     pub fn get<'a>() -> &'a Kernel {

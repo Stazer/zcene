@@ -1,13 +1,15 @@
-pub use crate::actor::{Actor, ActorEnvironment, ActorSpawnError};
+pub use crate::actor::{
+    Actor, ActorEnvironment, ActorEnvironmentAllocator, ActorSpawnError, ActorSystemReference,
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub trait ActorEnvironmentSpawnable<A, E>
 where
     A: Actor<E>,
-    E: ActorEnvironment,
+    E: ActorEnvironment + ActorEnvironmentAllocator,
 {
     type Address = E::Address<A>;
 
-    fn spawn(self, environment: &E) -> Result<Self::Address, ActorSpawnError>;
+    fn spawn(self, system: &ActorSystemReference<E>) -> Result<Self::Address, ActorSpawnError>;
 }

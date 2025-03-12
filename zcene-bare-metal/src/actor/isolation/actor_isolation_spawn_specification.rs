@@ -8,7 +8,7 @@ use core::marker::PhantomData;
 use core::num::NonZero;
 use zcene_core::actor::{
     Actor, ActorEnvironment, ActorEnvironmentAllocator, ActorEnvironmentSpawnable,
-    ActorMessageChannel, ActorSpawnError,
+    ActorMessageChannel, ActorSpawnError, ActorSystemReference,
 };
 use zcene_core::future::runtime::FutureRuntimeHandler;
 use ztd::Constructor;
@@ -44,13 +44,13 @@ where
 {
     fn spawn(
         self,
-        environment: &ActorRootEnvironment<H>,
+        system: &ActorSystemReference<ActorRootEnvironment<H>>,
     ) -> Result<<ActorRootEnvironment<H> as ActorEnvironment>::Address<AR>, ActorSpawnError> {
         let (sender, receiver) = ActorMessageChannel::<AR::Message>::new_unbounded();
 
-        environment.future_runtime().spawn(
+        system.environment().future_runtime().spawn(
             ActorIsolationExecutor::<AI, AR, H>::new(
-                environment.allocator().clone(),
+                system.allocator().clone(),
                 Box::new(self.actor),
                 receiver,
                 self.deadline_in_milliseconds,

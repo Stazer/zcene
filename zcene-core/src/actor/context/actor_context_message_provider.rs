@@ -11,7 +11,6 @@ where
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait ActorContextExtension<T>: ActorCommonBounds
-{
-    fn resolve(&self) -> T;
+pub trait ActorContextExtension<T>: ActorCommonBounds {
+    fn extension(&self) -> T;
 }

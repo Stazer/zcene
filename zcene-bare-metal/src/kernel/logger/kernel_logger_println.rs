@@ -1,14 +1,15 @@
-macro_rules! println {
+#[macro_export]
+macro_rules! __println {
     ($format_string:expr) => {
         {
-            crate::kernel::logger::print!(concat!($format_string, "\n"));
+            $crate::kernel::logger::print!(concat!($format_string, "\n"));
         }
     };
     ($format_string:expr, $($expressions:expr),+ ) => {
         {
-            crate::kernel::logger::print!(concat!($format_string, "\n"), $($expressions),+);
+            $crate::kernel::logger::print!(concat!($format_string, "\n"), $($expressions),+);
         }
     };
 }
 
-pub(crate) use println;
+pub use __println as println;
