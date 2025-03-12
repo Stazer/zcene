@@ -5,8 +5,6 @@ use crate::actor::{
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use core::future::Future;
-
 pub trait Actor<E>: ActorCommonBounds + Sized
 where
     E: ActorEnvironment,

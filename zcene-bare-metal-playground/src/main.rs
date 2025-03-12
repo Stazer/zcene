@@ -25,10 +25,6 @@ where
         &mut self,
         context: <ActorRootEnvironment<H> as ActorEnvironment>::CreateContext,
     ) -> Result<(), ActorCreateError> {
-        context.system();
-
-        zcene_bare_metal::kernel::logger::println!("HELLO WORLD");
-
         Ok(())
     }
 }
