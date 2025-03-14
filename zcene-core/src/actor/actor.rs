@@ -18,13 +18,6 @@ where
         async { Ok(()) }
     }
 
-    fn create2<'a>(
-        &'a mut self,
-        _context: E::CreateContext2<'a>,
-    ) -> impl ActorFuture<'a, Result<(), ActorCreateError>> {
-        async { Ok(()) }
-    }
-
     fn handle(
         &mut self,
         _context: E::HandleContext<Self::Message>,

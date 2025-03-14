@@ -46,7 +46,7 @@ where
         E: ActorEnvironmentAllocator,
         S: ActorEnvironmentSpawnable<A, E>,
     {
-        spawnable.spawn(&self)
+        spawnable.spawn(self)
     }
 
     pub fn enter_with<S>(
