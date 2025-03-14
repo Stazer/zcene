@@ -1,0 +1,8 @@
+[package]
+name = "zcene-std"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+zcene-core = { path = "../zcene-core" }
+ztd = { git = "https://github.com/Stazer/ztd.git" }
