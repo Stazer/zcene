@@ -37,16 +37,6 @@ where
             .create(ActorRootEnvironmentCreateContext::new(self.system.clone()))
             .await;
 
-        let _result = self
-            .actor
-            .create2(ActorRootEnvironmentCreateContext2::new(&self.system))
-            .await;
-
-        /*let _result = self
-            .actor
-            .create3(ActorRootEnvironmentCreateContext2::new(&self.system))
-            .await;*/
-
         loop {
             let message = match self.receiver.receive().await {
                 Some(message) => message,

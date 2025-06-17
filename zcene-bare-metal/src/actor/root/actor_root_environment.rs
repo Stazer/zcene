@@ -56,7 +56,6 @@ where
         A: Actor<Self>;
 
     type CreateContext = ActorRootEnvironmentCreateContext<H>;
-    type CreateContext2<'a> = ActorRootEnvironmentCreateContext2<'a, H>;
     type HandleContext<M>
         = ActorCommonHandleContext<M>
     where

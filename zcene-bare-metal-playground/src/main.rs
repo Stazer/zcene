@@ -7,6 +7,7 @@
 
 use zcene_bare_metal::actor::ActorRootEnvironment;
 use zcene_bare_metal::define_system;
+use zcene_bare_metal::kernel::logger::println;
 use zcene_core::actor::{Actor, ActorCreateError, ActorEnvironment, ActorFuture};
 use zcene_core::future::runtime::FutureRuntimeHandler;
 
@@ -25,6 +26,8 @@ where
         &mut self,
         context: <ActorRootEnvironment<H> as ActorEnvironment>::CreateContext,
     ) -> Result<(), ActorCreateError> {
+        println!("Hello World");
+
         Ok(())
     }
 }

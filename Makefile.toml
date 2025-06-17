@@ -54,6 +54,14 @@ dependencies = [
     "build-bare-metal-playground-x86_64",
 ]
 
+[tasks.prepare-bare-metal-playground-x86_64-uefi]
+args = [
+     "-o",
+     "QEMU_UEFI_CODE-x86_64.fd",
+     "https://retrage.github.io/edk2-nightly/bin/RELEASEX64_OVMF_CODE.fd",
+]
+command = "curl"
+
 [tasks.clean]
 command = "cargo"
 args = ["clean"]
