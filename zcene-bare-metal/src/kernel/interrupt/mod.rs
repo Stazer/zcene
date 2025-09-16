@@ -47,7 +47,10 @@ pub struct LocalInterruptManager {
 pub type InterruptIdentifier = u8;
 
 #[inline(always)]
-extern "x86-interrupt" fn unhandled_interrupt_loop() -> ! {
+extern "x86-interrupt" fn unhandled_interrupt_loop(
+    stack_frame: InterruptStackFrame,
+) -> ! {
+    println!("unhandled interrupt\n{:?}", stack_frame);
     loop {}
 }
 
@@ -60,8 +63,8 @@ extern "x86-interrupt" fn unhandled_interrupt_entry_point<const N: &'static str>
 extern "x86-interrupt" fn unhandled_interrupt_entry_point_loop<const N: &'static str>(
     stack_frame: InterruptStackFrame,
 ) -> ! {
-    unhandled_interrupt_entry_point::<N>(stack_frame);
-    unhandled_interrupt_loop()
+    println!("unhandled interrupt {}\n{:?}", N, stack_frame);
+    loop {}
 }
 
 extern "x86-interrupt" fn unhandled_interrupt_entry_point_with_error_code<
@@ -91,8 +94,8 @@ extern "x86-interrupt" fn unhandled_interrupt_entry_point_with_error_code_loop<
 where
     E: Debug,
 {
-    unhandled_interrupt_entry_point_with_error_code::<N, E>(stack_frame, error_code);
-    unhandled_interrupt_loop()
+    println!("unhandled interrupt {} {:?}\n{:?}", N, error_code, stack_frame);
+    loop {}
 }
 
 impl LocalInterruptManager {

@@ -433,7 +433,7 @@ where
     }
 }
 
-#[naked]
+#[unsafe(naked)]
 pub unsafe extern "C" fn actor_deadline_preemption_entry_point() {
     unsafe {
         naked_asm!(
@@ -485,7 +485,7 @@ pub extern "C" fn actor_deadline_preemption_restore(
     *event = Some(ActorIsolationExecutorDeadlinePreemptionEvent::new(context.clone()).into());
 }
 
-#[naked]
+#[unsafe(naked)]
 pub unsafe extern "C" fn actor_system_call_entry_point() -> ! {
     unsafe {
         naked_asm!(
