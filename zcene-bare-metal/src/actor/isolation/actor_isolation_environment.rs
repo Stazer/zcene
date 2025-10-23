@@ -10,10 +10,10 @@ impl ActorEnvironment for ActorIsolationEnvironment {
         = ActorIsolationAddress<A>
     where
         A: Actor<Self>;
-    type CreateContext = ();
-    type HandleContext<M>
+    type CreateContext<'a> = ();
+    type HandleContext<'a, M>
         = ActorCommonHandleContext<M>
     where
         M: ActorMessage;
-    type DestroyContext = ();
+    type DestroyContext<'a> = ();
 }

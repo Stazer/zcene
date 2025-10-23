@@ -6,9 +6,11 @@ use core::panic::PanicInfo;
 
 #[panic_handler]
 fn kernel_panic_handler(panic_info: &PanicInfo) -> ! {
-    let _ = Kernel::get()
-        .logger()
-        .writer(|w| write!(w, "Panic: {:?}", panic_info));
+    let _ = write!(
+        crate::actor::ActorRootEnvironment::get().logger(),
+        "Panic: {:?}",
+        panic_info,
+    );
 
     loop {}
 }

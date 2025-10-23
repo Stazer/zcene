@@ -2,7 +2,6 @@ use crate::architecture::ExecutionUnitIdentifier;
 use crate::driver::xapic::XApic;
 use crate::driver::xapic::XApicRegisters;
 use crate::kernel::KernelTimer;
-use crate::kernel::logger::println;
 use crate::kernel::memory::KernelMemoryManager;
 use crate::synchronization::Mutex;
 use alloc::boxed::Box;
@@ -13,6 +12,7 @@ use pic8259::ChainedPics;
 use x86::cpuid::CpuId;
 use x86_64::structures::idt::InterruptDescriptorTable;
 use x86_64::structures::idt::InterruptStackFrame;
+use crate::utility::println;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -242,13 +242,12 @@ impl LocalInterruptManager {
 
         unsafe {
             let entry = self.descriptor_table[free_vector]
-            .set_handler_fn(entry_point)
-            .set_stack_index(0)
+                .set_handler_fn(entry_point)
+                .set_stack_index(0);
             //.set_privilege_level(x86_64::PrivilegeLevel::Ring3) // Erlaubt User Mode
             //.set_code_selector(SegmentSelector::new(1, PrivilegeLevel::Ring0))
             //.set_present(true)
             //.set_stack_index(0)
-                ;
             //.set_privilege_level(PrivilegeLevel::Ring3)
             //.set_code_selector(SegmentSelector::new(4, PrivilegeLevel::Ring3));
         }
@@ -284,7 +283,6 @@ impl LocalInterruptManager {
         &mut self,
         entry_point: InterruptEntryPoint,
         duration: Duration,
-        logger: &crate::kernel::logger::KernelLogger,
     ) {
         match self.r#type {
             LocalInterruptManagerType::XAPIC {
@@ -298,7 +296,6 @@ impl LocalInterruptManager {
                 xapic.enable_oneshot(
                     vector,
                     (duration.as_millis() as u32) * ticks_per_millisecond,
-                    logger,
                 );
             },
             _ => todo!(),

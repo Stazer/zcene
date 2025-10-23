@@ -46,7 +46,6 @@ where
             .enqueue(Arc::new(FutureRuntimeTask::new(
                 Mutex::new(Some(Box::pin_in(future, allocator))),
                 self.clone(),
-                H::Data::default(),
             )))
             .map_err(|_| FutureRuntimeSpawnError::Busy)
     }

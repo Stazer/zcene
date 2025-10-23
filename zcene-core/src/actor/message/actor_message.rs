@@ -3,4 +3,4 @@ use core::any::Any;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait ActorMessage = ActorCommonBounds + Clone + Any;
+pub trait ActorMessage = Any + Clone + Send + Sync;

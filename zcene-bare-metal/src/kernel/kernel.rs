@@ -1,19 +1,3 @@
-use crate::KERNEL;
-use crate::actor::ActorIsolationMessageHandler;
-use crate::actor::ActorRootEnvironment;
-use crate::actor::actor_system_call_entry_point;
-use crate::actor::{
-    ActorIsolationAddress, ActorIsolationEnvironment, ActorIsolationSpawnSpecification,
-    ActorRootSpawnSpecification,
-};
-use crate::kernel::KernelTimer;
-use crate::kernel::future::runtime::{KernelFutureRuntime, KernelFutureRuntimeHandler};
-use crate::kernel::interrupt::KernelInterruptManager;
-use crate::kernel::logger::KernelLogger;
-use crate::kernel::logger::println;
-use crate::kernel::memory::{KernelMemoryManager, KernelMemoryManagerInitializeError};
-use crate::memory::address::PhysicalMemoryAddress;
-use crate::memory::allocator::FrameManagerAllocationError;
 use alloc::alloc::Global;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
@@ -23,6 +7,14 @@ use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
 use bootloader_x86_64_common::serial::SerialPort;
 use core::alloc::AllocError;
 use core::fmt::{self, Write};
+use crate::actor::ActorRootEnvironment;
+use zcene_core::future::runtime::{FutureRuntime, FutureRuntimeHandler};
+use crate::kernel::KernelTimer;
+use crate::kernel::interrupt::KernelInterruptManager;
+use crate::kernel::memory::{KernelMemoryManager, KernelMemoryManagerInitializeError};
+use crate::memory::address::PhysicalMemoryAddress;
+use crate::memory::allocator::FrameManagerAllocationError;
+use crate::{ACTOR_ROOT_ENVIRONMENT};
 use x86::current::rflags::RFlags;
 use x86::msr::{IA32_EFER, rdmsr, wrmsr};
 use x86::msr::{IA32_FMASK, IA32_LSTAR, IA32_STAR};
@@ -33,20 +25,15 @@ use x86_64::registers::segmentation::CS;
 use x86_64::structures::gdt::GlobalDescriptorTable;
 use x86_64::structures::gdt::{Descriptor, DescriptorFlags};
 use x86_64::structures::tss::TaskStateSegment;
-use zcene_core::actor::ActorContextMessageProvider;
 use zcene_core::actor::ActorEnvironment;
 use zcene_core::actor::ActorMessageChannelAddress;
 use zcene_core::actor::ActorSpawnError;
+use zcene_core::actor::{ActorEnvironmentReference};
+use zcene_core::actor::{ActorEnvironmentSpawn, ActorEnvironmentEnterable, ActorCreateError, ActorDestroyError, ActorMessage, ActorMessageSender};
 use zcene_core::actor::{self, Actor, ActorHandleError, ActorSystemCreateError};
-use zcene_core::actor::{ActorCreateError, ActorDestroyError, ActorMessage, ActorMessageSender};
-use zcene_core::actor::{ActorSystem, ActorSystemReference};
-use zcene_core::future::runtime::FutureRuntimeCreateError;
+use zcene_core::future::runtime::{FutureRuntimeReference, FutureRuntimeCreateError};
 use ztd::Constructor;
 use ztd::From;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-pub type KernelReference = Arc<Kernel, Global>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -65,176 +52,35 @@ pub enum KernelInitializeError {
     ActorSystemCreate(ActorSystemCreateError),
 }
 
-#[derive(Debug, Constructor, Default)]
-pub struct PrintActor;
-
-#[derive(Debug, Constructor, Clone)]
-pub struct PrintActorMessage {
-    value0: usize,
-    value1: usize,
-}
-
-impl<H> Actor<H> for PrintActor
-where
-    H: actor::ActorEnvironment,
-    H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
-{
-    type Message = PrintActorMessage;
-
-    async fn create(&mut self, _context: H::CreateContext) -> Result<(), ActorCreateError> {
-        println!("create");
-        Ok(())
-    }
-
-    async fn handle(
-        &mut self,
-        context: H::HandleContext<Self::Message>,
-    ) -> Result<(), ActorHandleError> {
-        println!("Received {:?}", context.message());
-
-        Ok(())
-    }
-
-    async fn destroy(self, _context: H::DestroyContext) -> Result<(), ActorDestroyError> {
-        println!("destroy");
-        Ok(())
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Constructor, Debug)]
-pub struct UnprivilegedActor<H>
-where
-    H: ActorEnvironment,
-    H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
-{
-    printer: H::Address<PrintActor>,
-}
-
-impl<H> Actor<H> for UnprivilegedActor<H>
-where
-    H: ActorEnvironment,
-    H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
-    H::HandleContext<usize>: ActorContextMessageProvider<usize>,
-{
-    type Message = usize;
-
-    async fn create(&mut self, _context: H::CreateContext) -> Result<(), ActorCreateError> {
-        self.printer.send(PrintActorMessage::new(1337, 1338)).await;
-
-        Ok(())
-    }
-
-    async fn handle(
-        &mut self,
-        context: H::HandleContext<Self::Message>,
-    ) -> Result<(), ActorHandleError> {
-        self.printer
-            .send(PrintActorMessage::new(context.message() + 1, 1338))
-            .await;
-
-        Ok(())
-    }
-
-    async fn destroy(self, _context: H::DestroyContext) -> Result<(), ActorDestroyError> {
-        Ok(())
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Constructor)]
-pub struct LastActor<H>
-where
-    H: ActorEnvironment,
-    H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
-    H::HandleContext<usize>: ActorContextMessageProvider<usize>,
-{
-    unpriv: H::Address<UnprivilegedActor<H>>,
-}
-
-impl<H> Actor<H> for LastActor<H>
-where
-    H: ActorEnvironment,
-    H::HandleContext<PrintActorMessage>: ActorContextMessageProvider<PrintActorMessage>,
-    H::HandleContext<usize>: ActorContextMessageProvider<usize>,
-{
-    type Message = ();
-
-    async fn create(&mut self, _context: H::CreateContext) -> Result<(), ActorCreateError> {
-        self.unpriv.send(42).await;
-
-        Ok(())
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-pub struct Kernel {
-    logger: KernelLogger,
-    memory_manager: KernelMemoryManager,
-    actor_system: ActorSystemReference<ActorRootEnvironment<KernelFutureRuntimeHandler>>,
-    interrupt_manager: KernelInterruptManager,
-    timer: KernelTimer<'static>,
-}
+pub struct Kernel;
 
 impl Kernel {
-    pub fn bootstrap_processor_entry_point<A>(boot_info: &'static mut BootInfo, actor: A) -> !
+    pub fn bootstrap_processor_entry_point<A>(
+        boot_info: &'static mut BootInfo,
+        actor: A,
+    ) -> !
     where
-        A: Actor<ActorRootEnvironment<KernelFutureRuntimeHandler>>,
+        A: Actor<ActorRootEnvironment>,
     {
+        let environment = Self::new(
+            boot_info,
+        ).unwrap();
+
         unsafe {
-            KERNEL
+            ACTOR_ROOT_ENVIRONMENT
                 .get()
                 .as_mut()
                 .unwrap()
-                .write(Kernel::new(boot_info).unwrap());
+                .write(environment.into());
         }
 
-        let print_actor_address: ActorMessageChannelAddress<PrintActor, ActorRootEnvironment<_>> =
-            Kernel::get()
-                .actor_system()
-                .spawn(ActorRootSpawnSpecification::new(
-                    PrintActor::default(),
-                    None,
-                ))
-                .unwrap();
-
-        Kernel::get()
-            .actor_system()
-            .spawn(ActorRootSpawnSpecification::new(actor, None))
+        let address = crate::actor::ActorRootEnvironment::get()
+            .spawn(actor)
             .unwrap();
 
-        let unpriv_actor = Kernel::get()
-            .actor_system()
-            .spawn(ActorIsolationSpawnSpecification::<
-                UnprivilegedActor<_>,
-                UnprivilegedActor<_>,
-                _,
-            >::new(
-                UnprivilegedActor::<ActorIsolationEnvironment>::new(ActorIsolationAddress::<
-                    PrintActor,
-                >::new(0)),
-                None,
-                vec![Box::<dyn ActorIsolationMessageHandler<_>>::from(
-                    Box::new_in(
-                        print_actor_address.clone(),
-                        *Kernel::get().actor_system().allocator(),
-                    ),
-                )],
-            ))
-            .unwrap();
-
-        let _last_actor = Kernel::get()
-            .actor_system()
-            .spawn(ActorRootSpawnSpecification::new(
-                LastActor::new(unpriv_actor),
-                None,
-            ))
-            .unwrap();
-
-        Kernel::get().run();
+        crate::actor::ActorRootEnvironment::get().enter();
 
         loop {}
     }
@@ -243,8 +89,9 @@ impl Kernel {
         loop {}
     }
 
-    pub fn new(boot_info: &'static mut BootInfo) -> Result<KernelReference, KernelInitializeError> {
-        let mut logger = KernelLogger::new(
+    pub fn new(boot_info: &'static mut BootInfo) -> Result<zcene_core::actor::ActorEnvironmentReference<crate::actor::ActorRootEnvironment>, KernelInitializeError>
+    {
+        let logger = crate::actor::ActorRootEnvironmentLoggerService::new(
             boot_info.framebuffer.take().map(|frame_buffer| {
                 let info = frame_buffer.info().clone();
 
@@ -253,19 +100,13 @@ impl Kernel {
             Some(unsafe { SerialPort::init() }),
         );
 
-        let memory_manager = match KernelMemoryManager::new(boot_info, &mut logger) {
+        let memory_manager = match KernelMemoryManager::new(boot_info) {
             Ok(memory_manager) => memory_manager,
             Err(error) => {
-                logger.writer(|writer| write!(writer, "{:?}", error));
+                write!(logger.writer(), "{:?}", error);
                 return Err(error.into());
             }
         };
-
-        logger.writer(|writer| write!(writer, "hello"));
-
-        let actor_system = ActorSystem::try_new(ActorRootEnvironment::new(
-            KernelFutureRuntime::new(KernelFutureRuntimeHandler::default())?,
-        ))?;
 
         let timer = KernelTimer::new(
             &memory_manager,
@@ -314,6 +155,7 @@ impl Kernel {
         };
 
         let selector = (u64::from(user_code32.0) << 48) | (u64::from(kernel_code.0) << 32);
+
         unsafe {
             gdt.load_unsafe();
 
@@ -332,63 +174,89 @@ impl Kernel {
         let mut interrupt_manager = KernelInterruptManager::new();
         interrupt_manager.bootstrap_local_interrupt_manager({
             let mut local_interrupt_manager =
-                crate::kernel::interrupt::LocalInterruptManager::new(&timer, &memory_manager);
+                crate::kernel::interrupt::LocalInterruptManager::new(
+                    &timer,
+                    &memory_manager.clone(),
+                );
 
             local_interrupt_manager.enable_oneshot(
                 unsafe {
                     core::mem::transmute(
-                        crate::actor::actor_deadline_preemption_entry_point as *const u8,
+                        actor_deadline_preemption_entry_point as *const u8,
                     )
                 },
                 core::time::Duration::from_millis(0),
-                &logger,
             );
 
             local_interrupt_manager
         });
 
-        let this = Self {
-            logger,
-            actor_system,
-            memory_manager,
-            timer,
-            interrupt_manager,
-        };
+        let actor_system = ActorEnvironmentReference::new(
+            crate::actor::ActorRootEnvironment::new(
+                FutureRuntime::new(
+                    crate::future::runtime::FutureRuntimeHandler::default()
+                ).unwrap(),
+                logger,
+                timer,
+                memory_manager,
+                interrupt_manager,
+            ),
+        );
 
-        Ok(KernelReference::try_new_in(this, Global.clone())?)
+        Ok(actor_system)
     }
+}
 
-    pub fn get<'a>() -> &'a Kernel {
-        unsafe { KERNEL.get().as_ref().unwrap().as_ptr().as_ref().unwrap() }
+use core::arch::naked_asm;
+
+#[unsafe(naked)]
+pub unsafe extern "C" fn actor_system_call_entry_point() -> ! {
+    unsafe {
+        naked_asm!(
+            //
+            // Store user context
+            //
+            "mov r9, rcx",
+            "mov r10, rsp",
+            //
+            // Load kernel stack
+            //
+            "mov rcx, 0xC0000102",
+            "rdmsr",
+            "shl rdx, 32",
+            "or rax, rdx",
+            "mov rsp, rax",
+            //
+            // Restore
+            //
+            "mov rdx, r8",
+            "pop rcx",
+        )
     }
+}
 
-    pub fn memory_manager(&self) -> &KernelMemoryManager {
-        &self.memory_manager
-    }
-
-    pub fn logger(&self) -> &KernelLogger {
-        &self.logger
-    }
-
-    pub fn actor_system(
-        &self,
-    ) -> &ActorSystemReference<ActorRootEnvironment<KernelFutureRuntimeHandler>> {
-        &self.actor_system
-    }
-
-    pub fn timer(&self) -> &KernelTimer {
-        &self.timer
-    }
-
-    pub fn interrupt_manager(&self) -> &KernelInterruptManager {
-        &self.interrupt_manager
-    }
-
-    pub fn run(&self) -> ! {
-        self.logger().writer(|w| write!(w, "zcene\n"));
-
-        self.actor_system().enter().unwrap();
-
-        loop {}
+#[unsafe(naked)]
+pub unsafe extern "C" fn actor_deadline_preemption_entry_point() -> ! {
+    unsafe {
+        naked_asm!(
+            //
+            // Store user context
+            //
+            "mov r9, rcx",
+            "mov r10, rsp",
+            //
+            // Load kernel stack
+            //
+            "mov rcx, 0xC0000102",
+            "rdmsr",
+            "shl rdx, 32",
+            "or rax, rdx",
+            "mov rsp, rax",
+            //
+            // Restore
+            //
+            "mov rdx, r8",
+            "pop rcx",
+        )
     }
 }

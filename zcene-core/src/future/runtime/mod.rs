@@ -1,5 +1,4 @@
 mod future_runtime;
-mod future_runtime_actor_environment;
 mod future_runtime_allocator;
 mod future_runtime_box_future;
 mod future_runtime_common_bounds;
@@ -18,7 +17,6 @@ mod future_runtime_waker;
 mod future_runtime_yielder;
 
 pub use future_runtime::*;
-pub use future_runtime_actor_environment::*;
 pub use future_runtime_allocator::*;
 pub use future_runtime_box_future::*;
 pub use future_runtime_common_bounds::*;
@@ -35,52 +33,3 @@ pub use future_runtime_task::*;
 pub use future_runtime_task_reference::*;
 pub use future_runtime_waker::*;
 pub use future_runtime_yielder::*;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-use ztd::Constructor;
-
-#[derive(Constructor)]
-pub struct FutureRuntimeInlineHandler<A, Q, Y, W>
-where
-    A: FutureRuntimeAllocator,
-    Q: FutureRuntimeQueue<Self>,
-    Y: FutureRuntimeYielder,
-    W: FutureRuntimeWaker<Self>,
-{
-    allocator: A,
-    queue: Q,
-    yielder: Y,
-    waker: W,
-}
-
-impl<A, Q, Y, W> FutureRuntimeHandler for FutureRuntimeInlineHandler<A, Q, Y, W>
-where
-    A: FutureRuntimeAllocator,
-    Q: FutureRuntimeQueue<Self>,
-    Y: FutureRuntimeYielder,
-    W: FutureRuntimeWaker<Self>,
-{
-    type Allocator = A;
-    type Queue = Q;
-    type Yielder = Y;
-    type Waker = W;
-    type Specification = ();
-    type Data = ();
-
-    fn allocator(&self) -> &Self::Allocator {
-        &self.allocator
-    }
-
-    fn queue(&self) -> &Self::Queue {
-        &self.queue
-    }
-
-    fn yielder(&self) -> &Self::Yielder {
-        &self.yielder
-    }
-
-    fn waker(&self) -> &Self::Waker {
-        &self.waker
-    }
-}

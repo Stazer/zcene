@@ -1,6 +1,4 @@
-pub mod future;
 pub mod interrupt;
-pub mod logger;
 pub mod memory;
 
 mod kernel;

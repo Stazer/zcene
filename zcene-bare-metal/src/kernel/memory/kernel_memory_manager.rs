@@ -120,7 +120,6 @@ where
 impl KernelMemoryManager {
     pub fn new(
         boot_info: &mut BootInfo,
-        logger: &mut crate::kernel::logger::KernelLogger,
     ) -> Result<Self, KernelMemoryManagerInitializeError> {
         let physical_memory_size_in_bytes = boot_info
             .memory_regions

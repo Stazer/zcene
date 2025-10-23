@@ -57,7 +57,6 @@ impl<'a> XApic<'a> {
         &mut self,
         vector: u8,
         ticks: u32,
-        logger: &crate::kernel::logger::KernelLogger,
     ) {
         self.registers.timer_initial_count_mut().write(ticks);
         self.registers.timer_divide_mut().write(0);

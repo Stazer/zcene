@@ -1,32 +1,32 @@
-#![feature(precise_capturing_in_traits)]
-
 #![no_std]
 #![no_main]
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use zcene_bare_metal::actor::ActorRootEnvironment;
+use core::fmt::Write;
+use zcene_bare_metal::actor::{ActorRootEnvironment};
 use zcene_bare_metal::define_system;
-use zcene_bare_metal::kernel::logger::println;
-use zcene_core::actor::{Actor, ActorCreateError, ActorEnvironment, ActorFuture};
-use zcene_core::future::runtime::FutureRuntimeHandler;
+use zcene_core::actor::{ActorMessage, ActorContext, ActorEnvironment, Actor, ActorCreateError, ActorFuture};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Default)]
-pub struct EntryPointActor;
+pub struct RootActor;
 
-impl<H> Actor<ActorRootEnvironment<H>> for EntryPointActor
-where
-    H: FutureRuntimeHandler,
-{
-    type Message = ();
+#[derive(Clone)]
+pub enum RootActorMessage {}
 
-    async fn create(
-        &mut self,
-        context: <ActorRootEnvironment<H> as ActorEnvironment>::CreateContext,
+impl Actor<ActorRootEnvironment> for RootActor {
+    type Message = RootActorMessage;
+
+    async fn create<'a>(
+        &'a mut self,
+        context: <ActorRootEnvironment as ActorEnvironment>::CreateContext<'a>,
     ) -> Result<(), ActorCreateError> {
-        println!("Hello World");
+        let _ = write!(
+            context.environment().logger(),
+            "Hello World",
+        );
 
         Ok(())
     }
@@ -34,4 +34,4 @@ where
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-define_system!(EntryPointActor::default());
+define_system!(RootActor::default());

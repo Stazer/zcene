@@ -1,18 +1,17 @@
-use crate::kernel::logger::KernelLoggerWriter;
 use crate::synchronization::Mutex;
 use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
 use bootloader_x86_64_common::serial::SerialPort;
-use core::fmt::{Result, Write};
 use x86_64::instructions::interrupts::without_interrupts;
+use core::fmt::{self, Write};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct KernelLogger {
+pub struct ActorRootEnvironmentLoggerService {
     frame_buffer: Mutex<Option<FrameBufferWriter>>,
     serial_port: Mutex<Option<SerialPort>>,
 }
 
-impl KernelLogger {
+impl ActorRootEnvironmentLoggerService {
     pub fn new(frame_buffer: Option<FrameBufferWriter>, serial_port: Option<SerialPort>) -> Self {
         Self {
             frame_buffer: Mutex::new(frame_buffer),
@@ -32,10 +31,21 @@ impl KernelLogger {
         })
     }
 
-    pub fn writer<F>(&self, function: F) -> Result
-    where
-        F: FnOnce(&mut KernelLoggerWriter<'_>) -> Result,
-    {
-        function(&mut KernelLoggerWriter::new(self))
+    pub fn writer<'a>(&'a self) -> impl Write + 'a {
+        pub struct Writer<'b> {
+            service: &'b ActorRootEnvironmentLoggerService
+        }
+
+        impl<'b> Write for Writer<'b> {
+            fn write_str(&mut self, string: &str) -> Result<(), core::fmt::Error> {
+                self.service.write(string);
+
+                Ok(())
+            }
+        }
+
+        Writer {
+            service: self
+        }
     }
 }

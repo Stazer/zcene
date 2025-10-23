@@ -1,10 +1,9 @@
 #![feature(abi_x86_interrupt)]
 #![feature(adt_const_params)]
 #![feature(allocator_api)]
+#![feature(arbitrary_self_types)]
 #![feature(box_as_ptr)]
-#![feature(box_uninit_write)]
 #![feature(lazy_type_alias)]
-#![feature(naked_functions)]
 #![feature(new_range_api)]
 #![feature(non_lifetime_binders)]
 #![feature(option_zip)]
@@ -31,10 +30,12 @@ pub mod actor;
 pub mod architecture;
 pub mod common;
 pub mod driver;
+pub mod future;
 pub mod kernel;
 pub mod memory;
 pub mod synchronization;
 pub mod time;
+pub mod utility;
 
 pub mod r#extern {
     pub use bootloader_api;
@@ -46,7 +47,9 @@ use alloc::sync::Arc;
 use core::cell::SyncUnsafeCell;
 use core::mem::MaybeUninit;
 
-pub static KERNEL: SyncUnsafeCell<MaybeUninit<Arc<Kernel, Global>>> =
+use crate::future::runtime::FutureRuntimeHandler;
+
+pub static ACTOR_ROOT_ENVIRONMENT: SyncUnsafeCell<MaybeUninit<Arc<crate::actor::ActorRootEnvironment<FutureRuntimeHandler>, Global>>> =
     SyncUnsafeCell::new(MaybeUninit::zeroed());
 
 #[macro_export]
@@ -68,7 +71,9 @@ macro_rules! define_system {
             ::zcene_bare_metal::kernel::Kernel::bootstrap_processor_entry_point(
                 boot_info,
                 $root_actor,
-            )
+            );
+
+            loop {}
         }
 
         ::zcene_bare_metal::r#extern::bootloader_api::entry_point!(

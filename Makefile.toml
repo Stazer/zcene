@@ -12,7 +12,7 @@ args = [
 command = "cargo"
 
 [tasks.build-bare-metal-playground]
-#env = { "RUSTFLAGS" = "--cfg no_global_oom_handling" }
+env = { "RUSTFLAGS" = "-Zhigher-ranked-assumptions" }
 args = [
     "build",
     "--package", "zcene-bare-metal-playground",

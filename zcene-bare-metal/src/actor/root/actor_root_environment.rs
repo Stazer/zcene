@@ -1,49 +1,38 @@
-use zcene_core::actor::{
-    Actor, ActorCommonHandleContext, ActorEnterError, ActorEnvironment, ActorEnvironmentAllocator,
-    ActorEnvironmentEnterable, ActorMessage, ActorMessageChannelAddress, ActorSystemReference,
-};
-use zcene_core::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
 use ztd::{Constructor, Method};
+use zcene_core::actor::{ActorEnvironment, ActorEnvironmentReference, ActorEnvironmentSpawn, ActorMessageChannel, ActorEnvironmentSpawnable, ActorSpawnError};
+use zcene_core::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
+use zcene_core::actor::{
+    ActorEnvironmentAllocator,
+    ActorEnvironmentEnterable,
+    ActorEnterError,
+    ActorMessage,
+    ActorMessageChannelAddress,
+    Actor,
+};
+use crate::actor::{
+    ActorRootEnvironmentCreateContext,
+    ActorRootEnvironmentHandleContext,
+    ActorRootEnvironmentDestroyContext,
+    ActorRootEnvironmentLoggerService,
+};
+use crate::time::Timer;
+use crate::kernel::memory::KernelMemoryManager;
+use crate::kernel::{KernelTimer};
+use crate::kernel::interrupt::KernelInterruptManager;
+use core::fmt::Write;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Constructor, Method)]
-#[Method(accessors)]
-pub struct ActorRootEnvironmentCreateContext<H>
-where
-    H: FutureRuntimeHandler,
-{
-    system: ActorSystemReference<ActorRootEnvironment<H>>,
-}
-
-#[derive(Constructor, Method)]
-#[Method(accessors)]
-pub struct ActorRootEnvironmentCreateContext2<'a, H>
-where
-    H: FutureRuntimeHandler,
-{
-    system: &'a ActorSystemReference<ActorRootEnvironment<H>>,
-}
-
-
-#[derive(Constructor, Method)]
-#[Method(accessors)]
-pub struct ActorRootEnvironmentDestroyContext<H>
-where
-    H: FutureRuntimeHandler,
-{
-    system: ActorSystemReference<ActorRootEnvironment<H>>,
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Constructor, Method)]
-#[Method(accessors)]
-pub struct ActorRootEnvironment<H>
+#[derive(Constructor)]
+pub struct ActorRootEnvironment<H = crate::future::runtime::FutureRuntimeHandler>
 where
     H: FutureRuntimeHandler,
 {
     future_runtime: FutureRuntimeReference<H>,
+    logger: ActorRootEnvironmentLoggerService,
+    timer: KernelTimer<'static>,
+    memory_manager: KernelMemoryManager,
+    interrupt_manager: KernelInterruptManager,
 }
 
 impl<H> ActorEnvironment for ActorRootEnvironment<H>
@@ -55,12 +44,12 @@ where
     where
         A: Actor<Self>;
 
-    type CreateContext = ActorRootEnvironmentCreateContext<H>;
-    type HandleContext<M>
-        = ActorCommonHandleContext<M>
+    type CreateContext<'a> = ActorRootEnvironmentCreateContext<'a, H>;
+    type HandleContext<'a, M>
+        = ActorRootEnvironmentHandleContext<'a, H, M>
     where
         M: ActorMessage;
-    type DestroyContext = ();
+    type DestroyContext<'a> = ActorRootEnvironmentDestroyContext<'a, H>;
 }
 
 impl<H> ActorEnvironmentAllocator for ActorRootEnvironment<H>
@@ -74,16 +63,68 @@ where
     }
 }
 
-impl<H> ActorEnvironmentEnterable<ActorRootEnvironment<H>> for ()
+impl<A, H> ActorEnvironmentSpawn<A> for ActorRootEnvironment<H>
+where
+    A: Actor<Self>,
+    H: FutureRuntimeHandler,
+{
+    fn spawn(
+        self: &ActorEnvironmentReference<Self>,
+        mut actor: A,
+    ) -> Result<<ActorRootEnvironment<H> as ActorEnvironment>::Address<A>, ActorSpawnError> {
+        let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
+
+        self.future_runtime.spawn(
+            {
+                let environment = self.clone();
+
+                async move {
+                    // TODO: Handle result
+                    let _result = actor
+                        .create(ActorRootEnvironmentCreateContext::new(&*environment))
+                        .await;
+
+                    while let Some(message) = receiver.receive().await {
+                        // TODO: Handle result
+                        let _result = actor
+                            .handle(ActorRootEnvironmentHandleContext::new(&*environment, message))
+                            .await;
+                    }
+
+                    // TODO: Handle result
+                    let _result = actor
+                        .destroy(ActorRootEnvironmentDestroyContext::new(&*environment))
+                        .await;
+                }
+            }
+        )?;
+
+        Ok(<ActorRootEnvironment<H> as ActorEnvironment>::Address::<A>::new(sender))
+    }
+}
+
+
+impl<H> ActorRootEnvironment<H>
 where
     H: FutureRuntimeHandler,
 {
-    fn enter(
-        self,
-        system: &ActorSystemReference<ActorRootEnvironment<H>>,
-    ) -> Result<(), ActorEnterError> {
-        system.environment().future_runtime.run();
+    pub fn enter(&self) -> Result<(), ActorEnterError> {
+        self.future_runtime.run();
 
         Ok(())
+    }
+
+    pub fn logger(&self) -> impl Write {
+        self.logger.writer()
+    }
+
+    pub fn timer(&self) -> &impl Timer {
+        &self.timer
+    }
+}
+
+impl ActorRootEnvironment<crate::future::runtime::FutureRuntimeHandler> {
+    pub fn get() -> &'static ActorEnvironmentReference<Self> {
+        unsafe { crate::ACTOR_ROOT_ENVIRONMENT.get().as_ref().unwrap().as_ptr().as_ref().unwrap() }
     }
 }

@@ -11,24 +11,24 @@ where
 {
     type Message: ActorMessage;
 
-    fn create(
-        &mut self,
-        _context: E::CreateContext,
-    ) -> impl ActorFuture<'_, Result<(), ActorCreateError>> {
+    fn create<'a>(
+        &'a mut self,
+        _context: E::CreateContext<'a>,
+    ) -> impl ActorFuture<'a, Result<(), ActorCreateError>> {
         async { Ok(()) }
     }
 
-    fn handle(
+    fn handle<'a>(
         &mut self,
-        _context: E::HandleContext<Self::Message>,
-    ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
+        _context: E::HandleContext<'a, Self::Message>,
+    ) -> impl ActorFuture<'a, Result<(), ActorHandleError>> {
         async { Ok(()) }
     }
 
-    fn destroy(
+    fn destroy<'a>(
         self,
-        _context: E::DestroyContext,
-    ) -> impl ActorFuture<'static, Result<(), ActorDestroyError>> {
+        _context: E::DestroyContext<'a>,
+    ) -> impl ActorFuture<'a, Result<(), ActorDestroyError>> {
         async { Ok(()) }
     }
 }

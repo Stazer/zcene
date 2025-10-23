@@ -17,7 +17,6 @@ where
     // FIXME: Remove mutex
     slot: Mutex<Option<FutureRuntimeBoxFuture<'static, H, ()>>>,
     runtime: FutureRuntimeReference<H>,
-    data: H::Data,
 }
 
 impl<H> ArcWake for FutureRuntimeTask<H>

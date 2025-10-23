@@ -1,4 +1,4 @@
-pub use crate::actor::{Actor, ActorAddress, ActorCommonBounds, ActorMessage};
+pub use crate::actor::{Actor, ActorContext, ActorEnvironmentAllocator, ActorAddress, ActorCommonBounds, ActorMessage};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -7,9 +7,9 @@ pub trait ActorEnvironment: ActorCommonBounds + Sized {
     where
         A: Actor<Self>;
 
-    type CreateContext: ActorCommonBounds;
-    type HandleContext<M>: ActorCommonBounds
+    type CreateContext<'a>: ActorContext;
+    type HandleContext<'a, M>: ActorContext
     where
         M: ActorMessage;
-    type DestroyContext: ActorCommonBounds;
+    type DestroyContext<'a>: ActorContext;
 }

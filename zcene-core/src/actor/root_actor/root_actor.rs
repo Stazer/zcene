@@ -16,14 +16,14 @@ where
 impl<E> Actor<E> for RootActor<E>
 where
     E: ActorEnvironment + ActorEnvironmentAllocator,
-    E::CreateContext: Into<ActorMailbox<(), E>>,
+    for<'a> E::CreateContext<'a>: Into<ActorMailbox<(), E>>,
     E::HandleContext<RootActorMessage<E>>: Into<RootActorMessage<E>>,
 {
     type Message = RootActorMessage<E>;
 
-    fn create(
+    fn create<'a>(
         &mut self,
-        context: E::CreateContext,
+        context: E::CreateContext<'a>,
     ) -> impl ActorFuture<'_, Result<(), ActorCreateError>> {
         async move {
             self.children.push(context.into());

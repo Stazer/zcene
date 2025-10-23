@@ -1,26 +1,25 @@
 use alloc::alloc::Global;
 use zcene_core::future::runtime::{
-    FutureRuntimeConcurrentQueue, FutureRuntimeContinueWaker, FutureRuntimeHandler,
+    self as core,
+    FutureRuntimeConcurrentQueue, FutureRuntimeContinueWaker,
     FutureRuntimeNoOperationYielder,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Default)]
-pub struct KernelFutureRuntimeHandler {
+pub struct FutureRuntimeHandler {
     allocator: Global,
     queue: FutureRuntimeConcurrentQueue<Self>,
     yielder: FutureRuntimeNoOperationYielder,
     waker: FutureRuntimeContinueWaker,
 }
 
-impl FutureRuntimeHandler for KernelFutureRuntimeHandler {
+impl core::FutureRuntimeHandler for FutureRuntimeHandler {
     type Allocator = Global;
     type Queue = FutureRuntimeConcurrentQueue<Self>;
     type Yielder = FutureRuntimeNoOperationYielder;
     type Waker = FutureRuntimeContinueWaker;
-    type Specification = ();
-    type Data = ();
 
     fn allocator(&self) -> &Self::Allocator {
         &self.allocator
