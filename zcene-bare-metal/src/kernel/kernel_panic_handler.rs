@@ -1,4 +1,3 @@
-use crate::kernel::Kernel;
 use core::fmt::Write;
 use core::panic::PanicInfo;
 

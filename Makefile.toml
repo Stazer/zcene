@@ -20,6 +20,7 @@ args = [
     "--target", "zcene-bare-metal/x86_64.json",
     "-Z", "build-std=core,alloc,compiler_builtins",
     "-Z", "build-std-features=compiler-builtins-mem",
+    "-Z", "json-target-spec",
 ]
 command = "cargo"
 
@@ -31,6 +32,7 @@ args = [
     "--target", "zcene-bare-metal/x86_64.json",
     "-Z", "build-std=core,alloc,compiler_builtins",
     "-Z", "build-std-features=compiler-builtins-mem",
+    "-Z", "json-target-spec",
 ]
 command = "cargo"
 dependencies = [

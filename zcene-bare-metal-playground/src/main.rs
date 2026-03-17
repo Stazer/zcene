@@ -1,3 +1,5 @@
+#![feature(sync_unsafe_cell)]
+
 #![no_std]
 #![no_main]
 

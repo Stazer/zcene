@@ -19,5 +19,3 @@ where
     fn yielder(&self) -> &Self::Yielder;
     fn waker(&self) -> &Self::Waker;
 }
-
-//impl FutureRuntimeHandler for

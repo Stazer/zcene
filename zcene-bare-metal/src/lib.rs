@@ -41,7 +41,6 @@ pub mod r#extern {
     pub use bootloader_api;
 }
 
-use crate::kernel::Kernel;
 use alloc::alloc::Global;
 use alloc::sync::Arc;
 use core::cell::SyncUnsafeCell;
@@ -68,10 +67,28 @@ macro_rules! define_system {
         fn entry_point(
             boot_info: &'static mut ::zcene_bare_metal::r#extern::bootloader_api::BootInfo,
         ) -> ! {
-            ::zcene_bare_metal::kernel::Kernel::bootstrap_processor_entry_point(
+            use ::zcene_bare_metal::actor::ActorRootEnvironment;
+            use ::zcene_bare_metal::ACTOR_ROOT_ENVIRONMENT;
+            use ::zcene_core::actor::ActorEnvironmentSpawn;
+
+            let environment = ActorRootEnvironment::root(
+                || ::zcene_bare_metal::future::runtime::FutureRuntimeHandler::default(),
                 boot_info,
-                $root_actor,
             );
+
+            unsafe {
+                ACTOR_ROOT_ENVIRONMENT
+                    .get()
+                    .as_mut()
+                    .unwrap()
+                    .write(environment.clone());
+            }
+
+            let address = environment
+                .spawn($root_actor)
+                .unwrap();
+
+            environment.enter();
 
             loop {}
         }
