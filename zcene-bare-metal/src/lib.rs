@@ -4,13 +4,10 @@
 #![feature(arbitrary_self_types)]
 #![feature(box_as_ptr)]
 #![feature(lazy_type_alias)]
-#![feature(new_range_api)]
 #![feature(non_lifetime_binders)]
-#![feature(option_zip)]
 #![feature(step_trait)]
 #![feature(stmt_expr_attributes)]
 #![feature(sync_unsafe_cell)]
-#![feature(trait_alias)]
 #![feature(unsized_const_params)]
 #![no_std]
 
@@ -31,10 +28,6 @@ pub mod architecture;
 pub mod common;
 pub mod driver;
 pub mod future;
-pub mod kernel;
-pub mod memory;
-pub mod synchronization;
-pub mod time;
 pub mod utility;
 
 pub mod r#extern {
@@ -64,15 +57,29 @@ macro_rules! define_system {
             config
         };
 
+        #[panic_handler]
+        fn panic_handler(panic_info: &::core::panic::PanicInfo) -> ! {
+            use core::fmt::Write;
+
+            let _ = write!(
+                ::zcene_bare_metal::actor::ActorRootEnvironment::get().logger(),
+                "Panic: {:?}",
+                panic_info,
+            );
+
+            loop {}
+        }
+
         fn entry_point(
             boot_info: &'static mut ::zcene_bare_metal::r#extern::bootloader_api::BootInfo,
         ) -> ! {
-            use ::zcene_bare_metal::actor::ActorRootEnvironment;
             use ::zcene_bare_metal::ACTOR_ROOT_ENVIRONMENT;
+            use ::zcene_bare_metal::actor::ActorRootEnvironment;
+            use ::zcene_bare_metal::future::runtime::FutureRuntimeHandler;
             use ::zcene_core::actor::ActorEnvironmentSpawn;
 
             let environment = ActorRootEnvironment::root(
-                || ::zcene_bare_metal::future::runtime::FutureRuntimeHandler::default(),
+                || FutureRuntimeHandler::default(),
                 boot_info,
             );
 

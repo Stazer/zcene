@@ -1,9 +1,8 @@
-use ztd::{Constructor, Method};
+use ztd::{Constructor};
 use zcene_core::actor::{ActorEnvironment, ActorEnvironmentReference, ActorEnvironmentSpawn, ActorMessageChannel, ActorEnvironmentSpawnable, ActorSpawnError};
 use zcene_core::future::runtime::{FutureRuntime, FutureRuntimeHandler, FutureRuntimeReference};
 use zcene_core::actor::{
     ActorEnvironmentAllocator,
-    ActorEnvironmentEnterable,
     ActorEnterError,
     ActorMessage,
     ActorMessageChannelAddress,
@@ -14,11 +13,10 @@ use crate::actor::{
     ActorRootEnvironmentHandleContext,
     ActorRootEnvironmentDestroyContext,
     ActorRootEnvironmentLoggerService,
+    ActorRootEnvironmentTimerService,
+    ActorRootEnvironmentMemoryService,
 };
-use crate::time::Timer;
-use crate::kernel::memory::KernelMemoryManager;
-use crate::kernel::{KernelTimer};
-use crate::kernel::interrupt::KernelInterruptManager;
+use crate::common::time::Timer;
 use core::fmt::Write;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -30,9 +28,7 @@ where
 {
     future_runtime: FutureRuntimeReference<H>,
     logger: ActorRootEnvironmentLoggerService,
-    timer: KernelTimer<'static>,
-    memory_manager: KernelMemoryManager,
-    interrupt_manager: KernelInterruptManager,
+    timer: ActorRootEnvironmentTimerService,
 }
 
 impl<H> ActorEnvironment for ActorRootEnvironment<H>
@@ -124,7 +120,7 @@ where
             Some(unsafe { bootloader_x86_64_common::serial::SerialPort::init() }),
         );
 
-        let memory_manager = match KernelMemoryManager::new(boot_info) {
+        let memory_manager = match ActorRootEnvironmentMemoryService::new(boot_info) {
             Ok(memory_manager) => memory_manager,
             Err(error) => {
                 write!(logger.writer(), "{:?}", error);
@@ -144,13 +140,15 @@ where
         use x86_64::structures::tss::TaskStateSegment;
         use alloc::boxed::Box;
 
-        let timer = KernelTimer::new(
+        let timer = ActorRootEnvironmentTimerService::new();
+
+        /*KernelTimer::new(
             &memory_manager,
             boot_info
                 .rsdp_addr
                 .into_option()
-                .map(crate::memory::address::PhysicalMemoryAddress::from),
-        );
+                .map(crate::common::memory::address::PhysicalMemoryAddress::from),
+        );*/
 
         let ring0_stack = memory_manager
             .allocate_stack()
@@ -207,7 +205,7 @@ where
         Box::into_raw(tss);
         Box::into_raw(gdt);
 
-        let mut interrupt_manager = KernelInterruptManager::new();
+        /*let mut interrupt_manager = KernelInterruptManager::new();
         interrupt_manager.bootstrap_local_interrupt_manager({
             let mut local_interrupt_manager =
                 crate::kernel::interrupt::LocalInterruptManager::new(
@@ -225,7 +223,7 @@ where
             );
 
             local_interrupt_manager
-        });
+        });*/
 
         let runtime = FutureRuntime::new(
             handler(),
@@ -236,11 +234,8 @@ where
                 runtime,
                 logger,
                 timer,
-                memory_manager,
-                interrupt_manager,
             ),
         );
-
 
         actor_system
     }

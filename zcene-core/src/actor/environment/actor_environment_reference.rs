@@ -1,5 +1,5 @@
 use alloc::sync::Arc;
-use crate::actor::{ActorEnvironment, ActorEnvironmentAllocator};
+use crate::actor::{ActorEnvironmentAllocator};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

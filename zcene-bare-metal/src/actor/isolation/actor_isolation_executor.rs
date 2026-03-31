@@ -6,7 +6,7 @@ use crate::actor::{
     ActorIsolationMessageHandler, ActorRootEnvironment,
 };
 use crate::common::As;
-use crate::memory::allocator::LeakingHeapMemoryAllocator;
+use crate::common::memory::allocator::LeakingHeapMemoryAllocator;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::arch::asm;

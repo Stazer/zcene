@@ -1,4 +1,4 @@
-use crate::synchronization::Mutex;
+use crate::common::synchronization::Mutex;
 use bootloader_x86_64_common::framebuffer::FrameBufferWriter;
 use bootloader_x86_64_common::serial::SerialPort;
 use x86_64::instructions::interrupts::without_interrupts;
@@ -37,7 +37,7 @@ impl ActorRootEnvironmentLoggerService {
         }
 
         impl<'b> Write for Writer<'b> {
-            fn write_str(&mut self, string: &str) -> Result<(), core::fmt::Error> {
+            fn write_str(&mut self, string: &str) -> Result<(), fmt::Error> {
                 self.service.write(string);
 
                 Ok(())

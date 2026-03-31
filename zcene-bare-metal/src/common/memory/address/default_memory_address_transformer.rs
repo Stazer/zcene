@@ -1,0 +1,12 @@
+#[cfg(not(target_arch = "x86_64"))]
+use crate::common::memory::address::IdentityMemoryAddressTransformer;
+#[cfg(target_arch = "x86_64")]
+use crate::common::memory::address::TruncatedBitsMemoryAddressTransformer;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#[cfg(target_arch = "x86_64")]
+pub type DefaultMemoryAddressTransformer = TruncatedBitsMemoryAddressTransformer<52>;
+
+#[cfg(not(target_arch = "x86_64"))]
+pub type DefaultMemoryAddressTransformer = IdentityMemoryAddressTransformer;
