@@ -7,8 +7,8 @@ use crate::actor::{
 };
 use crate::common::As;
 use crate::common::memory::allocator::LeakingHeapMemoryAllocator;
-use alloc::boxed::Box;
-use alloc::vec::Vec;
+use core::alloc::boxed::Box;
+use core::alloc::vec::Vec;
 use core::arch::asm;
 use core::arch::naked_asm;
 use core::future::Future;

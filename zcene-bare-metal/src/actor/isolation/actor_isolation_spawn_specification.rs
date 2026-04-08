@@ -2,8 +2,8 @@ use crate::actor::{
     ActorIsolationEnvironment, ActorIsolationExecutor, ActorIsolationMessageHandler,
     ActorRootEnvironment,
 };
-use alloc::boxed::Box;
-use alloc::vec::Vec;
+use core::alloc::boxed::Box;
+use core::alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::num::NonZero;
 use zcene_core::actor::{

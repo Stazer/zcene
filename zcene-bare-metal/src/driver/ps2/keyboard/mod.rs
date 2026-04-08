@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use core::alloc::vec::Vec;
 use pc_keyboard::DecodedKey;
 use zcene_core::actor::{
     Actor, ActorContextMessageProvider, ActorEnvironment, ActorEnvironmentAllocator, ActorFuture,

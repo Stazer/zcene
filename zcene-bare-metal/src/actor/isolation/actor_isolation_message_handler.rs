@@ -1,4 +1,4 @@
-use alloc::boxed::Box;
+use core::alloc::boxed::Box;
 use core::fmt::Debug;
 use zcene_core::actor::{
     Actor, ActorBoxFuture, ActorCommonBounds, ActorEnvironment, ActorEnvironmentAllocator,

@@ -1,3 +1,13 @@
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use bootloader_api::BootInfo;
+use bootloader_api::info::MemoryRegionKind;
+use core::alloc::AllocError;
+use core::alloc::Allocator;
+use core::iter::once;
+use core::mem::MaybeUninit;
+use core::slice::from_raw_parts_mut;
+use crate::actor::ActorRootEnvironmentMemoryServiceInitializeError;
 use crate::architecture::x86_64::FRAME_SIZE;
 use crate::architecture::x86_64::Stack;
 use crate::common::As;
@@ -7,15 +17,11 @@ use crate::common::memory::address::PhysicalMemoryAddressPerspective;
 use crate::common::memory::address::VirtualMemoryAddress;
 use crate::common::memory::address::VirtualMemoryAddressPerspective;
 use crate::common::memory::allocator::EmptyHeapMemoryAllocator;
+use crate::common::memory::allocator::FrameIdentifier;
 use crate::common::memory::allocator::FrameManager;
 use crate::common::memory::allocator::FrameManagerAllocationError;
 use crate::common::memory::region::VirtualMemoryRegion;
-use alloc::alloc::Global;
-use bootloader_api::BootInfo;
-use bootloader_api::info::MemoryRegionKind;
-use core::alloc::Allocator;
-use core::iter::once;
-use core::slice::from_raw_parts_mut;
+use linked_list_allocator::LockedHeap;
 use x86_64::registers::control::Cr3;
 use x86_64::structures::paging::FrameAllocator;
 use x86_64::structures::paging::OffsetPageTable;
@@ -32,40 +38,11 @@ use ztd::Method;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use crate::common::memory::allocator::FrameIdentifier;
-use alloc::vec::Vec;
-
-#[derive(Constructor)]
-pub struct UserStack<A>
-where
-    A: Allocator,
-{
-    region: VirtualMemoryRegion,
-    frames: Vec<FrameIdentifier, A>,
-    dirty: bool,
-}
-
-pub struct UserHeap {
-    region: VirtualMemoryRegion,
-    frames: Vec<FrameIdentifier>,
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-use core::alloc::AllocError;
-use linked_list_allocator::LockedHeap;
-
-use core::mem::MaybeUninit;
-
-use alloc::sync::Arc;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
 pub const EXECUTION_PAGE_TABLE_INDEX: usize = 256;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone, Debug, Method)]
+#[derive(Debug, Method)]
 pub struct ActorRootEnvironmentMemoryService {
     physical_memory_offset: VirtualMemoryAddress,
     physical_memory_size_in_bytes: u64,
@@ -73,52 +50,10 @@ pub struct ActorRootEnvironmentMemoryService {
     kernel_image_length: u64,
 }
 
-#[derive(Debug)]
-pub enum KernelMemoryManagerInitializeError {
-    UnsupportedMapping,
-    FrameAllocation(FrameManagerAllocationError),
-    AddressNotAligned(AddressNotAligned),
-    MapToErrorFrameAllocationFailed,
-    MapToErrorParentEntryHugePage,
-    MapToErrorPageAlreadyMapped,
-    AllocError(AllocError),
-}
-
-impl From<AddressNotAligned> for KernelMemoryManagerInitializeError {
-    fn from(error: AddressNotAligned) -> Self {
-        Self::AddressNotAligned(error)
-    }
-}
-
-impl From<FrameManagerAllocationError> for KernelMemoryManagerInitializeError {
-    fn from(error: FrameManagerAllocationError) -> Self {
-        Self::FrameAllocation(error)
-    }
-}
-
-impl From<AllocError> for KernelMemoryManagerInitializeError {
-    fn from(error: AllocError) -> Self {
-        Self::AllocError(error)
-    }
-}
-
-impl<P> From<MapToError<P>> for KernelMemoryManagerInitializeError
-where
-    P: PageSize,
-{
-    fn from(error: MapToError<P>) -> Self {
-        match error {
-            MapToError::FrameAllocationFailed => Self::MapToErrorFrameAllocationFailed,
-            MapToError::ParentEntryHugePage => Self::MapToErrorParentEntryHugePage,
-            MapToError::PageAlreadyMapped(_) => Self::MapToErrorPageAlreadyMapped,
-        }
-    }
-}
-
 impl ActorRootEnvironmentMemoryService {
     pub fn new(
         boot_info: &mut BootInfo,
-    ) -> Result<Self, KernelMemoryManagerInitializeError> {
+    ) -> Result<Self, ActorRootEnvironmentMemoryServiceInitializeError> {
         let physical_memory_size_in_bytes = boot_info
             .memory_regions
             .iter()
@@ -134,7 +69,7 @@ impl ActorRootEnvironmentMemoryService {
         let physical_memory_offset = boot_info
             .physical_memory_offset
             .into_option()
-            .ok_or(KernelMemoryManagerInitializeError::UnsupportedMapping)?;
+            .ok_or(ActorRootEnvironmentMemoryServiceInitializeError::UnsupportedMapping)?;
 
         let this = Self {
             physical_memory_offset: VirtualMemoryAddress::from(physical_memory_offset),
@@ -782,12 +717,11 @@ impl<'a> AcpiHandler for KernelMemoryManagerAcpiHandler<'a> {
     fn unmap_physical_region<T>(_region: &PhysicalMapping<Self, T>) {}
 }
 
+use alloc::alloc::Global;
 use core::alloc::{GlobalAlloc, Layout};
 use core::cell::SyncUnsafeCell;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// TODO: Remove
 
 #[global_allocator]
 pub static KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR: KernelGlobalHeapMemoryAllocator =
