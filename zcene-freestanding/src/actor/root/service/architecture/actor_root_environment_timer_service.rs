@@ -1,5 +1,5 @@
 use crate::common::time::{AtomicTimer, Timer, TimerInstant};
-use crate::driver::acpi::hpet::{Hpet, HpetRegisters};
+use crate::driver::acpi::hpet::Hpet;
 use core::time::Duration;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
