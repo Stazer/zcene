@@ -1,0 +1,11 @@
+[package]
+name = "zcene-freestanding-playground"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+zcene-core = { path = "../zcene-core" }
+zcene-freestanding = { path = "../zcene-freestanding" }
+
+[build-dependencies]
+glob = "*"

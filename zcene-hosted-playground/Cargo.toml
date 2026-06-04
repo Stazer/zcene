@@ -1,0 +1,9 @@
+[package]
+name = "zcene-hosted-playground"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+zcene-core = { path = "../zcene-core" }
+zcene-hosted = { path = "../zcene-hosted" }
+ztd = { git = "https://github.com/Stazer/ztd.git" }
