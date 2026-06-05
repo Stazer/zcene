@@ -42,7 +42,7 @@ use core::mem::MaybeUninit;
 use crate::future::runtime::FutureRuntimeHandler;
 
 pub static ACTOR_ROOT_ENVIRONMENT: SyncUnsafeCell<
-    MaybeUninit<Arc<crate::actor::ActorRootEnvironment<FutureRuntimeHandler>, Global>>,
+    MaybeUninit<Arc<crate::actor::ActorRootEnvironment<FutureRuntimeHandler, crate::platform::x86_64::X86_64Platform>, Global>>,
 > = SyncUnsafeCell::new(MaybeUninit::zeroed());
 
 #[macro_export]

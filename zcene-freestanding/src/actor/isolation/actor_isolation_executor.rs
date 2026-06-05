@@ -85,32 +85,34 @@ macro_rules! emergency_halt {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Constructor)]
-pub struct ActorIsolationExecutor<AI, AR, H>
+pub struct ActorIsolationExecutor<AI, AR, H, P>
 where
     AI: Actor<ActorIsolationEnvironment>,
-    AR: Actor<ActorRootEnvironment<H>, Message = AI::Message>,
+    AR: Actor<ActorRootEnvironment<H, P>, Message = AI::Message>,
     H: FutureRuntimeHandler,
+    P: crate::platform::Platform,
 {
-    allocator: <ActorRootEnvironment<H> as ActorEnvironmentAllocator>::Allocator,
+    allocator: <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
     actor: Box<AI>,
     receiver: ActorMessageChannelReceiver<AR::Message>,
     deadline_in_milliseconds: Option<NonZero<usize>>,
     message_handlers: Vec<
         Box<
-            dyn ActorIsolationMessageHandler<ActorRootEnvironment<H>>,
-            <ActorRootEnvironment<H> as ActorEnvironmentAllocator>::Allocator,
+            dyn ActorIsolationMessageHandler<ActorRootEnvironment<H, P>>,
+            <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
         >,
-        <ActorRootEnvironment<H> as ActorEnvironmentAllocator>::Allocator,
+        <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
     >,
     #[Constructor(default)]
-    marker: PhantomData<(AR, H)>,
+    marker: PhantomData<(AR, H, P)>,
 }
 
-impl<AI, AR, H> ActorIsolationExecutor<AI, AR, H>
+impl<AI, AR, H, P> ActorIsolationExecutor<AI, AR, H, P>
 where
     AI: Actor<ActorIsolationEnvironment>,
-    AR: Actor<ActorRootEnvironment<H>, Message = AI::Message>,
+    AR: Actor<ActorRootEnvironment<H, P>, Message = AI::Message>,
     H: FutureRuntimeHandler,
+    P: crate::platform::Platform,
 {
     pub async fn run(mut self) {
         self.handle(|actor, event, stack| {

@@ -19,34 +19,37 @@ use ztd::Constructor;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Constructor)]
-pub struct ActorRootEnvironment<H = crate::future::runtime::FutureRuntimeHandler>
+pub struct ActorRootEnvironment<H = crate::future::runtime::FutureRuntimeHandler, P = crate::platform::x86_64::X86_64Platform>
 where
     H: FutureRuntimeHandler,
+    P: Platform,
 {
     future_runtime: FutureRuntimeReference<H>,
-    platform: X86_64Platform,
+    platform: P,
 }
 
-impl<H> ActorEnvironment for ActorRootEnvironment<H>
+impl<H, P> ActorEnvironment for ActorRootEnvironment<H, P>
 where
     H: FutureRuntimeHandler,
+    P: Platform,
 {
     type Address<A>
         = ActorMessageChannelAddress<A, Self>
     where
         A: Actor<Self>;
 
-    type CreateContext<'a> = ActorRootEnvironmentCreateContext<'a, H>;
+    type CreateContext<'a> = ActorRootEnvironmentCreateContext<'a, H, P>;
     type HandleContext<'a, M>
-        = ActorRootEnvironmentHandleContext<'a, H, M>
+        = ActorRootEnvironmentHandleContext<'a, H, P, M>
     where
         M: ActorMessage;
-    type DestroyContext<'a> = ActorRootEnvironmentDestroyContext<'a, H>;
+    type DestroyContext<'a> = ActorRootEnvironmentDestroyContext<'a, H, P>;
 }
 
-impl<H> ActorEnvironmentAllocator for ActorRootEnvironment<H>
+impl<H, P> ActorEnvironmentAllocator for ActorRootEnvironment<H, P>
 where
     H: FutureRuntimeHandler,
+    P: Platform,
 {
     type Allocator = <H as FutureRuntimeHandler>::Allocator;
 
@@ -55,15 +58,16 @@ where
     }
 }
 
-impl<A, H> ActorEnvironmentSpawn<A> for ActorRootEnvironment<H>
+impl<A, H, P> ActorEnvironmentSpawn<A> for ActorRootEnvironment<H, P>
 where
     A: Actor<Self>,
     H: FutureRuntimeHandler,
+    P: Platform,
 {
     fn spawn(
         self: &ActorEnvironmentReference<Self>,
         mut actor: A,
-    ) -> Result<<ActorRootEnvironment<H> as ActorEnvironment>::Address<A>, ActorSpawnError> {
+    ) -> Result<<ActorRootEnvironment<H, P> as ActorEnvironment>::Address<A>, ActorSpawnError> {
         let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
 
         self.future_runtime.spawn({
@@ -92,22 +96,33 @@ where
             }
         })?;
 
-        Ok(<ActorRootEnvironment<H> as ActorEnvironment>::Address::<A>::new(sender))
+        Ok(<ActorRootEnvironment<H, P> as ActorEnvironment>::Address::<A>::new(sender))
     }
 }
 
-impl<H> ActorRootEnvironment<H>
+impl<H, P> ActorRootEnvironment<H, P>
+where
+    H: FutureRuntimeHandler,
+    P: Platform,
+{
+    pub fn platform(&self) -> &P {
+        &self.platform
+    }
+}
+
+impl<H, P> ActorRootEnvironment<H, P>
 where
     H: FutureRuntimeHandler<Allocator = alloc::alloc::Global>,
+    P: Platform,
 {
     pub fn root<F>(
         handler: F,
-        boot_info: &'static mut bootloader_api::BootInfo,
+        boot_info: P::BootInfo,
     ) -> ActorEnvironmentReference<Self>
     where
         F: FnOnce() -> H,
     {
-        let platform = X86_64Platform::initialize(boot_info);
+        let platform = P::initialize(boot_info);
 
         let runtime = FutureRuntime::new(handler()).unwrap();
 
@@ -119,7 +134,12 @@ where
 
         Ok(())
     }
+}
 
+impl<H> ActorRootEnvironment<H, X86_64Platform>
+where
+    H: FutureRuntimeHandler,
+{
     pub fn logger(&self) -> impl Write {
         self.platform.logger().writer()
     }
@@ -129,7 +149,7 @@ where
     }
 }
 
-impl ActorRootEnvironment<crate::future::runtime::FutureRuntimeHandler> {
+impl ActorRootEnvironment<crate::future::runtime::FutureRuntimeHandler, X86_64Platform> {
     pub fn get() -> &'static ActorEnvironmentReference<Self> {
         unsafe {
             crate::ACTOR_ROOT_ENVIRONMENT
