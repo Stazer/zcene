@@ -7,9 +7,7 @@
 use core::fmt::Write;
 use zcene_freestanding::actor::ActorRootEnvironment;
 use zcene_freestanding::define_system;
-use zcene_core::actor::{
-    Actor, ActorContext, ActorCreateError, ActorEnvironment, ActorFuture, ActorMessage,
-};
+use zcene_core::actor::{Actor, ActorCreateError, ActorEnvironment, ActorMessage};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

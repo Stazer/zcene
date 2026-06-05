@@ -4,12 +4,12 @@ use core::time::Duration;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub enum ActorRootEnvironmentTimerService {
+pub enum TimerService {
     Atomic(AtomicTimer),
     Hpet(Hpet<'static>),
 }
 
-impl Timer for ActorRootEnvironmentTimerService {
+impl Timer for TimerService {
     fn now(&self) -> TimerInstant {
         match self {
             Self::Atomic(atomic) => atomic.now(),
@@ -25,8 +25,8 @@ impl Timer for ActorRootEnvironmentTimerService {
     }
 }
 
-impl ActorRootEnvironmentTimerService {
-    pub fn new() -> ActorRootEnvironmentTimerService {
-        ActorRootEnvironmentTimerService::Atomic(AtomicTimer::default())
+impl TimerService {
+    pub fn new() -> Self {
+        Self::Atomic(AtomicTimer::default())
     }
 }

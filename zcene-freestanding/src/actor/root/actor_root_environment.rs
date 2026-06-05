@@ -1,9 +1,10 @@
-use crate::actor::ActorRootEnvironmentArchitectureService;
 use crate::actor::{
     ActorRootEnvironmentCreateContext, ActorRootEnvironmentDestroyContext,
     ActorRootEnvironmentHandleContext,
 };
 use crate::common::time::Timer;
+use crate::platform::x86_64::X86_64Platform;
+use crate::platform::Platform;
 use core::fmt::Write;
 use zcene_core::actor::{
     Actor, ActorEnterError, ActorEnvironmentAllocator, ActorMessage, ActorMessageChannelAddress,
@@ -23,7 +24,7 @@ where
     H: FutureRuntimeHandler,
 {
     future_runtime: FutureRuntimeReference<H>,
-    architecture_service: ActorRootEnvironmentArchitectureService,
+    platform: X86_64Platform,
 }
 
 impl<H> ActorEnvironment for ActorRootEnvironment<H>
@@ -106,11 +107,11 @@ where
     where
         F: FnOnce() -> H,
     {
-        let architecture_service = ActorRootEnvironmentArchitectureService::new(boot_info);
+        let platform = X86_64Platform::initialize(boot_info);
 
         let runtime = FutureRuntime::new(handler()).unwrap();
 
-        ActorEnvironmentReference::new(Self::new(runtime, architecture_service))
+        ActorEnvironmentReference::new(Self::new(runtime, platform))
     }
 
     pub fn enter(&self) -> Result<(), ActorEnterError> {
@@ -120,11 +121,11 @@ where
     }
 
     pub fn logger(&self) -> impl Write {
-        self.architecture_service.logger().writer()
+        self.platform.logger().writer()
     }
 
     pub fn timer(&self) -> &impl Timer {
-        self.architecture_service.timer()
+        self.platform.timer()
     }
 }
 

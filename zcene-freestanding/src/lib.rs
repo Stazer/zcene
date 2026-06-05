@@ -24,7 +24,7 @@ extern crate alloc;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub mod actor;
-pub mod architecture;
+pub mod platform;
 pub mod common;
 pub mod driver;
 pub mod future;

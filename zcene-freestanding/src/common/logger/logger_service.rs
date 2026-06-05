@@ -6,12 +6,12 @@ use x86_64::instructions::interrupts::without_interrupts;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct ActorRootEnvironmentLoggerService {
+pub struct LoggerService {
     frame_buffer: Mutex<Option<FrameBufferWriter>>,
     serial_port: Mutex<Option<SerialPort>>,
 }
 
-impl ActorRootEnvironmentLoggerService {
+impl LoggerService {
     pub fn new(frame_buffer: Option<FrameBufferWriter>, serial_port: Option<SerialPort>) -> Self {
         Self {
             frame_buffer: Mutex::new(frame_buffer),
@@ -33,7 +33,7 @@ impl ActorRootEnvironmentLoggerService {
 
     pub fn writer<'a>(&'a self) -> impl Write + 'a {
         pub struct Writer<'b> {
-            service: &'b ActorRootEnvironmentLoggerService,
+            service: &'b LoggerService,
         }
 
         impl<'b> Write for Writer<'b> {

@@ -7,7 +7,7 @@ use x86_64::structures::paging::page::AddressNotAligned;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug)]
-pub enum ActorRootEnvironmentMemoryServiceInitializeError {
+pub enum X86_64MemoryServiceInitializeError {
     UnsupportedMapping,
     FrameAllocation(FrameManagerAllocationError),
     AddressNotAligned(AddressNotAligned),
@@ -17,25 +17,25 @@ pub enum ActorRootEnvironmentMemoryServiceInitializeError {
     AllocError(AllocError),
 }
 
-impl From<AddressNotAligned> for ActorRootEnvironmentMemoryServiceInitializeError {
+impl From<AddressNotAligned> for X86_64MemoryServiceInitializeError {
     fn from(error: AddressNotAligned) -> Self {
         Self::AddressNotAligned(error)
     }
 }
 
-impl From<FrameManagerAllocationError> for ActorRootEnvironmentMemoryServiceInitializeError {
+impl From<FrameManagerAllocationError> for X86_64MemoryServiceInitializeError {
     fn from(error: FrameManagerAllocationError) -> Self {
         Self::FrameAllocation(error)
     }
 }
 
-impl From<AllocError> for ActorRootEnvironmentMemoryServiceInitializeError {
+impl From<AllocError> for X86_64MemoryServiceInitializeError {
     fn from(error: AllocError) -> Self {
         Self::AllocError(error)
     }
 }
 
-impl<P> From<MapToError<P>> for ActorRootEnvironmentMemoryServiceInitializeError
+impl<P> From<MapToError<P>> for X86_64MemoryServiceInitializeError
 where
     P: PageSize,
 {

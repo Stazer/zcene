@@ -2,6 +2,7 @@ mod align;
 mod r#as;
 pub mod bits;
 mod linker_value;
+pub mod logger;
 pub mod memory;
 pub mod reserved;
 pub mod synchronization;

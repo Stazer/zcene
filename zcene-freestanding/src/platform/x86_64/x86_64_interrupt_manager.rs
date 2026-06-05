@@ -1,5 +1,5 @@
-use crate::actor::ActorRootEnvironmentMemoryService;
-use crate::architecture::x86_64::ExecutionUnitIdentifier;
+use crate::platform::x86_64::X86_64MemoryService;
+use crate::platform::x86_64::ExecutionUnitIdentifier;
 use crate::common::synchronization::Mutex;
 use crate::common::time::Timer;
 use crate::driver::xapic::XApic;
@@ -20,7 +20,7 @@ const PARENT_PIC_OFFSET: u8 = EXTERNAL_INTERRUPTS_START as u8;
 const CHILD_PIC_OFFSET: u8 = PARENT_PIC_OFFSET + 0x8;
 const EXTERNAL_INTERRUPTS_START: u8 = 0x20;
 
-pub enum LocalInterruptManagerType {
+pub enum X86_64X86_64LocalInterruptManagerType {
     PIC,
     XAPIC {
         base: *mut u32,
@@ -33,13 +33,13 @@ pub type InterruptEntryPoint = extern "x86-interrupt" fn(InterruptStackFrame);
 
 pub type InterruptVectorIdentifier = u8;
 
-unsafe impl Sync for LocalInterruptManagerType {}
-unsafe impl Send for LocalInterruptManagerType {}
+unsafe impl Sync for X86_64X86_64LocalInterruptManagerType {}
+unsafe impl Send for X86_64X86_64LocalInterruptManagerType {}
 
-impl LocalInterruptManagerType {}
+impl X86_64X86_64LocalInterruptManagerType {}
 
-pub struct LocalInterruptManager {
-    r#type: LocalInterruptManagerType,
+pub struct X86_64LocalInterruptManager {
+    r#type: X86_64X86_64LocalInterruptManagerType,
     descriptor_table: Box<InterruptDescriptorTable>,
     free_vectors: BTreeSet<InterruptVectorIdentifier>,
 }
@@ -99,8 +99,8 @@ where
     loop {}
 }
 
-impl LocalInterruptManager {
-    pub fn new(timer: &impl Timer, memory_manager: &ActorRootEnvironmentMemoryService) -> Self {
+impl X86_64LocalInterruptManager {
+    pub fn new(timer: &impl Timer, memory_manager: &X86_64MemoryService) -> Self {
         let mut table = Box::new(InterruptDescriptorTable::new());
 
         table
@@ -210,7 +210,7 @@ impl LocalInterruptManager {
             let ticks_per_millisecond = xapic.calibrate(timer, Duration::from_millis(1));
 
             return Self {
-                r#type: LocalInterruptManagerType::XAPIC {
+                r#type: X86_64X86_64LocalInterruptManagerType::XAPIC {
                     base,
                     ticks_per_millisecond,
                 },
@@ -267,7 +267,7 @@ impl LocalInterruptManager {
 
     pub fn enable_timer(&mut self, entry_point: InterruptEntryPoint, duration: Duration) {
         match self.r#type {
-            LocalInterruptManagerType::XAPIC {
+            X86_64X86_64LocalInterruptManagerType::XAPIC {
                 base,
                 ticks_per_millisecond,
             } => unsafe {
@@ -282,7 +282,7 @@ impl LocalInterruptManager {
 
     pub fn enable_oneshot(&mut self, entry_point: InterruptEntryPoint, duration: Duration) {
         match self.r#type {
-            LocalInterruptManagerType::XAPIC {
+            X86_64X86_64LocalInterruptManagerType::XAPIC {
                 base,
                 ticks_per_millisecond,
             } => unsafe {
@@ -301,7 +301,7 @@ impl LocalInterruptManager {
 
     pub fn reset_oneshot(&self, duration: Duration) {
         match self.r#type {
-            LocalInterruptManagerType::XAPIC {
+            X86_64X86_64LocalInterruptManagerType::XAPIC {
                 base,
                 ticks_per_millisecond,
             } => unsafe {
@@ -315,7 +315,7 @@ impl LocalInterruptManager {
 
     pub fn notify_end_of_interrupt(&self) {
         match self.r#type {
-            LocalInterruptManagerType::XAPIC { base, .. } => unsafe {
+            X86_64X86_64LocalInterruptManagerType::XAPIC { base, .. } => unsafe {
                 let mut xapic = XApic::new((base as *mut XApicRegisters).as_mut().unwrap());
                 xapic.signal_end_of_interrupt();
             },
@@ -324,11 +324,11 @@ impl LocalInterruptManager {
     }
 }
 
-pub struct KernelInterruptManager {
-    local_interrupt_managers: Mutex<BTreeMap<ExecutionUnitIdentifier, LocalInterruptManager>>,
+pub struct X86_64InterruptManager {
+    local_interrupt_managers: Mutex<BTreeMap<ExecutionUnitIdentifier, X86_64LocalInterruptManager>>,
 }
 
-impl KernelInterruptManager {
+impl X86_64InterruptManager {
     pub fn new() -> Self {
         Self {
             local_interrupt_managers: Mutex::new(BTreeMap::default()),
@@ -337,7 +337,7 @@ impl KernelInterruptManager {
 
     pub fn bootstrap_local_interrupt_manager(
         &mut self,
-        local_interrupt_manager: LocalInterruptManager,
+        local_interrupt_manager: X86_64LocalInterruptManager,
     ) {
         let mut local_interrupt_managers = self.local_interrupt_managers.lock();
         local_interrupt_managers.insert(0, local_interrupt_manager);

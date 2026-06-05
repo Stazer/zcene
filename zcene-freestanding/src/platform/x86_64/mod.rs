@@ -1,5 +1,20 @@
 pub mod smp;
 
+mod x86_64_interrupt_manager;
+pub use x86_64_interrupt_manager::*;
+
+mod x86_64_memory_service;
+pub use x86_64_memory_service::*;
+
+mod x86_64_memory_service_initialize_error;
+pub use x86_64_memory_service_initialize_error::*;
+
+mod timer_service;
+pub use timer_service::*;
+
+mod x86_64_platform;
+pub use x86_64_platform::*;
+
 use x86::cpuid::CpuId;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

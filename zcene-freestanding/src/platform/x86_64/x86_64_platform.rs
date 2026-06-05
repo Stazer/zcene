@@ -1,26 +1,36 @@
-use crate::actor::ActorRootEnvironmentLoggerService;
-use crate::actor::ActorRootEnvironmentMemoryService;
-use crate::actor::ActorRootEnvironmentTimerService;
+use crate::common::logger::LoggerService;
+use crate::platform::x86_64::X86_64MemoryService;
+use crate::platform::x86_64::TimerService;
+use crate::platform::Platform;
 use core::fmt::Write;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct ActorRootEnvironmentArchitectureService {
-    logger: ActorRootEnvironmentLoggerService,
-    timer: ActorRootEnvironmentTimerService,
+pub struct X86_64Platform {
+    logger: LoggerService,
+    memory: X86_64MemoryService,
+    timer: TimerService,
 }
 
-impl ActorRootEnvironmentArchitectureService {
-    pub fn logger(&self) -> &ActorRootEnvironmentLoggerService {
+impl X86_64Platform {
+    pub fn logger(&self) -> &LoggerService {
         &self.logger
     }
 
-    pub fn timer(&self) -> &ActorRootEnvironmentTimerService {
-        &self.timer
+    pub fn memory(&self) -> &X86_64MemoryService {
+        &self.memory
     }
 
-    pub fn new(boot_info: &'static mut bootloader_api::BootInfo) -> Self {
-        let logger = crate::actor::ActorRootEnvironmentLoggerService::new(
+    pub fn timer(&self) -> &TimerService {
+        &self.timer
+    }
+}
+
+impl Platform for X86_64Platform {
+    type BootInfo = &'static mut bootloader_api::BootInfo;
+
+    fn initialize(boot_info: Self::BootInfo) -> Self {
+        let logger = LoggerService::new(
             boot_info.framebuffer.take().map(|frame_buffer| {
                 let info = frame_buffer.info().clone();
 
@@ -32,8 +42,8 @@ impl ActorRootEnvironmentArchitectureService {
             Some(unsafe { bootloader_x86_64_common::serial::SerialPort::init() }),
         );
 
-        let memory_manager = match ActorRootEnvironmentMemoryService::new(boot_info) {
-            Ok(memory_manager) => memory_manager,
+        let memory = match X86_64MemoryService::new(boot_info) {
+            Ok(memory) => memory,
             Err(error) => {
                 write!(logger.writer(), "{:?}", error);
                 return todo!();
@@ -52,15 +62,15 @@ impl ActorRootEnvironmentArchitectureService {
         use x86_64::structures::gdt::{Descriptor, DescriptorFlags};
         use x86_64::structures::tss::TaskStateSegment;
 
-        let timer = ActorRootEnvironmentTimerService::new();
+        let timer = TimerService::new();
 
-        let ring0_stack = memory_manager
+        let ring0_stack = memory
             .allocate_stack()
             .unwrap()
             .initial_memory_address()
             .as_u64();
 
-        let timer_stack = memory_manager
+        let timer_stack = memory
             .allocate_stack()
             .unwrap()
             .initial_memory_address()
@@ -74,12 +84,11 @@ impl ActorRootEnvironmentArchitectureService {
 
         let kernel_code = gdt.append(Descriptor::UserSegment(
             DescriptorFlags::KERNEL_CODE64.bits(),
-        )); // 8
-        let kernel_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_DATA.bits())); // 16
-        // order is very important!
-        let user_code32 = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE32.bits())); // 24
-        let user_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_DATA.bits())); // 32
-        let user_code64 = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits())); // 40
+        ));
+        let kernel_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_DATA.bits()));
+        let user_code32 = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE32.bits()));
+        let user_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_DATA.bits()));
+        let user_code64 = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits()));
 
         let mut tss = Box::new(TaskStateSegment::new());
         tss.privilege_stack_table[0] = VirtAddr::new(ring0_stack);
@@ -88,7 +97,6 @@ impl ActorRootEnvironmentArchitectureService {
 
         let tss_selector = unsafe {
             let descr = Descriptor::tss_segment_unchecked(Box::as_ptr(&tss));
-
             gdt.append(descr)
         };
 
@@ -96,65 +104,35 @@ impl ActorRootEnvironmentArchitectureService {
 
         unsafe {
             gdt.load_unsafe();
-
             CS::set_reg(kernel_code);
-
             load_tss(tss_selector);
-
             wrmsr(IA32_STAR, selector);
-            wrmsr(IA32_LSTAR, actor_system_call_entry_point as u64);
+            wrmsr(IA32_LSTAR, x86_64_system_call_entry_point as u64);
             wrmsr(IA32_FMASK, RFlags::FLAGS_IF.bits());
         }
 
         Box::into_raw(tss);
         Box::into_raw(gdt);
 
-        /*let mut interrupt_manager = KernelInterruptManager::new();
-        interrupt_manager.bootstrap_local_interrupt_manager({
-            let mut local_interrupt_manager =
-                crate::kernel::interrupt::LocalInterruptManager::new(
-                    &timer,
-                    &memory_manager.clone(),
-                );
-
-            local_interrupt_manager.enable_oneshot(
-                unsafe {
-                    core::mem::transmute(
-                        actor_deadline_preemption_entry_point as *const u8,
-                    )
-                },
-                core::time::Duration::from_millis(0),
-            );
-
-            local_interrupt_manager
-        });*/
-
-        Self { logger, timer }
+        Self { logger, memory, timer }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 use core::arch::naked_asm;
 
 #[unsafe(naked)]
-pub unsafe extern "C" fn actor_system_call_entry_point() -> ! {
+pub unsafe extern "C" fn x86_64_system_call_entry_point() -> ! {
     unsafe {
         naked_asm!(
-            //
-            // Store user context
-            //
             "mov r9, rcx",
             "mov r10, rsp",
-            //
-            // Load kernel stack
-            //
             "mov rcx, 0xC0000102",
             "rdmsr",
             "shl rdx, 32",
             "or rax, rdx",
             "mov rsp, rax",
-            //
-            // Restore
-            //
             "mov rdx, r8",
             "pop rcx",
         )
@@ -162,25 +140,16 @@ pub unsafe extern "C" fn actor_system_call_entry_point() -> ! {
 }
 
 #[unsafe(naked)]
-pub unsafe extern "C" fn actor_deadline_preemption_entry_point() -> ! {
+pub unsafe extern "C" fn x86_64_deadline_preemption_entry_point() -> ! {
     unsafe {
         naked_asm!(
-            //
-            // Store user context
-            //
             "mov r9, rcx",
             "mov r10, rsp",
-            //
-            // Load kernel stack
-            //
             "mov rcx, 0xC0000102",
             "rdmsr",
             "shl rdx, 32",
             "or rax, rdx",
             "mov rsp, rax",
-            //
-            // Restore
-            //
             "mov rdx, r8",
             "pop rcx",
         )

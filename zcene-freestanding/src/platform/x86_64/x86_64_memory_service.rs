@@ -1,6 +1,6 @@
-use crate::actor::ActorRootEnvironmentMemoryServiceInitializeError;
-use crate::architecture::x86_64::FRAME_SIZE;
-use crate::architecture::x86_64::Stack;
+use crate::platform::x86_64::X86_64MemoryServiceInitializeError;
+use crate::platform::x86_64::FRAME_SIZE;
+use crate::platform::x86_64::Stack;
 use crate::common::As;
 use crate::common::memory::address::DefaultMemoryAddressTransformer;
 use crate::common::memory::address::PhysicalMemoryAddress;
@@ -38,17 +38,17 @@ pub const EXECUTION_PAGE_TABLE_INDEX: usize = 256;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug, Method)]
-pub struct ActorRootEnvironmentMemoryService {
+pub struct X86_64MemoryService {
     physical_memory_offset: VirtualMemoryAddress,
     physical_memory_size_in_bytes: u64,
     kernel_image_start_virtual_memory_address: VirtualMemoryAddress,
     kernel_image_length: u64,
 }
 
-impl ActorRootEnvironmentMemoryService {
+impl X86_64MemoryService {
     pub fn new(
         boot_info: &mut BootInfo,
-    ) -> Result<Self, ActorRootEnvironmentMemoryServiceInitializeError> {
+    ) -> Result<Self, X86_64MemoryServiceInitializeError> {
         let physical_memory_size_in_bytes = boot_info
             .memory_regions
             .iter()
@@ -64,7 +64,7 @@ impl ActorRootEnvironmentMemoryService {
         let physical_memory_offset = boot_info
             .physical_memory_offset
             .into_option()
-            .ok_or(ActorRootEnvironmentMemoryServiceInitializeError::UnsupportedMapping)?;
+            .ok_or(X86_64MemoryServiceInitializeError::UnsupportedMapping)?;
 
         let this = Self {
             physical_memory_offset: VirtualMemoryAddress::from(physical_memory_offset),
@@ -630,7 +630,7 @@ use ztd::Constructor;
 
 #[derive(Constructor)]
 pub struct KernelMemoryManagerFrameAllocator<'a> {
-    memory_manager: &'a ActorRootEnvironmentMemoryService,
+    memory_manager: &'a X86_64MemoryService,
 }
 
 unsafe impl FrameAllocator<Size4KiB> for KernelMemoryManagerFrameAllocator<'_> {
@@ -661,7 +661,7 @@ use x86_64::structures::paging::FrameDeallocator;
 
 #[derive(Constructor)]
 pub struct KernelMemoryManagerFrameDeallocator<'a> {
-    memory_manager: &'a ActorRootEnvironmentMemoryService,
+    memory_manager: &'a X86_64MemoryService,
 }
 
 impl FrameDeallocator<Size4KiB> for KernelMemoryManagerFrameDeallocator<'_> {
@@ -685,7 +685,7 @@ use core::ptr::NonNull;
 
 #[derive(Constructor, Clone)]
 pub struct KernelMemoryManagerAcpiHandler<'a> {
-    memory_manager: &'a ActorRootEnvironmentMemoryService,
+    memory_manager: &'a X86_64MemoryService,
 }
 
 impl<'a> AcpiHandler for KernelMemoryManagerAcpiHandler<'a> {
