@@ -10,8 +10,7 @@ use zcene_core::actor::{
     Actor, ActorEnterError, ActorEnvironmentAllocator, ActorMessage, ActorMessageChannelAddress,
 };
 use zcene_core::actor::{
-    ActorEnvironment, ActorEnvironmentReference, ActorEnvironmentSpawn, ActorMessageChannel,
-    ActorSpawnError,
+    ActorEnvironment, ActorEnvironmentReference, ActorMessageChannel, ActorSpawnError,
 };
 use zcene_core::future::runtime::{FutureRuntime, FutureRuntimeHandler, FutureRuntimeReference};
 use ztd::Constructor;
@@ -58,16 +57,18 @@ where
     }
 }
 
-impl<A, H, P> ActorEnvironmentSpawn<A> for ActorRootEnvironment<H, P>
+impl<H, P> ActorRootEnvironment<H, P>
 where
-    A: Actor<Self>,
     H: FutureRuntimeHandler,
     P: Platform,
 {
-    fn spawn(
+    pub fn spawn<A>(
         self: &ActorEnvironmentReference<Self>,
         mut actor: A,
-    ) -> Result<<ActorRootEnvironment<H, P> as ActorEnvironment>::Address<A>, ActorSpawnError> {
+    ) -> Result<<ActorRootEnvironment<H, P> as ActorEnvironment>::Address<A>, ActorSpawnError>
+    where
+        A: Actor<Self>,
+    {
         let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
 
         self.future_runtime.spawn({
@@ -98,13 +99,7 @@ where
 
         Ok(<ActorRootEnvironment<H, P> as ActorEnvironment>::Address::<A>::new(sender))
     }
-}
 
-impl<H, P> ActorRootEnvironment<H, P>
-where
-    H: FutureRuntimeHandler,
-    P: Platform,
-{
     pub fn platform(&self) -> &P {
         &self.platform
     }

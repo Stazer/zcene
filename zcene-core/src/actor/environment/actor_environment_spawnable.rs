@@ -14,14 +14,3 @@ where
 }
 
 use crate::actor::{ActorEnvironment, ActorSpawnError};
-
-pub trait ActorEnvironmentSpawn<A>
-where
-    A: Actor<Self>,
-    Self: ActorEnvironment + ActorEnvironmentAllocator,
-{
-    fn spawn(
-        self: &ActorEnvironmentReference<Self>,
-        actor: A,
-    ) -> Result<Self::Address<A>, ActorSpawnError>;
-}

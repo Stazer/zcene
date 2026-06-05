@@ -77,7 +77,6 @@ macro_rules! define_system {
             use $crate::ACTOR_ROOT_ENVIRONMENT;
             use $crate::actor::ActorRootEnvironment;
             use $crate::future::runtime::FutureRuntimeHandler;
-            use ::zcene_core::actor::ActorEnvironmentSpawn;
 
             let environment =
                 ActorRootEnvironment::root(|| FutureRuntimeHandler::default(), boot_info);
