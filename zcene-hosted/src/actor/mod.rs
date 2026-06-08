@@ -1,7 +1,7 @@
 use zcene_core::actor::{
     Actor, ActorEnterError, ActorEnvironment, ActorEnvironmentAllocator, ActorEnvironmentEnterable,
-    ActorEnvironmentSpawnable, ActorMessage, ActorMessageChannel, ActorMessageChannelAddress,
-    ActorSpawnError, ActorSystemReference,
+    ActorEnvironmentReference, ActorEnvironmentSpawnable, ActorMessage, ActorMessageChannel,
+    ActorMessageChannelAddress, ActorSpawnError,
 };
 use zcene_core::future::runtime::{FutureRuntimeHandler, FutureRuntimeReference};
 use ztd::{Constructor, Method};
@@ -14,7 +14,7 @@ pub struct ActorRootEnvironmentCreateContext<H>
 where
     H: FutureRuntimeHandler,
 {
-    system: ActorSystemReference<ActorRootEnvironment<H>>,
+    system: ActorEnvironmentReference<ActorRootEnvironment<H>>,
 }
 
 #[derive(Constructor, Method)]
@@ -23,7 +23,7 @@ pub struct ActorRootEnvironmentHandleContext<H, M>
 where
     H: FutureRuntimeHandler,
 {
-    system: ActorSystemReference<ActorRootEnvironment<H>>,
+    system: ActorEnvironmentReference<ActorRootEnvironment<H>>,
     message: M,
 }
 
@@ -33,7 +33,7 @@ pub struct ActorRootEnvironmentDestroyContext<H>
 where
     H: FutureRuntimeHandler,
 {
-    system: ActorSystemReference<ActorRootEnvironment<H>>,
+    system: ActorEnvironmentReference<ActorRootEnvironment<H>>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -56,12 +56,12 @@ where
     where
         A: Actor<Self>;
 
-    type CreateContext = ActorRootEnvironmentCreateContext<H>;
-    type HandleContext<M>
+    type CreateContext<'a> = ActorRootEnvironmentCreateContext<H>;
+    type HandleContext<'a, M>
         = ActorRootEnvironmentHandleContext<H, M>
     where
         M: ActorMessage;
-    type DestroyContext = ActorRootEnvironmentDestroyContext<H>;
+    type DestroyContext<'a> = ActorRootEnvironmentDestroyContext<H>;
 }
 
 impl<H> ActorEnvironmentAllocator for ActorRootEnvironment<H>
@@ -81,9 +81,9 @@ where
 {
     fn enter(
         self,
-        system: &ActorSystemReference<ActorRootEnvironment<H>>,
+        system: &ActorEnvironmentReference<ActorRootEnvironment<H>>,
     ) -> Result<(), ActorEnterError> {
-        system.environment().future_runtime.run();
+        system.future_runtime.run();
 
         Ok(())
     }
@@ -102,13 +102,13 @@ where
 {
     fn spawn(
         mut self,
-        system: &ActorSystemReference<ActorRootEnvironment<H>>,
+        system: &ActorEnvironmentReference<ActorRootEnvironment<H>>,
     ) -> Result<<ActorRootEnvironment<H> as ActorEnvironment>::Address<A>, ActorSpawnError> {
         let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
 
         let inner_system = system.clone();
 
-        system.environment().future_runtime().spawn(async move {
+        system.future_runtime().spawn(async move {
             let system = inner_system;
 
             // TODO

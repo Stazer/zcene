@@ -1,4 +1,4 @@
-use core::alloc::boxed::Box;
+use alloc::boxed::Box;
 use core::fmt::Debug;
 use zcene_core::actor::{
     Actor, ActorBoxFuture, ActorCommonBounds, ActorEnvironment, ActorEnvironmentAllocator,
@@ -7,7 +7,7 @@ use zcene_core::actor::{
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait ActorIsolationMessageHandler<E>: ActorCommonBounds
+pub trait ActorUnprivilegedMessageHandler<E>: ActorCommonBounds
 where
     E: ActorEnvironment + ActorEnvironmentAllocator,
 {
@@ -18,7 +18,7 @@ where
     ) -> ActorBoxFuture<'static, Result<(), ActorSendError>, E>;
 }
 
-impl<A, E> ActorIsolationMessageHandler<E> for ActorMessageChannelAddress<A, E>
+impl<A, E> ActorUnprivilegedMessageHandler<E> for ActorMessageChannelAddress<A, E>
 where
     A: Actor<E>,
     A::Message: Debug,
@@ -31,7 +31,7 @@ where
     ) -> ActorBoxFuture<'static, Result<(), ActorSendError>, E> {
         let sender = self.clone();
 
-        // TODO: check address and length!
+        // SAFETY: caller guarantees message points to a valid A::Message
         let message = unsafe { message.cast::<A::Message>().as_ref().unwrap() }.clone();
 
         Box::pin_in(

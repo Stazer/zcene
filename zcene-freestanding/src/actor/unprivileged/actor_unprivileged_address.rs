@@ -1,4 +1,4 @@
-use crate::actor::ActorIsolationEnvironment;
+use crate::actor::unprivileged::ActorUnprivilegedEnvironment;
 use core::arch::asm;
 use core::marker::PhantomData;
 use zcene_core::actor::{Actor, ActorAddress, ActorFuture, ActorMessageSender, ActorSendError};
@@ -7,35 +7,38 @@ use ztd::Constructor;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Constructor)]
-pub struct ActorIsolationAddress<A>
+pub struct ActorUnprivilegedAddress<A>
 where
-    A: Actor<ActorIsolationEnvironment>,
+    A: Actor<ActorUnprivilegedEnvironment>,
 {
-    descriptor: usize,
+    mailbox: usize,
     #[Constructor(default)]
     marker: PhantomData<A::Message>,
 }
 
-impl<A> Clone for ActorIsolationAddress<A>
+impl<A> Clone for ActorUnprivilegedAddress<A>
 where
-    A: Actor<ActorIsolationEnvironment>,
+    A: Actor<ActorUnprivilegedEnvironment>,
 {
     fn clone(&self) -> Self {
-        Self::new(self.descriptor)
+        Self::new(self.mailbox)
     }
 }
 
-impl<A> ActorAddress<A, ActorIsolationEnvironment> for ActorIsolationAddress<A> where
-    A: Actor<ActorIsolationEnvironment>
+impl<A> ActorAddress<A, ActorUnprivilegedEnvironment> for ActorUnprivilegedAddress<A> where
+    A: Actor<ActorUnprivilegedEnvironment>
 {
 }
 
-impl<A> ActorMessageSender<A::Message> for ActorIsolationAddress<A>
+impl<A> ActorMessageSender<A::Message> for ActorUnprivilegedAddress<A>
 where
-    A: Actor<ActorIsolationEnvironment>,
+    A: Actor<ActorUnprivilegedEnvironment>,
 {
     fn send(&self, message: A::Message) -> impl ActorFuture<'_, Result<(), ActorSendError>> {
+        let mailbox = self.mailbox;
+
         async move {
+            // Syscall 3 = SendMessageCopy: rdi=3, rsi=mailbox, r8=message_ptr
             unsafe {
                 asm!(
                     "push rbx",
@@ -51,9 +54,9 @@ where
                     "pop r12",
                     "pop rbp",
                     "pop rbx",
-                    in ("rdi") 3,
-                    in ("rsi") 0,
-                    in ("r8") &message,
+                    in("rdi") 3usize,
+                    in("rsi") mailbox,
+                    in("r8") &message as *const A::Message as *const (),
                     clobber_abi("C"),
                 );
             }

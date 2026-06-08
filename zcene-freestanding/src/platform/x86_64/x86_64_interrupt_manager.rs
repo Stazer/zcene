@@ -1,4 +1,4 @@
-use crate::platform::x86_64::X86_64MemoryService;
+use crate::platform::x86_64::X86_64MemoryManager;
 use crate::platform::x86_64::ExecutionUnitIdentifier;
 use crate::common::synchronization::Mutex;
 use crate::common::time::Timer;
@@ -100,7 +100,7 @@ where
 }
 
 impl X86_64LocalInterruptManager {
-    pub fn new(timer: &impl Timer, memory_manager: &X86_64MemoryService) -> Self {
+    pub fn new(timer: &impl Timer, memory_manager: &X86_64MemoryManager) -> Self {
         let mut table = Box::new(InterruptDescriptorTable::new());
 
         table

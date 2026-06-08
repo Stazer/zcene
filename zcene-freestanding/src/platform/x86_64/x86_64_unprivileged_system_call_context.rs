@@ -2,9 +2,9 @@ use ztd::{Constructor, Method};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Constructor, Debug, Method)]
+#[derive(Clone, Constructor, Method)]
 #[Method(accessors)]
-pub struct ActorIsolationExecutorSystemCallContext {
+pub struct X86_64UnprivilegedSystemCallContext {
     rsp: u64,
     rip: u64,
     rflags: u64,

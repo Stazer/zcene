@@ -3,11 +3,20 @@ pub mod smp;
 mod x86_64_interrupt_manager;
 pub use x86_64_interrupt_manager::*;
 
-mod x86_64_memory_service;
-pub use x86_64_memory_service::*;
+mod x86_64_unprivileged_system_call_context;
+pub use x86_64_unprivileged_system_call_context::*;
 
-mod x86_64_memory_service_initialize_error;
-pub use x86_64_memory_service_initialize_error::*;
+mod x86_64_unprivileged_preemption_context;
+pub use x86_64_unprivileged_preemption_context::*;
+
+pub mod x86_64_unprivileged;
+pub use x86_64_unprivileged::{x86_64_system_call_entry_point, x86_64_deadline_preemption_entry_point};
+
+mod x86_64_memory_manager;
+pub use x86_64_memory_manager::*;
+
+mod x86_64_memory_manager_initialize_error;
+pub use x86_64_memory_manager_initialize_error::*;
 
 mod timer_service;
 pub use timer_service::*;
@@ -44,7 +53,3 @@ pub enum ExecutionUnitMode {
 mod frame_size;
 pub use frame_size::*;
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-mod stack;
-pub use stack::*;

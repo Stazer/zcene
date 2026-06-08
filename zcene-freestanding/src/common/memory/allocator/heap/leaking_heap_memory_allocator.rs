@@ -19,5 +19,5 @@ unsafe impl Allocator for LeakingHeapMemoryAllocator {
         Err(AllocError)
     }
 
-    unsafe fn deallocate(&self, _data: NonNull<u8>, _layout: Layout) {}
+    unsafe fn deallocate(&self, _ptr: NonNull<u8>, _layout: Layout) {}
 }

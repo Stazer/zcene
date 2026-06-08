@@ -1,15 +1,37 @@
 use crate::common::logger::LoggerService;
-use crate::platform::x86_64::X86_64MemoryService;
-use crate::platform::x86_64::TimerService;
+use crate::platform::unprivileged_event::UnprivilegedEvent;
+use crate::platform::x86_64::x86_64_unprivileged::{
+    x86_64_execute_in_unprivileged, x86_64_resume_after_preemption, x86_64_resume_after_system_call,
+};
+use crate::platform::x86_64::{
+    X86_64MemoryManager, X86_64UnprivilegedPreemptionContext, X86_64UnprivilegedSystemCallContext,
+    TimerService,
+};
 use crate::platform::Platform;
 use core::fmt::Write;
+use x86_64::structures::gdt::GlobalDescriptorTable;
+use x86_64::structures::gdt::{Descriptor, DescriptorFlags};
+use x86_64::structures::tss::TaskStateSegment;
+use core::time::Duration;
+use alloc::boxed::Box;
+use x86::current::rflags::RFlags;
+use crate::platform::x86_64::x86_64_system_call_entry_point;
+use x86::msr::{IA32_EFER, rdmsr, wrmsr};
+use x86::msr::{IA32_FMASK, IA32_LSTAR, IA32_STAR};
+use x86_64::VirtAddr;
+use x86_64::instructions::segmentation::Segment;
+use x86_64::instructions::tables::load_tss;
+use x86_64::registers::segmentation::CS;
+use crate::common::memory::allocator::ErasedAllocator;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct X86_64Platform {
     logger: LoggerService,
-    memory: X86_64MemoryService,
+    memory: X86_64MemoryManager,
     timer: TimerService,
+    global_descriptor_table: Box<GlobalDescriptorTable, ErasedAllocator>,
+    task_state_segment: Box<TaskStateSegment, ErasedAllocator>,
 }
 
 impl X86_64Platform {
@@ -17,7 +39,7 @@ impl X86_64Platform {
         &self.logger
     }
 
-    pub fn memory(&self) -> &X86_64MemoryService {
+    pub fn memory(&self) -> &X86_64MemoryManager {
         &self.memory
     }
 
@@ -28,6 +50,8 @@ impl X86_64Platform {
 
 impl Platform for X86_64Platform {
     type BootInfo = &'static mut bootloader_api::BootInfo;
+    type UnprivilegedSystemCallContext = X86_64UnprivilegedSystemCallContext;
+    type UnprivilegedPreemptionContext = X86_64UnprivilegedPreemptionContext;
 
     fn initialize(boot_info: Self::BootInfo) -> Self {
         let logger = LoggerService::new(
@@ -42,7 +66,7 @@ impl Platform for X86_64Platform {
             Some(unsafe { bootloader_x86_64_common::serial::SerialPort::init() }),
         );
 
-        let memory = match X86_64MemoryService::new(boot_info) {
+        let memory = match X86_64MemoryManager::new(boot_info) {
             Ok(memory) => memory,
             Err(error) => {
                 write!(logger.writer(), "{:?}", error);
@@ -50,108 +74,101 @@ impl Platform for X86_64Platform {
             }
         };
 
-        use alloc::boxed::Box;
-        use x86::current::rflags::RFlags;
-        use x86::msr::{IA32_EFER, rdmsr, wrmsr};
-        use x86::msr::{IA32_FMASK, IA32_LSTAR, IA32_STAR};
-        use x86_64::VirtAddr;
-        use x86_64::instructions::segmentation::Segment;
-        use x86_64::instructions::tables::load_tss;
-        use x86_64::registers::segmentation::CS;
-        use x86_64::structures::gdt::GlobalDescriptorTable;
-        use x86_64::structures::gdt::{Descriptor, DescriptorFlags};
-        use x86_64::structures::tss::TaskStateSegment;
-
         let timer = TimerService::new();
 
         let ring0_stack = memory
             .allocate_stack()
             .unwrap()
-            .initial_memory_address()
+            .start()
             .as_u64();
 
         let timer_stack = memory
             .allocate_stack()
             .unwrap()
-            .initial_memory_address()
+            .start()
             .as_u64();
 
         unsafe {
             wrmsr(IA32_EFER, rdmsr(IA32_EFER) | 1);
         }
 
-        let mut gdt = Box::new(GlobalDescriptorTable::new());
+        let mut global_descriptor_table = Box::new_in(GlobalDescriptorTable::new(), memory.heap_allocator());
+        let kernel_code_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_CODE64.bits()));
+        let kernel_data_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_DATA.bits()));
+        let user_code32_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE32.bits()));
+        let user_data_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::USER_DATA.bits()));
+        let user_code64_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits()));
 
-        let kernel_code = gdt.append(Descriptor::UserSegment(
-            DescriptorFlags::KERNEL_CODE64.bits(),
-        ));
-        let kernel_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_DATA.bits()));
-        let user_code32 = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE32.bits()));
-        let user_data = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_DATA.bits()));
-        let user_code64 = gdt.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits()));
+        let mut task_state_segment = Box::new_in(TaskStateSegment::new(), memory.heap_allocator());
+        task_state_segment.privilege_stack_table[0] = VirtAddr::new(ring0_stack);
+        task_state_segment.interrupt_stack_table[0] = VirtAddr::new(timer_stack);
+        task_state_segment.iomap_base = 0xFFFF;
 
-        let mut tss = Box::new(TaskStateSegment::new());
-        tss.privilege_stack_table[0] = VirtAddr::new(ring0_stack);
-        tss.interrupt_stack_table[0] = VirtAddr::new(timer_stack);
-        tss.iomap_base = 0xFFFF;
-
-        let tss_selector = unsafe {
-            let descr = Descriptor::tss_segment_unchecked(Box::as_ptr(&tss));
-            gdt.append(descr)
-        };
-
-        let selector = (u64::from(user_code32.0) << 48) | (u64::from(kernel_code.0) << 32);
+        let task_state_segment_selector = global_descriptor_table.append(
+            unsafe {
+                Descriptor::tss_segment_unchecked(&*task_state_segment)
+            }
+        );
+        let ia32_star_selector =
+            (u64::from(user_code32_segment_selector.0) << 48)
+            | (u64::from(kernel_code_segment_selector.0) << 32);
 
         unsafe {
-            gdt.load_unsafe();
-            CS::set_reg(kernel_code);
-            load_tss(tss_selector);
-            wrmsr(IA32_STAR, selector);
-            wrmsr(IA32_LSTAR, x86_64_system_call_entry_point as u64);
+            global_descriptor_table.load_unsafe();
+            CS::set_reg(kernel_code_segment_selector);
+            load_tss(task_state_segment_selector);
+            wrmsr(IA32_STAR, ia32_star_selector);
+            wrmsr(IA32_LSTAR, x86_64_system_call_entry_point as *const () as u64);
             wrmsr(IA32_FMASK, RFlags::FLAGS_IF.bits());
         }
 
-        Box::into_raw(tss);
-        Box::into_raw(gdt);
-
-        Self { logger, memory, timer }
+        Self { logger, memory, timer, global_descriptor_table, task_state_segment }
     }
-}
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
+    fn allocate_unprivileged_stack(&self) -> Option<u64> {
+        /*Some(
+            self.memory
+                .allocate_user_stack()?
+                .start()
+                .as_u64(),
+    )*/
 
-use core::arch::naked_asm;
-
-#[unsafe(naked)]
-pub unsafe extern "C" fn x86_64_system_call_entry_point() -> ! {
-    unsafe {
-        naked_asm!(
-            "mov r9, rcx",
-            "mov r10, rsp",
-            "mov rcx, 0xC0000102",
-            "rdmsr",
-            "shl rdx, 32",
-            "or rax, rdx",
-            "mov rsp, rax",
-            "mov rdx, r8",
-            "pop rcx",
-        )
+        todo!()
     }
-}
 
-#[unsafe(naked)]
-pub unsafe extern "C" fn x86_64_deadline_preemption_entry_point() -> ! {
-    unsafe {
-        naked_asm!(
-            "mov r9, rcx",
-            "mov r10, rsp",
-            "mov rcx, 0xC0000102",
-            "rdmsr",
-            "shl rdx, 32",
-            "or rax, rdx",
-            "mov rsp, rax",
-            "mov rdx, r8",
-            "pop rcx",
-        )
+    fn set_preemption_deadline(&self, _duration: Duration) {
+        todo!("interrupt manager not yet wired into X86_64Platform")
+    }
+
+    fn notify_end_of_interrupt(&self) {
+        todo!("interrupt manager not yet wired into X86_64Platform")
+    }
+
+    fn execute_in_unprivileged(
+        argument: *mut (),
+        message: *const (),
+        event: &mut Option<UnprivilegedEvent<Self::UnprivilegedSystemCallContext, Self::UnprivilegedPreemptionContext>>,
+        stack: u64,
+        entry: extern "C" fn(*mut (), *const ()) -> !,
+    ) {
+        x86_64_execute_in_unprivileged(argument, message, event, stack, entry);
+    }
+
+    fn resume_after_system_call(
+        context: &Self::UnprivilegedSystemCallContext,
+        event: &mut Option<UnprivilegedEvent<Self::UnprivilegedSystemCallContext, Self::UnprivilegedPreemptionContext>>,
+    ) {
+        x86_64_resume_after_system_call(context, event);
+    }
+
+    fn resume_after_preemption(
+        context: &Self::UnprivilegedPreemptionContext,
+        event: &mut Option<UnprivilegedEvent<Self::UnprivilegedSystemCallContext, Self::UnprivilegedPreemptionContext>>,
+    ) {
+        x86_64_resume_after_preemption(context, event);
+    }
+
+    fn complete_unprivileged_execution() -> ! {
+        unsafe { core::arch::asm!("mov rdi, 0x2", "syscall", options(noreturn)) }
     }
 }

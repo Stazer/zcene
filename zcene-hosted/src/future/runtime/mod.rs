@@ -17,9 +17,6 @@ impl runtime::FutureRuntimeHandler for FutureRuntimeHandler {
     type Queue = FutureRuntimeConcurrentQueue<Self>;
     type Yielder = FutureRuntimeNoOperationYielder;
     type Waker = FutureRuntimeContinueWaker;
-    type Specification = ();
-    type Data = ();
-
     fn allocator(&self) -> &Self::Allocator {
         &Global
     }

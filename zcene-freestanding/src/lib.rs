@@ -91,7 +91,7 @@ macro_rules! define_system {
 
             let address = environment.spawn($root_actor).unwrap();
 
-            environment.enter();
+            environment.enter().unwrap();
 
             loop {}
         }

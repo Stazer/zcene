@@ -1,6 +1,6 @@
 use crate::actor::{
     ActorRootEnvironmentCreateContext, ActorRootEnvironmentDestroyContext,
-    ActorRootEnvironmentHandleContext,
+    ActorRootEnvironmentExecutor, ActorRootEnvironmentHandleContext,
 };
 use crate::common::time::Timer;
 use crate::platform::x86_64::X86_64Platform;
@@ -64,44 +64,26 @@ where
 {
     pub fn spawn<A>(
         self: &ActorEnvironmentReference<Self>,
-        mut actor: A,
+        actor: A,
     ) -> Result<<ActorRootEnvironment<H, P> as ActorEnvironment>::Address<A>, ActorSpawnError>
     where
         A: Actor<Self>,
     {
         let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
 
-        self.future_runtime.spawn({
-            let environment = self.clone();
-
-            async move {
-                // TODO: Handle result
-                let _result = actor
-                    .create(ActorRootEnvironmentCreateContext::new(&*environment))
-                    .await;
-
-                while let Some(message) = receiver.receive().await {
-                    // TODO: Handle result
-                    let _result = actor
-                        .handle(ActorRootEnvironmentHandleContext::new(
-                            &*environment,
-                            message,
-                        ))
-                        .await;
-                }
-
-                // TODO: Handle result
-                let _result = actor
-                    .destroy(ActorRootEnvironmentDestroyContext::new(&*environment))
-                    .await;
-            }
-        })?;
+        self.future_runtime.spawn(
+            ActorRootEnvironmentExecutor::new(self.clone(), actor, receiver),
+        )?;
 
         Ok(<ActorRootEnvironment<H, P> as ActorEnvironment>::Address::<A>::new(sender))
     }
 
     pub fn platform(&self) -> &P {
         &self.platform
+    }
+
+    pub fn future_runtime(&self) -> &FutureRuntimeReference<H> {
+        &self.future_runtime
     }
 }
 

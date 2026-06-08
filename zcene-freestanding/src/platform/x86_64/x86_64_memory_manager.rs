@@ -1,6 +1,5 @@
-use crate::platform::x86_64::X86_64MemoryServiceInitializeError;
+use crate::platform::x86_64::X86_64MemoryManagerInitializeError;
 use crate::platform::x86_64::FRAME_SIZE;
-use crate::platform::x86_64::Stack;
 use crate::common::As;
 use crate::common::memory::address::DefaultMemoryAddressTransformer;
 use crate::common::memory::address::PhysicalMemoryAddress;
@@ -30,25 +29,22 @@ use x86_64::structures::paging::Size4KiB;
 use x86_64::structures::paging::{Mapper, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
 use ztd::Method;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-pub const EXECUTION_PAGE_TABLE_INDEX: usize = 256;
+use alloc::boxed::Box;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug, Method)]
-pub struct X86_64MemoryService {
+pub struct X86_64MemoryManager {
     physical_memory_offset: VirtualMemoryAddress,
     physical_memory_size_in_bytes: u64,
     kernel_image_start_virtual_memory_address: VirtualMemoryAddress,
     kernel_image_length: u64,
 }
 
-impl X86_64MemoryService {
+impl X86_64MemoryManager {
     pub fn new(
         boot_info: &mut BootInfo,
-    ) -> Result<Self, X86_64MemoryServiceInitializeError> {
+    ) -> Result<Self, X86_64MemoryManagerInitializeError> {
         let physical_memory_size_in_bytes = boot_info
             .memory_regions
             .iter()
@@ -64,7 +60,7 @@ impl X86_64MemoryService {
         let physical_memory_offset = boot_info
             .physical_memory_offset
             .into_option()
-            .ok_or(X86_64MemoryServiceInitializeError::UnsupportedMapping)?;
+            .ok_or(X86_64MemoryManagerInitializeError::UnsupportedMapping)?;
 
         let this = Self {
             physical_memory_offset: VirtualMemoryAddress::from(physical_memory_offset),
@@ -431,19 +427,6 @@ impl X86_64MemoryService {
         unsafe { &mut *(pointer as *mut PageTable) }
     }
 
-    fn active_execution_page_table(&self) -> &'static mut PageTable {
-        unsafe {
-            self.translate_physical_memory_address(PhysicalMemoryAddress::from(
-                self.active_root_page_table()[EXECUTION_PAGE_TABLE_INDEX]
-                    .addr()
-                    .as_u64(),
-            ))
-            .cast_mut::<PageTable>()
-            .as_mut()
-            .unwrap()
-        }
-    }
-
     fn page_table_mapper(&self) -> OffsetPageTable<'static> {
         unsafe {
             OffsetPageTable::new(
@@ -453,86 +436,7 @@ impl X86_64MemoryService {
         }
     }
 
-    pub fn allocate_user_heap(&self) -> Option<VirtualMemoryAddress> {
-        None
-    }
-
-    pub fn allocate_actor_executor_stacks(&self) -> Option<()> {
-        /*for (i, heap_frame_identifier) in frame_manager
-            .unallocated_frame_identifiers()
-            .take(frame_count)
-            .enumerate()
-        {
-            let physical_address = frame_manager.translate_frame_identifier(heap_frame_identifier);
-
-            this.frame_manager()
-                .allocate_frames(once(heap_frame_identifier))
-                .unwrap();
-
-            unsafe {
-                mapper
-                    .map_to(
-                        Page::<Size4KiB>::from_start_address_unchecked(VirtAddr::new(
-                            current_address,
-                        )),
-                        PhysFrame::from_start_address(PhysAddr::new(physical_address.as_u64()))?,
-                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                        &mut KernelMemoryManagerFrameAllocator::new(&this),
-                    )?
-                    .flush();
-            }
-
-            current_address += frame_manager.frame_byte_size().r#as();
-        }*/
-
-        /*let stack_frame_count = 4;
-        let stack_size = stack_frame_count * FRAME_SIZE;
-
-        let mut first_address = 0;
-        let mut stack_address = 0;
-        let mut mapper = self.page_table_mapper();
-
-        for stack_frame_identifier in self.frame_manager().allocate_window(4).unwrap() {
-            stack_address = self
-                .frame_manager()
-                .translate_frame_identifier(stack_frame_identifier)
-                .as_usize();
-
-            let page = Page::<Size4KiB>::containing_address(VirtAddr::new(
-                (stack_address).try_into().unwrap(),
-            ));
-
-            if first_address == 0 {
-                first_address = page.start_address().as_u64() + stack_size as u64;
-            }
-
-            unsafe {
-                mapper
-                    .map_to(
-                        page,
-                        PhysFrame::from_start_address(PhysAddr::new(
-                            stack_address.try_into().unwrap(),
-                        ))
-                        .unwrap(),
-                        PageTableFlags::PRESENT
-                            | PageTableFlags::WRITABLE
-                            | PageTableFlags::USER_ACCESSIBLE
-                            | PageTableFlags::NO_EXECUTE,
-                        &mut KernelMemoryManagerFrameAllocator::new(self),
-                    )
-                    .expect("Hello World")
-                    .flush();
-            }
-        }
-
-        let first_address = VirtualMemoryAddress::from(first_address);*/
-
-        //Some(Stack::new(first_address, stack_size))
-
-        todo!()
-    }
-
-    pub fn allocate_user_stack(&self) -> Option<Stack<VirtualMemoryAddressPerspective>> {
+    pub fn allocate_user_stack(&self) -> Option<VirtualMemoryRegion> {
         let stack_frame_count = 8;
         let stack_size = stack_frame_count * FRAME_SIZE;
 
@@ -575,10 +479,10 @@ impl X86_64MemoryService {
 
         let first_address = VirtualMemoryAddress::from(first_address);
 
-        Some(Stack::new(first_address, stack_size))
+        Some(VirtualMemoryRegion::new(first_address, stack_size))
     }
 
-    pub fn allocate_stack(&self) -> Option<Stack<VirtualMemoryAddressPerspective>> {
+    pub fn allocate_stack(&self) -> Option<VirtualMemoryRegion> {
         let stack_frame_count = 8;
         let stack_size = stack_frame_count * FRAME_SIZE;
 
@@ -618,11 +522,11 @@ impl X86_64MemoryService {
 
         let first_address = VirtualMemoryAddress::from(first_address);
 
-        Some(Stack::new(first_address, stack_size))
+        Some(VirtualMemoryRegion::new(first_address, stack_size))
     }
 
-    pub fn heap_allocator(&self) -> impl Allocator + Clone {
-        Global
+    pub fn heap_allocator(&self) -> ErasedAllocator {
+        ErasedAllocator::new(&KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR)
     }
 }
 
@@ -630,7 +534,7 @@ use ztd::Constructor;
 
 #[derive(Constructor)]
 pub struct KernelMemoryManagerFrameAllocator<'a> {
-    memory_manager: &'a X86_64MemoryService,
+    memory_manager: &'a X86_64MemoryManager,
 }
 
 unsafe impl FrameAllocator<Size4KiB> for KernelMemoryManagerFrameAllocator<'_> {
@@ -661,7 +565,7 @@ use x86_64::structures::paging::FrameDeallocator;
 
 #[derive(Constructor)]
 pub struct KernelMemoryManagerFrameDeallocator<'a> {
-    memory_manager: &'a X86_64MemoryService,
+    memory_manager: &'a X86_64MemoryManager,
 }
 
 impl FrameDeallocator<Size4KiB> for KernelMemoryManagerFrameDeallocator<'_> {
@@ -685,7 +589,7 @@ use core::ptr::NonNull;
 
 #[derive(Constructor, Clone)]
 pub struct KernelMemoryManagerAcpiHandler<'a> {
-    memory_manager: &'a X86_64MemoryService,
+    memory_manager: &'a X86_64MemoryManager,
 }
 
 impl<'a> AcpiHandler for KernelMemoryManagerAcpiHandler<'a> {
@@ -712,9 +616,9 @@ impl<'a> AcpiHandler for KernelMemoryManagerAcpiHandler<'a> {
     fn unmap_physical_region<T>(_region: &PhysicalMapping<Self, T>) {}
 }
 
-use alloc::alloc::Global;
 use core::alloc::{GlobalAlloc, Layout};
 use core::cell::SyncUnsafeCell;
+use crate::common::memory::allocator::ErasedAllocator;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -743,6 +647,16 @@ unsafe impl GlobalAlloc for KernelGlobalHeapMemoryAllocator {
 
     unsafe fn dealloc(&self, data: *mut u8, layout: Layout) {
         unsafe { unsafe { self.0.get().as_mut().unwrap().assume_init_ref() }.dealloc(data, layout) }
+    }
+}
+
+unsafe impl Allocator for KernelGlobalHeapMemoryAllocator {
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        unsafe { self.0.get().as_mut().unwrap().assume_init_ref() }.allocate(layout)
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        unsafe { self.0.get().as_mut().unwrap().assume_init_ref() }.deallocate(ptr, layout)
     }
 }
 
