@@ -57,21 +57,22 @@ impl X86_64MemoryManager {
             .map(|region| region.end.saturating_sub(region.start))
             .sum::<u64>();
 
-        let physical_memory_offset = boot_info
-            .physical_memory_offset
-            .into_option()
-            .ok_or(X86_64MemoryManagerInitializeError::UnsupportedMapping)?;
+        let physical_memory_offset = VirtualMemoryAddress::from(
+            boot_info
+                .physical_memory_offset
+                .into_option()
+                .ok_or(X86_64MemoryManagerInitializeError::UnsupportedMapping)?
+        );
 
-        let this = Self {
-            physical_memory_offset: VirtualMemoryAddress::from(physical_memory_offset),
-            physical_memory_size_in_bytes,
-            kernel_image_length: boot_info.kernel_len,
-            kernel_image_start_virtual_memory_address: VirtualMemoryAddress::from(
-                physical_memory_offset + boot_info.kernel_addr,
-            ),
+        let mut frame_manager = unsafe {
+            FrameManager::new_initialized(
+                FRAME_SIZE,
+                from_raw_parts_mut(
+                    VirtualMemoryAddress::from(physical_memory_offset).cast_mut::<u8>(),
+                    physical_memory_size_in_bytes.r#as(),
+                ),
+            )
         };
-
-        let mut frame_manager = this.frame_manager();
 
         for memory_region in boot_info.memory_regions.iter() {
             if matches!(memory_region.kind, MemoryRegionKind::Usable) {
@@ -99,6 +100,14 @@ impl X86_64MemoryManager {
                 }
             }
         }
+
+        let this = Self {
+            physical_memory_offset,
+            physical_memory_size_in_bytes,
+            kernel_image_length: boot_info.kernel_len,
+            kernel_image_start_virtual_memory_address:
+                physical_memory_offset + VirtualMemoryAddress::from(boot_info.kernel_addr),
+        };
 
         /*let p1 = |address: u64| {
             (address >> 12) as u16

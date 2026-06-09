@@ -3,6 +3,7 @@ use crate::common::memory::address::{
 };
 use core::fmt::{self, Debug};
 use core::marker::PhantomData;
+use core::ops::Add;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -64,6 +65,18 @@ where
 
     pub fn cast_mut<S>(&self) -> *mut S {
         self.value as *mut S
+    }
+}
+
+impl<P, T> Add for MemoryAddress<P, T>
+where
+    P: MemoryAddressPerspective,
+    T: MemoryAddressTransformer,
+{
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self::new(self.value + other.value)
     }
 }
 
