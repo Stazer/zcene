@@ -3,6 +3,7 @@
 #![feature(allocator_api)]
 #![feature(arbitrary_self_types)]
 #![feature(box_as_ptr)]
+#![feature(btreemap_alloc)]
 #![feature(lazy_type_alias)]
 #![feature(non_lifetime_binders)]
 #![feature(step_trait)]

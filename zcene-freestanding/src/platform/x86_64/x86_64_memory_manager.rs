@@ -41,6 +41,7 @@ pub struct X86_64MemoryManager {
     kernel_image_start_virtual_memory_address: VirtualMemoryAddress,
     kernel_image_length: u64,
     frame_manager: FrameManager<'static, PhysicalMemoryAddressPerspective>,
+    heap_allocator_reference: Option<ErasedAllocator>,
 }
 
 impl X86_64MemoryManager {
@@ -103,13 +104,14 @@ impl X86_64MemoryManager {
             }
         }
 
-        let this = Self {
+        let mut this = Self {
             physical_memory_offset,
             physical_memory_size_in_bytes,
             kernel_image_length: boot_info.kernel_len,
             kernel_image_start_virtual_memory_address:
                 physical_memory_offset + VirtualMemoryAddress::from(boot_info.kernel_addr),
             frame_manager,
+            heap_allocator_reference: None,
         };
 
         /*let p1 = |address: u64| {
@@ -357,9 +359,15 @@ impl X86_64MemoryManager {
             )
         });
 
+        let reference = SelfContainedHeapAllocator::new(allocator)?;
+
+        this.heap_allocator_reference = Some(ErasedAllocator::new(reference.clone()));
+
+        // The global allocator static is still required by code paths that use the
+        // implicit global allocator (e.g. the future runtime). It shares the same
+        // self-contained allocator as `heap_allocator_reference` via the `Arc`.
         unsafe {
-            KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR
-                .initialize(SelfContainedHeapAllocator::new(allocator)?);
+            KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR.initialize(reference);
         }
 
         Ok(this)
@@ -534,7 +542,9 @@ impl X86_64MemoryManager {
     }
 
     pub fn heap_allocator(&self) -> ErasedAllocator {
-        ErasedAllocator::new(&KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR)
+        self.heap_allocator_reference
+            .clone()
+            .expect("heap allocator to be initialized")
     }
 }
 

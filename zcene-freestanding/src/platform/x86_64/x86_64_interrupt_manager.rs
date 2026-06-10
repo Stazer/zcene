@@ -1,5 +1,6 @@
 use crate::platform::x86_64::X86_64MemoryManager;
 use crate::platform::x86_64::ExecutionUnitIdentifier;
+use crate::common::memory::allocator::ErasedAllocator;
 use crate::common::synchronization::Mutex;
 use crate::common::time::Timer;
 use crate::driver::xapic::XApic;
@@ -40,8 +41,8 @@ impl X86_64X86_64LocalInterruptManagerType {}
 
 pub struct X86_64LocalInterruptManager {
     r#type: X86_64X86_64LocalInterruptManagerType,
-    descriptor_table: Box<InterruptDescriptorTable>,
-    free_vectors: BTreeSet<InterruptVectorIdentifier>,
+    descriptor_table: Box<InterruptDescriptorTable, ErasedAllocator>,
+    free_vectors: BTreeSet<InterruptVectorIdentifier, ErasedAllocator>,
 }
 
 pub type InterruptIdentifier = u8;
@@ -101,7 +102,10 @@ where
 
 impl X86_64LocalInterruptManager {
     pub fn new(timer: &impl Timer, memory_manager: &X86_64MemoryManager) -> Self {
-        let mut table = Box::new(InterruptDescriptorTable::new());
+        let mut table = Box::new_in(
+            InterruptDescriptorTable::new(),
+            memory_manager.heap_allocator(),
+        );
 
         table
             .divide_error
@@ -173,7 +177,7 @@ impl X86_64LocalInterruptManager {
             unhandled_interrupt_entry_point_with_error_code::<"security exception", _>,
         );
 
-        let mut free_vectors = BTreeSet::default();
+        let mut free_vectors = BTreeSet::new_in(memory_manager.heap_allocator());
 
         use x86_64::structures::idt::Entry;
 
@@ -325,13 +329,14 @@ impl X86_64LocalInterruptManager {
 }
 
 pub struct X86_64InterruptManager {
-    local_interrupt_managers: Mutex<BTreeMap<ExecutionUnitIdentifier, X86_64LocalInterruptManager>>,
+    local_interrupt_managers:
+        Mutex<BTreeMap<ExecutionUnitIdentifier, X86_64LocalInterruptManager, ErasedAllocator>>,
 }
 
 impl X86_64InterruptManager {
-    pub fn new() -> Self {
+    pub fn new(allocator: ErasedAllocator) -> Self {
         Self {
-            local_interrupt_managers: Mutex::new(BTreeMap::default()),
+            local_interrupt_managers: Mutex::new(BTreeMap::new_in(allocator)),
         }
     }
 

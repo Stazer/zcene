@@ -1,14 +1,25 @@
+use crate::common::memory::allocator::EmptyHeapMemoryAllocator;
+use alloc::sync::Arc;
 use core::alloc::{AllocError, Allocator, Layout};
+use core::fmt::{self, Debug, Formatter};
 use core::ptr::NonNull;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Copy, Clone)]
-pub struct ErasedAllocator(&'static (dyn Allocator + Send + Sync));
+#[derive(Clone)]
+pub struct ErasedAllocator(Arc<dyn Allocator + Send + Sync, EmptyHeapMemoryAllocator>);
 
 impl ErasedAllocator {
-    pub fn new(allocator: &'static (dyn Allocator + Send + Sync)) -> Self {
+    pub fn new(allocator: Arc<dyn Allocator + Send + Sync, EmptyHeapMemoryAllocator>) -> Self {
         Self(allocator)
+    }
+}
+
+impl Debug for ErasedAllocator {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ErasedAllocator")
+            .finish_non_exhaustive()
     }
 }
 
