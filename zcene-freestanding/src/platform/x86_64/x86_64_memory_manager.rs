@@ -6,11 +6,12 @@ use crate::common::memory::address::PhysicalMemoryAddress;
 use crate::common::memory::address::PhysicalMemoryAddressPerspective;
 use crate::common::memory::address::VirtualMemoryAddress;
 use crate::common::memory::address::VirtualMemoryAddressPerspective;
-use crate::common::memory::allocator::EmptyHeapMemoryAllocator;
+use crate::common::memory::allocator::LinkedListHeapMemoryAllocator;
+use crate::common::memory::allocator::SelfContainedHeapAllocator;
+use crate::common::memory::allocator::SelfContainedHeapAllocatorReference;
 use crate::common::memory::allocator::FrameManager;
 use crate::common::memory::allocator::FrameManagerAllocationError;
 use crate::common::memory::region::VirtualMemoryRegion;
-use alloc::sync::Arc;
 use bootloader_api::BootInfo;
 use bootloader_api::info::MemoryRegionKind;
 use core::alloc::AllocError;
@@ -348,7 +349,7 @@ impl X86_64MemoryManager {
             current_address += this.frame_manager.frame_byte_size().r#as();
         }
 
-        let allocator = KernelHeapMemoryAllocator::new(unsafe {
+        let allocator = LinkedListHeapMemoryAllocator::new(unsafe {
             LockedHeap::new(
                 VirtualMemoryAddress::<DefaultMemoryAddressTransformer>::from(start_address)
                     .cast_mut(),
@@ -356,21 +357,9 @@ impl X86_64MemoryManager {
             )
         });
 
-        let (pointer, allocator) =
-            Arc::into_raw_with_allocator(Arc::<
-                KernelHeapMemoryAllocator,
-                KernelHeapMemoryAllocator,
-            >::try_new_uninit_in(allocator)?);
-        unsafe { pointer.cast_mut().write(MaybeUninit::new(allocator)) };
-        let arc = unsafe {
-            Arc::from_raw_in(
-                pointer.cast::<KernelHeapMemoryAllocator>(),
-                EmptyHeapMemoryAllocator,
-            )
-        };
-
         unsafe {
-            KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR.initialize(arc);
+            KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR
+                .initialize(SelfContainedHeapAllocator::new(allocator)?);
         }
 
         Ok(this)
@@ -642,66 +631,49 @@ use crate::common::memory::allocator::ErasedAllocator;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[global_allocator]
-pub static KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR: KernelGlobalHeapMemoryAllocator =
-    KernelGlobalHeapMemoryAllocator::uninitialized();
+pub static KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR: GlobalHeapAllocator<LinkedListHeapMemoryAllocator> =
+    GlobalHeapAllocator::uninitialized();
 
-pub struct KernelGlobalHeapMemoryAllocator(
-    SyncUnsafeCell<MaybeUninit<Arc<KernelHeapMemoryAllocator, EmptyHeapMemoryAllocator>>>,
-);
+pub struct GlobalHeapAllocator<A>(SyncUnsafeCell<MaybeUninit<SelfContainedHeapAllocatorReference<A>>>)
+where
+    A: Allocator;
 
-impl KernelGlobalHeapMemoryAllocator {
+impl<A> GlobalHeapAllocator<A>
+where
+    A: Allocator,
+{
     pub const fn uninitialized() -> Self {
         Self(SyncUnsafeCell::new(MaybeUninit::uninit()))
     }
 
-    pub fn initialize(&self, allocator: Arc<KernelHeapMemoryAllocator, EmptyHeapMemoryAllocator>) {
+    pub fn initialize(&self, allocator: SelfContainedHeapAllocatorReference<A>) {
         *unsafe { self.0.get().as_mut() }.unwrap() = MaybeUninit::new(allocator);
     }
 }
 
-unsafe impl GlobalAlloc for KernelGlobalHeapMemoryAllocator {
+unsafe impl<A> GlobalAlloc for GlobalHeapAllocator<A>
+where
+    A: Allocator + GlobalAlloc,
+{
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        unsafe { unsafe { self.0.get().as_mut().unwrap().assume_init_ref() }.alloc(layout) }
+        unsafe { self.0.get().as_mut().unwrap().assume_init_ref().alloc(layout) }
     }
 
     unsafe fn dealloc(&self, data: *mut u8, layout: Layout) {
-        unsafe { unsafe { self.0.get().as_mut().unwrap().assume_init_ref() }.dealloc(data, layout) }
+        unsafe { self.0.get().as_mut().unwrap().assume_init_ref().dealloc(data, layout) }
     }
 }
 
-unsafe impl Allocator for KernelGlobalHeapMemoryAllocator {
+unsafe impl<A> Allocator for GlobalHeapAllocator<A>
+where
+    A: Allocator,
+{
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         unsafe { self.0.get().as_mut().unwrap().assume_init_ref() }.allocate(layout)
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        unsafe { self.0.get().as_mut().unwrap().assume_init_ref() }.deallocate(ptr, layout)
+        unsafe { self.0.get().as_mut().unwrap().assume_init_ref().deallocate(ptr, layout) }
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Constructor)]
-pub struct KernelHeapMemoryAllocator(LockedHeap);
-
-unsafe impl Allocator for KernelHeapMemoryAllocator {
-    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        NonNull::new(unsafe { self.0.alloc(layout) })
-            .map(|pointer| unsafe { NonNull::slice_from_raw_parts(pointer, layout.size()) })
-            .ok_or(AllocError)
-    }
-
-    unsafe fn deallocate(&self, mut data: NonNull<u8>, layout: Layout) {
-        unsafe { self.dealloc(data.as_mut(), layout) }
-    }
-}
-
-unsafe impl GlobalAlloc for KernelHeapMemoryAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        unsafe { self.0.alloc(layout) }
-    }
-
-    unsafe fn dealloc(&self, data: *mut u8, layout: Layout) {
-        unsafe { self.0.dealloc(data, layout) }
-    }
-}
