@@ -1,6 +1,7 @@
 use crate::common::bits::{BitField, BitFieldLeftToRight};
 use crate::common::memory::address::{MemoryAddress, MemoryAddressPerspective};
 use crate::common::memory::allocator::frame::FrameIdentifier;
+use core::fmt::{self, Debug, Formatter};
 use core::marker::PhantomData;
 use core::ops::Range;
 
@@ -32,6 +33,20 @@ where
     slice: &'a mut [u8],
     memory_address_perspective: PhantomData<P>,
 }
+
+impl<P> Debug for FlatBitmapFrameManager<'_, P>
+where
+    P: MemoryAddressPerspective,
+{
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("FlatBitmapFrameManager")
+            .field("frame_byte_size", &self.frame_byte_size)
+            .finish_non_exhaustive()
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 impl<'a, P> FlatBitmapFrameManager<'a, P>
 where
@@ -343,9 +358,9 @@ where
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[cfg(test)]
-use crate::common::memory::UnknownMemoryAddressPerspective;
+use crate::common::memory::address::UnknownMemoryAddressPerspective;
 #[cfg(test)]
-use std::vec::Vec;
+use alloc::vec::Vec;
 
 #[test]
 #[cfg(test)]

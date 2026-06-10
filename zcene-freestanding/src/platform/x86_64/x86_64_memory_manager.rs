@@ -39,6 +39,7 @@ pub struct X86_64MemoryManager {
     physical_memory_size_in_bytes: u64,
     kernel_image_start_virtual_memory_address: VirtualMemoryAddress,
     kernel_image_length: u64,
+    frame_manager: FrameManager<'static, PhysicalMemoryAddressPerspective>,
 }
 
 impl X86_64MemoryManager {
@@ -107,6 +108,7 @@ impl X86_64MemoryManager {
             kernel_image_length: boot_info.kernel_len,
             kernel_image_start_virtual_memory_address:
                 physical_memory_offset + VirtualMemoryAddress::from(boot_info.kernel_addr),
+            frame_manager,
         };
 
         /*let p1 = |address: u64| {
@@ -319,12 +321,12 @@ impl X86_64MemoryManager {
             Cr3::write_raw(a.0, a.1);
         }
 
-        for (i, heap_frame_identifier) in frame_manager
+        for (i, heap_frame_identifier) in this.frame_manager
             .unallocated_frame_identifiers()
             .take(frame_count)
             .enumerate()
         {
-            let physical_address = frame_manager.translate_frame_identifier(heap_frame_identifier);
+            let physical_address = this.frame_manager.translate_frame_identifier(heap_frame_identifier);
 
             this.frame_manager()
                 .allocate_frames(once(heap_frame_identifier))
@@ -343,14 +345,14 @@ impl X86_64MemoryManager {
                     .flush();
             }
 
-            current_address += frame_manager.frame_byte_size().r#as();
+            current_address += this.frame_manager.frame_byte_size().r#as();
         }
 
         let allocator = KernelHeapMemoryAllocator::new(unsafe {
             LockedHeap::new(
                 VirtualMemoryAddress::<DefaultMemoryAddressTransformer>::from(start_address)
                     .cast_mut(),
-                frame_count * frame_manager.frame_byte_size(),
+                frame_count * this.frame_manager.frame_byte_size(),
             )
         });
 
@@ -413,7 +415,15 @@ impl X86_64MemoryManager {
     }
 
     pub fn frame_manager(&self) -> FrameManager<'static, PhysicalMemoryAddressPerspective> {
-        unsafe { FrameManager::new_initialized(FRAME_SIZE, self.physical_memory()) }
+        unsafe {
+            FrameManager::new_initialized(
+                FRAME_SIZE,
+                from_raw_parts_mut(
+                    self.physical_memory_offset.cast_mut::<u8>(),
+                    self.physical_memory_size_in_bytes.r#as(),
+                ),
+            )
+        }
     }
 
     fn active_page_table(&self) -> &'static mut PageTable {
