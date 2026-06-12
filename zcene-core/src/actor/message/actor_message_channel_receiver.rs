@@ -1,23 +1,25 @@
-use crate::actor::ActorMessage;
-use async_channel::Receiver;
+use crate::actor::{ActorAllocator, ActorMessage};
+use futures_channel::mpsc::UnboundedReceiver;
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Constructor)]
 #[Constructor(visibility = pub(super))]
-pub struct ActorMessageChannelReceiver<M>
+pub struct ActorMessageChannelReceiver<M, A>
 where
     M: ActorMessage,
+    A: ActorAllocator,
 {
-    receiver: Receiver<M>,
+    receiver: UnboundedReceiver<M, A>,
 }
 
-impl<M> ActorMessageChannelReceiver<M>
+impl<M, A> ActorMessageChannelReceiver<M, A>
 where
     M: ActorMessage,
+    A: ActorAllocator,
 {
-    pub async fn receive(&self) -> Option<M> {
+    pub async fn receive(&mut self) -> Option<M> {
         self.receiver.recv().await.ok()
     }
 }

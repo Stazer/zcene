@@ -1,5 +1,6 @@
-use crate::actor::{ActorMessage, ActorMessageChannelReceiver, ActorMessageChannelSender};
-use async_channel::bounded;
+use crate::actor::{
+    ActorAllocator, ActorMessage, ActorMessageChannelReceiver, ActorMessageChannelSender,
+};
 use core::marker::PhantomData;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -12,9 +13,13 @@ impl<M> ActorMessageChannel<M>
 where
     M: ActorMessage,
 {
-    pub fn new_unbounded() -> (ActorMessageChannelSender<M>, ActorMessageChannelReceiver<M>) {
-        // TODO
-        let (sender, receiver) = bounded(100);
+    pub fn new_unbounded_in<A>(
+        allocator: A,
+    ) -> (ActorMessageChannelSender<M, A>, ActorMessageChannelReceiver<M, A>)
+    where
+        A: ActorAllocator,
+    {
+        let (sender, receiver) = futures_channel::mpsc::unbounded_in(allocator);
 
         (
             ActorMessageChannelSender::new(sender),

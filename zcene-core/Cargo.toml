@@ -4,8 +4,7 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-async-channel = { version = "2", default-features = false }
 concurrent-queue = { version = "2", default-features = false }
-futures = { version = "0.3", default-features = false, features = ["alloc"] }
+futures-channel = { path = "../vendor/futures-channel" }
 spin = "*"
 ztd = { git = "https://github.com/Stazer/ztd.git" }

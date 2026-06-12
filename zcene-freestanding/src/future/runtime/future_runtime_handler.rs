@@ -1,21 +1,30 @@
-use alloc::alloc::Global;
+use crate::common::memory::allocator::ErasedAllocator;
 use zcene_core::future::runtime::{
     self as core, FutureRuntimeConcurrentQueue, FutureRuntimeContinueWaker,
     FutureRuntimeNoOperationYielder,
 };
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Default)]
 pub struct FutureRuntimeHandler {
-    allocator: Global,
+    allocator: ErasedAllocator,
     queue: FutureRuntimeConcurrentQueue<Self>,
     yielder: FutureRuntimeNoOperationYielder,
     waker: FutureRuntimeContinueWaker,
 }
 
+impl FutureRuntimeHandler {
+    pub fn new(allocator: ErasedAllocator) -> Self {
+        Self {
+            queue: FutureRuntimeConcurrentQueue::new_in(allocator.clone()),
+            allocator,
+            yielder: FutureRuntimeNoOperationYielder::default(),
+            waker: FutureRuntimeContinueWaker::default(),
+        }
+    }
+}
+
 impl core::FutureRuntimeHandler for FutureRuntimeHandler {
-    type Allocator = Global;
+    type Allocator = ErasedAllocator;
     type Queue = FutureRuntimeConcurrentQueue<Self>;
     type Yielder = FutureRuntimeNoOperationYielder;
     type Waker = FutureRuntimeContinueWaker;

@@ -36,7 +36,10 @@ where
 {
     environment: ActorEnvironmentReference<ActorRootEnvironment<H, P>>,
     actor: Box<AI>,
-    receiver: ActorMessageChannelReceiver<AR::Message>,
+    receiver: ActorMessageChannelReceiver<
+        AR::Message,
+        <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
+    >,
     deadline_in_milliseconds: Option<NonZero<usize>>,
     message_handlers: Vec<
         Box<
@@ -58,7 +61,10 @@ where
     fn new(
         environment: ActorEnvironmentReference<ActorRootEnvironment<H, P>>,
         actor: Box<AI>,
-        receiver: ActorMessageChannelReceiver<AR::Message>,
+        receiver: ActorMessageChannelReceiver<
+        AR::Message,
+        <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
+    >,
         deadline_in_milliseconds: Option<NonZero<usize>>,
         message_handlers: Vec<
             Box<
@@ -248,7 +254,12 @@ where
     H: FutureRuntimeHandler,
     P: Platform,
 {
-    future: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
+    future: Pin<
+        Box<
+            dyn Future<Output = ()> + Send + 'static,
+            <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
+        >,
+    >,
     _marker: PhantomData<fn() -> (AI, AR, H, P)>,
 }
 
@@ -263,7 +274,10 @@ where
     pub fn new(
         environment: ActorEnvironmentReference<ActorRootEnvironment<H, P>>,
         actor: Box<AI>,
-        receiver: ActorMessageChannelReceiver<AR::Message>,
+        receiver: ActorMessageChannelReceiver<
+        AR::Message,
+        <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
+    >,
         deadline_in_milliseconds: Option<NonZero<usize>>,
         message_handlers: Vec<
             Box<
@@ -273,6 +287,8 @@ where
             <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
         >,
     ) -> Self {
+        let allocator = environment.allocator().clone();
+
         let inner = ActorUnprivilegedExecutorInner::new(
             environment,
             actor,
@@ -281,7 +297,7 @@ where
             message_handlers,
         );
         Self {
-            future: Box::pin(inner.run()),
+            future: Box::pin_in(inner.run(), allocator),
             _marker: PhantomData,
         }
     }

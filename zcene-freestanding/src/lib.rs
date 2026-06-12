@@ -31,11 +31,14 @@ pub mod driver;
 pub mod future;
 pub mod utility;
 
+#[global_allocator]
+static GLOBAL_ALLOCATOR: common::memory::allocator::PanicHeapAllocator =
+    common::memory::allocator::PanicHeapAllocator;
+
 pub mod r#extern {
     pub use bootloader_api;
 }
 
-use alloc::alloc::Global;
 use alloc::sync::Arc;
 use core::cell::SyncUnsafeCell;
 use core::mem::MaybeUninit;
@@ -43,7 +46,15 @@ use core::mem::MaybeUninit;
 use crate::future::runtime::FutureRuntimeHandler;
 
 pub static ACTOR_ROOT_ENVIRONMENT: SyncUnsafeCell<
-    MaybeUninit<Arc<crate::actor::ActorRootEnvironment<FutureRuntimeHandler, crate::platform::x86_64::X86_64Platform>, Global>>,
+    MaybeUninit<
+        Arc<
+            crate::actor::ActorRootEnvironment<
+                FutureRuntimeHandler,
+                crate::platform::x86_64::X86_64Platform,
+            >,
+            crate::common::memory::allocator::ErasedAllocator,
+        >,
+    >,
 > = SyncUnsafeCell::new(MaybeUninit::zeroed());
 
 #[macro_export]
@@ -80,7 +91,7 @@ macro_rules! define_system {
             use $crate::future::runtime::FutureRuntimeHandler;
 
             let environment =
-                ActorRootEnvironment::root(|| FutureRuntimeHandler::default(), boot_info);
+                ActorRootEnvironment::root(FutureRuntimeHandler::new, boot_info);
 
             unsafe {
                 ACTOR_ROOT_ENVIRONMENT

@@ -1,14 +1,18 @@
 use crate::platform::unprivileged_event::UnprivilegedEvent;
 use core::time::Duration;
+use zcene_core::future::runtime::FutureRuntimeAllocator;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub trait Platform: Sized + Send + Sync + 'static {
     type BootInfo;
+    type Allocator: FutureRuntimeAllocator;
     type UnprivilegedSystemCallContext: Send + Clone + 'static;
     type UnprivilegedPreemptionContext: Send + Clone + 'static;
 
     fn initialize(boot_info: Self::BootInfo) -> Self;
+
+    fn allocator(&self) -> Self::Allocator;
 
     fn allocate_unprivileged_stack(&self) -> Option<u64>;
     fn set_preemption_deadline(&self, duration: Duration);

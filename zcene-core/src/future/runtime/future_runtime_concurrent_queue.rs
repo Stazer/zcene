@@ -5,16 +5,28 @@ use concurrent_queue::{ConcurrentQueue, PushError};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct FutureRuntimeConcurrentQueue<H>(ConcurrentQueue<FutureRuntimeTaskReference<H>>)
+pub struct FutureRuntimeConcurrentQueue<H>(
+    ConcurrentQueue<FutureRuntimeTaskReference<H>, <H as FutureRuntimeHandler>::Allocator>,
+)
 where
     H: FutureRuntimeHandler;
+
+impl<H> FutureRuntimeConcurrentQueue<H>
+where
+    H: FutureRuntimeHandler,
+{
+    pub fn new_in(allocator: <H as FutureRuntimeHandler>::Allocator) -> Self {
+        Self(ConcurrentQueue::unbounded_in(allocator))
+    }
+}
 
 impl<H> Default for FutureRuntimeConcurrentQueue<H>
 where
     H: FutureRuntimeHandler,
+    <H as FutureRuntimeHandler>::Allocator: Default,
 {
     fn default() -> Self {
-        Self(ConcurrentQueue::unbounded())
+        Self::new_in(<H as FutureRuntimeHandler>::Allocator::default())
     }
 }
 

@@ -13,6 +13,7 @@ mod future_runtime_reference;
 mod future_runtime_spawn_error;
 mod future_runtime_task;
 mod future_runtime_task_reference;
+mod future_runtime_task_waker;
 mod future_runtime_waker;
 mod future_runtime_yielder;
 
@@ -31,5 +32,6 @@ pub use future_runtime_reference::*;
 pub use future_runtime_spawn_error::*;
 pub use future_runtime_task::*;
 pub use future_runtime_task_reference::*;
+pub use future_runtime_task_waker::*;
 pub use future_runtime_waker::*;
 pub use future_runtime_yielder::*;

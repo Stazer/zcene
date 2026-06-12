@@ -1,8 +1,11 @@
 use crate::future::runtime::{
-    FutureRuntimeBoxFuture, FutureRuntimeHandler, FutureRuntimeReference, FutureRuntimeWaker,
+    FutureRuntimeBoxFuture, FutureRuntimeHandler, FutureRuntimeReference,
+    FutureRuntimeTaskReference, FutureRuntimeWaker,
 };
 use alloc::sync::Arc;
-use futures::task::ArcWake;
+use core::marker::PhantomData;
+use core::mem::ManuallyDrop;
+use core::task::{RawWaker, RawWakerVTable, Waker};
 use spin::Mutex;
 use ztd::{Constructor, Method};
 
@@ -17,16 +20,4 @@ where
     // FIXME: Remove mutex
     slot: Mutex<Option<FutureRuntimeBoxFuture<'static, H, ()>>>,
     runtime: FutureRuntimeReference<H>,
-}
-
-impl<H> ArcWake for FutureRuntimeTask<H>
-where
-    H: FutureRuntimeHandler,
-{
-    fn wake_by_ref(task: &Arc<Self>) {
-        task.runtime
-            .handler()
-            .waker()
-            .wake(task.runtime().handler(), task.clone())
-    }
 }

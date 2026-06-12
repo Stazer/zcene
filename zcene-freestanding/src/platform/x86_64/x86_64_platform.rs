@@ -50,8 +50,13 @@ impl X86_64Platform {
 
 impl Platform for X86_64Platform {
     type BootInfo = &'static mut bootloader_api::BootInfo;
+    type Allocator = ErasedAllocator;
     type UnprivilegedSystemCallContext = X86_64UnprivilegedSystemCallContext;
     type UnprivilegedPreemptionContext = X86_64UnprivilegedPreemptionContext;
+
+    fn allocator(&self) -> Self::Allocator {
+        self.memory.heap_allocator()
+    }
 
     fn initialize(boot_info: Self::BootInfo) -> Self {
         let logger = LoggerService::new(

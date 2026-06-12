@@ -8,7 +8,6 @@ use crate::common::memory::address::VirtualMemoryAddress;
 use crate::common::memory::address::VirtualMemoryAddressPerspective;
 use crate::common::memory::allocator::LinkedListHeapMemoryAllocator;
 use crate::common::memory::allocator::SelfContainedHeapAllocator;
-use crate::common::memory::allocator::SelfContainedHeapAllocatorReference;
 use crate::common::memory::allocator::FrameManager;
 use crate::common::memory::allocator::FrameManagerAllocationError;
 use crate::common::memory::region::VirtualMemoryRegion;
@@ -361,14 +360,7 @@ impl X86_64MemoryManager {
 
         let reference = SelfContainedHeapAllocator::new(allocator)?;
 
-        this.heap_allocator_reference = Some(ErasedAllocator::new(reference.clone()));
-
-        // The global allocator static is still required by code paths that use the
-        // implicit global allocator (e.g. the future runtime). It shares the same
-        // self-contained allocator as `heap_allocator_reference` via the `Arc`.
-        unsafe {
-            KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR.initialize(reference);
-        }
+        this.heap_allocator_reference = Some(ErasedAllocator::new(reference));
 
         Ok(this)
     }
@@ -634,56 +626,5 @@ impl<'a> AcpiHandler for KernelMemoryManagerAcpiHandler<'a> {
     fn unmap_physical_region<T>(_region: &PhysicalMapping<Self, T>) {}
 }
 
-use core::alloc::{GlobalAlloc, Layout};
-use core::cell::SyncUnsafeCell;
 use crate::common::memory::allocator::ErasedAllocator;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#[global_allocator]
-pub static KERNEL_GLOBAL_HEAP_MEMORY_ALLOCATOR: GlobalHeapAllocator<LinkedListHeapMemoryAllocator> =
-    GlobalHeapAllocator::uninitialized();
-
-pub struct GlobalHeapAllocator<A>(SyncUnsafeCell<MaybeUninit<SelfContainedHeapAllocatorReference<A>>>)
-where
-    A: Allocator;
-
-impl<A> GlobalHeapAllocator<A>
-where
-    A: Allocator,
-{
-    pub const fn uninitialized() -> Self {
-        Self(SyncUnsafeCell::new(MaybeUninit::uninit()))
-    }
-
-    pub fn initialize(&self, allocator: SelfContainedHeapAllocatorReference<A>) {
-        *unsafe { self.0.get().as_mut() }.unwrap() = MaybeUninit::new(allocator);
-    }
-}
-
-unsafe impl<A> GlobalAlloc for GlobalHeapAllocator<A>
-where
-    A: Allocator + GlobalAlloc,
-{
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        unsafe { self.0.get().as_mut().unwrap().assume_init_ref().alloc(layout) }
-    }
-
-    unsafe fn dealloc(&self, data: *mut u8, layout: Layout) {
-        unsafe { self.0.get().as_mut().unwrap().assume_init_ref().dealloc(data, layout) }
-    }
-}
-
-unsafe impl<A> Allocator for GlobalHeapAllocator<A>
-where
-    A: Allocator,
-{
-    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        unsafe { self.0.get().as_mut().unwrap().assume_init_ref() }.allocate(layout)
-    }
-
-    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        unsafe { self.0.get().as_mut().unwrap().assume_init_ref().deallocate(ptr, layout) }
-    }
-}
 

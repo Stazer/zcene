@@ -5,6 +5,7 @@ use crate::actor::{
 use crate::common::time::Timer;
 use crate::platform::x86_64::X86_64Platform;
 use crate::platform::Platform;
+use alloc::sync::Arc;
 use core::fmt::Write;
 use zcene_core::actor::{
     Actor, ActorEnterError, ActorEnvironmentAllocator, ActorMessage, ActorMessageChannelAddress,
@@ -69,7 +70,8 @@ where
     where
         A: Actor<Self>,
     {
-        let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
+        let (sender, receiver) =
+            ActorMessageChannel::<A::Message>::new_unbounded_in(self.allocator().clone());
 
         self.future_runtime.spawn(
             ActorRootEnvironmentExecutor::new(self.clone(), actor, receiver),
@@ -89,21 +91,22 @@ where
 
 impl<H, P> ActorRootEnvironment<H, P>
 where
-    H: FutureRuntimeHandler<Allocator = alloc::alloc::Global>,
-    P: Platform,
+    H: FutureRuntimeHandler,
+    P: Platform<Allocator = <H as FutureRuntimeHandler>::Allocator>,
 {
     pub fn root<F>(
         handler: F,
         boot_info: P::BootInfo,
     ) -> ActorEnvironmentReference<Self>
     where
-        F: FnOnce() -> H,
+        F: FnOnce(P::Allocator) -> H,
     {
         let platform = P::initialize(boot_info);
+        let allocator = platform.allocator();
 
-        let runtime = FutureRuntime::new(handler()).unwrap();
+        let runtime = FutureRuntime::new(handler(allocator.clone())).unwrap();
 
-        ActorEnvironmentReference::new(Self::new(runtime, platform))
+        Arc::new_in(Self::new(runtime, platform), allocator)
     }
 
     pub fn enter(&self) -> Result<(), ActorEnterError> {

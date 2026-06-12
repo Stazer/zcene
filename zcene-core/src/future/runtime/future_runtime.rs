@@ -1,11 +1,11 @@
 use crate::future::runtime::{
     FutureRuntimeCreateError, FutureRuntimeFuture, FutureRuntimeHandler, FutureRuntimeQueue,
-    FutureRuntimeReference, FutureRuntimeSpawnError, FutureRuntimeTask, FutureRuntimeYielder,
+    FutureRuntimeReference, FutureRuntimeSpawnError, FutureRuntimeTask, FutureRuntimeTaskWaker,
+    FutureRuntimeYielder,
 };
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use core::task::Context;
-use futures::task::waker_ref;
 use spin::Mutex;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -43,10 +43,13 @@ where
 
         self.handler
             .queue()
-            .enqueue(Arc::new(FutureRuntimeTask::new(
-                Mutex::new(Some(Box::pin_in(future, allocator))),
-                self.clone(),
-            )))
+            .enqueue(Arc::new_in(
+                FutureRuntimeTask::new(
+                    Mutex::new(Some(Box::pin_in(future, allocator.clone()))),
+                    self.clone(),
+                ),
+                allocator,
+            ))
             .map_err(|_| FutureRuntimeSpawnError::Busy)
     }
 
@@ -63,7 +66,7 @@ where
             let mut future_slot = task.slot().lock();
 
             if let Some(mut future) = future_slot.take() {
-                let waker = waker_ref(&task);
+                let waker = FutureRuntimeTaskWaker::waker(task.clone());
                 let context = &mut Context::from_waker(&waker);
 
                 if future.as_mut().poll(context).is_pending() {

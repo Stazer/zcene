@@ -5,20 +5,17 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 use core::fmt::Write;
+use zcene_core::actor::{Actor, ActorCreateError, ActorEnvironment, ActorMessage};
 use zcene_freestanding::actor::ActorRootEnvironment;
 use zcene_freestanding::define_system;
-use zcene_core::actor::{Actor, ActorCreateError, ActorEnvironment, ActorMessage};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Default)]
 pub struct RootActor;
 
-#[derive(Clone)]
-pub enum RootActorMessage {}
-
 impl Actor<ActorRootEnvironment> for RootActor {
-    type Message = RootActorMessage;
+    type Message = ();
 
     async fn create<'a>(
         &'a mut self,

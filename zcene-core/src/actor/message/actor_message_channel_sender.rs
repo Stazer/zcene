@@ -1,27 +1,38 @@
-use crate::actor::{ActorFuture, ActorMessage, ActorMessageSender, ActorSendError};
-use async_channel::Sender;
+use crate::actor::{ActorAllocator, ActorFuture, ActorMessage, ActorMessageSender, ActorSendError};
+use futures_channel::mpsc::UnboundedSender;
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Constructor, Clone)]
+#[derive(Constructor)]
 #[Constructor(visibility = pub(super))]
-pub struct ActorMessageChannelSender<M>
+pub struct ActorMessageChannelSender<M, A>
 where
     M: ActorMessage,
+    A: ActorAllocator,
 {
-    sender: Sender<M>,
+    sender: UnboundedSender<M, A>,
 }
 
-impl<M> ActorMessageSender<M> for ActorMessageChannelSender<M>
+impl<M, A> Clone for ActorMessageChannelSender<M, A>
 where
     M: ActorMessage,
+    A: ActorAllocator,
+{
+    fn clone(&self) -> Self {
+        Self { sender: self.sender.clone() }
+    }
+}
+
+impl<M, A> ActorMessageSender<M> for ActorMessageChannelSender<M, A>
+where
+    M: ActorMessage,
+    A: ActorAllocator,
 {
     fn send(&self, message: M) -> impl ActorFuture<'_, Result<(), ActorSendError>> {
         async move {
             self.sender
-                .send(message)
-                .await
+                .unbounded_send(message)
                 .map_err(|_| ActorSendError::Closed)
         }
     }

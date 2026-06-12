@@ -5,4 +5,9 @@ members = [
     "zcene-freestanding",
     "zcene-freestanding-playground",
     "zcene-freestanding-playground-x86_64", "zcene-hosted", "zcene-hosted-playground",
+    "vendor/concurrent-queue",
+    "vendor/futures-channel",
 ]
+
+[patch.crates-io]
+concurrent-queue = { path = "vendor/concurrent-queue" }
