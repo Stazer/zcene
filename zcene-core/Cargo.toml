@@ -4,7 +4,7 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-concurrent-queue = { version = "2", default-features = false }
-futures-channel = { path = "../vendor/futures-channel" }
+crossbeam-utils = { version = "0.8", default-features = false }
+futures-core = { version = "0.3", default-features = false }
 spin = "*"
 ztd = { git = "https://github.com/Stazer/ztd.git" }

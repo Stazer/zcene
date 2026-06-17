@@ -1,5 +1,5 @@
 use crate::actor::{ActorAllocator, ActorMessage};
-use futures_channel::mpsc::UnboundedReceiver;
+use crate::channel::mpsc::UnboundedReceiver;
 use ztd::Constructor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

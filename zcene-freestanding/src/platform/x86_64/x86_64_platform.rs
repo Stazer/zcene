@@ -71,7 +71,7 @@ impl Platform for X86_64Platform {
             Some(unsafe { bootloader_x86_64_common::serial::SerialPort::init() }),
         );
 
-        let memory = match X86_64MemoryManager::new(boot_info) {
+        let memory = match X86_64MemoryManager::new(boot_info, &logger) {
             Ok(memory) => memory,
             Err(error) => {
                 write!(logger.writer(), "{:?}", error);

@@ -15,6 +15,7 @@ use bootloader_api::BootInfo;
 use bootloader_api::info::MemoryRegionKind;
 use core::alloc::AllocError;
 use core::alloc::Allocator;
+use core::fmt::Write;
 use core::iter::once;
 use core::mem::MaybeUninit;
 use core::slice::from_raw_parts_mut;
@@ -33,10 +34,43 @@ use alloc::boxed::Box;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Constructor, Debug)]
+pub struct X86_64MemoryManagerAddressTranslator {
+    physical_memory_offset: VirtualMemoryAddress,
+}
+
+impl X86_64MemoryManagerAddressTranslator {
+    pub fn translate_virtual_memory_address(
+        &self,
+        memory_address: VirtualMemoryAddress,
+    ) -> PhysicalMemoryAddress {
+        PhysicalMemoryAddress::from(
+            memory_address
+                .as_u64()
+                .saturating_sub(self.physical_memory_offset.as_u64()),
+        )
+    }
+
+    pub fn translate_physical_memory_address(
+        &self,
+        memory_address: PhysicalMemoryAddress,
+    ) -> VirtualMemoryAddress {
+        VirtualMemoryAddress::from(
+            memory_address
+                .as_u64()
+                .saturating_add(self.physical_memory_offset.as_u64()),
+        )
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 #[derive(Debug, Method)]
 pub struct X86_64MemoryManager {
     physical_memory_offset: VirtualMemoryAddress,
     physical_memory_size_in_bytes: u64,
+    managed_memory_size: u64,
+    usable_memory_in_bytes: u64,
     kernel_image_start_virtual_memory_address: VirtualMemoryAddress,
     kernel_image_length: u64,
     frame_manager: FrameManager<'static, PhysicalMemoryAddressPerspective>,
@@ -46,6 +80,7 @@ pub struct X86_64MemoryManager {
 impl X86_64MemoryManager {
     pub fn new(
         boot_info: &mut BootInfo,
+        logger: &crate::common::logger::LoggerService,
     ) -> Result<Self, X86_64MemoryManagerInitializeError> {
         let physical_memory_size_in_bytes = boot_info
             .memory_regions
@@ -59,6 +94,38 @@ impl X86_64MemoryManager {
             .map(|region| region.end.saturating_sub(region.start))
             .sum::<u64>();
 
+        let highest_physical_address = boot_info
+            .memory_regions
+            .iter()
+            .map(|region| region.end)
+            .max()
+            .unwrap_or(0);
+
+        let highest_ram_address = boot_info
+            .memory_regions
+            .iter()
+            .filter(|region| matches!(region.kind, MemoryRegionKind::Usable | MemoryRegionKind::Bootloader))
+            .map(|region| region.end)
+            .max()
+            .unwrap_or(0);
+
+        let highest_usable_address = boot_info
+            .memory_regions
+            .iter()
+            .filter(|region| matches!(region.kind, MemoryRegionKind::Usable))
+            .map(|region| region.end)
+            .max()
+            .unwrap_or(0);
+
+        let bitmap_size_in_bytes = (highest_usable_address as usize).div_ceil(FRAME_SIZE * 8);
+        let bitmap_frames = bitmap_size_in_bytes.div_ceil(FRAME_SIZE);
+
+        let mut w = logger.writer();
+        let _ = write!(w, "Highest physical address: {:#x}\n", highest_physical_address);
+        let _ = write!(w, "Highest RAM address: {:#x}\n", highest_ram_address);
+        let _ = write!(w, "Highest usable address: {:#x}\n", highest_usable_address);
+        let _ = write!(w, "Bitmap: {} bytes, {} frames\n", bitmap_size_in_bytes, bitmap_frames);
+
         let physical_memory_offset = VirtualMemoryAddress::from(
             boot_info
                 .physical_memory_offset
@@ -66,187 +133,108 @@ impl X86_64MemoryManager {
                 .ok_or(X86_64MemoryManagerInitializeError::UnsupportedMapping)?
         );
 
-        let mut frame_manager = unsafe {
-            FrameManager::new_initialized(
-                FRAME_SIZE,
+        let mut frame_manager = FrameManager::new(
+            FRAME_SIZE,
+            unsafe {
                 from_raw_parts_mut(
                     VirtualMemoryAddress::from(physical_memory_offset).cast_mut::<u8>(),
-                    physical_memory_size_in_bytes.r#as(),
-                ),
-            )
-        };
+                    highest_usable_address.r#as(),
+                )
+            },
+        );
 
-        for memory_region in boot_info.memory_regions.iter() {
-            if matches!(memory_region.kind, MemoryRegionKind::Usable) {
-                continue;
-            }
+        let address_translator = X86_64MemoryManagerAddressTranslator::new(
+            physical_memory_offset,
+        );
 
-            let start = frame_manager
-                .translate_memory_address(PhysicalMemoryAddress::from(memory_region.start));
-            let end = frame_manager
-                .translate_memory_address(PhysicalMemoryAddress::from(memory_region.end));
+        let mut usable_memory_in_bytes: u64 = 0;
 
-            for identifier in start..end {
-                if frame_manager
-                    .translate_frame_identifier(identifier)
-                    .as_u64()
-                    >= physical_memory_size_in_bytes
-                {
+        for region in boot_info.memory_regions.iter() {
+            if
+                !matches!(
+                    region.kind,
+                    MemoryRegionKind::Usable
+                ) {
                     continue;
                 }
-
-                match frame_manager.allocate_frames(once(identifier)) {
-                    Ok(()) => {}
-                    Err(FrameManagerAllocationError::Allocated(_)) => {}
-                    Err(error) => todo!(),
-                }
-            }
+            usable_memory_in_bytes += region.end.saturating_sub(region.start);
         }
+
+        let mut total_memory_in_bytes: u64 = 0;
+
+        for region in boot_info.memory_regions.iter() {
+            total_memory_in_bytes += region.end.saturating_sub(region.start);
+        }
+
+        /*let _ = write!(w, "total memory of all regions: {}\n",total_memory_in_bytes / (1024 * 1024));
+
+        boot_info
+            .memory_regions
+            .windows(2)
+            .filter(|window| window[0].end < window[1].start)
+            .for_each(|window| {
+                let _ = write!(
+                    w,
+                    "Hole: {:#x}..{:#x} ({} MiB)\n",
+                    window[0].end,
+                    window[1].start,
+                    (window[1].start - window[0].end) / (1024 * 1024),
+                );
+            });*/
+
+        boot_info
+            .memory_regions
+            .iter()
+            .filter(|r| !matches!(r.kind, MemoryRegionKind::Usable))
+            .for_each(|region| {
+                let start = frame_manager
+                    .translate_memory_address(PhysicalMemoryAddress::from(region.start));
+                let end = frame_manager
+                    .translate_memory_address(PhysicalMemoryAddress::from(region.end));
+
+                (start..end).for_each(|identifier| {
+                    if frame_manager
+                        .translate_frame_identifier(identifier)
+                        .as_u64()
+                        < highest_usable_address
+                    {
+                        match frame_manager.allocate_frames(once(identifier)) {
+                            Ok(()) => {}
+                            Err(FrameManagerAllocationError::Allocated(_)) => {}
+                            Err(error) => todo!(),
+                        }
+                    }
+                });
+            });
+
+        let page_table = unsafe {
+            address_translator
+                .translate_physical_memory_address(PhysicalMemoryAddress::from(
+                    Cr3::read().0.start_address().as_u64(),
+                ))
+                .cast_mut::<PageTable>()
+                .as_mut()
+                .unwrap()
+        };
+
+        let mut page_table_mapper = unsafe {
+            OffsetPageTable::new(
+                page_table,
+                VirtAddr::new(physical_memory_offset.as_usize().r#as()),
+            )
+        };
 
         let mut this = Self {
             physical_memory_offset,
             physical_memory_size_in_bytes,
+            managed_memory_size: highest_usable_address,
+            usable_memory_in_bytes,
             kernel_image_length: boot_info.kernel_len,
             kernel_image_start_virtual_memory_address:
                 physical_memory_offset + VirtualMemoryAddress::from(boot_info.kernel_addr),
             frame_manager,
             heap_allocator_reference: None,
         };
-
-        /*let p1 = |address: u64| {
-            (address >> 12) as u16
-        };
-
-        let p2 = |address: u64| {
-            (address >> 12 >> 9)as u16
-        };
-
-        let p3 = |address: u64| {
-            (address >> 12 >> 9 >> 9)as u16
-        };
-
-        let p4 = |address: u64| {
-            (address >> 12 >> 9 >> 9 >> 9)as u16
-        };
-
-        let forge_address = |p4: u16, p3: u16, p2: u16, p1: u16, index: u16| -> u64 {
-            (p4 as u64) << (9 + 9 + 9 + 12) |
-            (p3 as u64) << (9 + 9 + 12) |
-            (p2 as u64) << (9 + 12) |
-            (p1 as u64) << 12 |
-            (index as u64)
-        };
-
-        use core::fmt::Write;
-
-        let b = Cr3::read_raw();
-
-        let page_table = this.active_page_table();
-
-        let mut frame_manager = this.frame_manager();
-        let a = frame_manager.unallocated_frame_identifiers().next().unwrap();
-        let execution_page_table = frame_manager.allocate_frames(once(a)).unwrap();
-
-        // Execution Stack
-        page_table[256].set_addr(PhysAddr::new(frame_manager.translate_frame_identifier(a).as_u64()), PageTableFlags::PRESENT);
-        //page_table[256].set_addr(b.0.start_address(), PageTableFlags::PRESENT | PageTableFlags::HUGE_PAGE | PageTableFlags::NO_EXECUTE);
-        //page_table[257].set_addr(b.0.start_address(), PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::HUGE_PAGE | PageTableFlags::USER_ACCESSIBLE | PageTableFlags::NO_EXECUTE);
-        //page_table[258].set_addr(b.0.start_address(), PageTableFlags::PRESENT | PageTableFlags::HUGE_PAGE | PageTableFlags::NO_EXECUTE);
-
-        // User Code (variable)
-        //page_table[259].set_addr(b.0.start_address(), PageTableFlags::PRESENT | PageTableFlags::HUGE_PAGE | PageTableFlags::USER_ACCESSIBLE);
-
-        let a = Cr3::read_raw();
-        unsafe {
-            Cr3::write_raw(a.0, a.1);
-        }
-
-        for (i, entry) in page_table.iter().enumerate() {
-            if !entry.flags().contains(PageTableFlags::PRESENT) {
-                continue;
-            }
-
-            logger.writer(|w| write!(w, "[{}] {:?}\n", i, entry));
-        }
-
-        logger.writer(|w| write!(w, "\n"));
-
-        for a in [256, 257, 258].iter() {
-            let user_stack_from = VirtAddr::new_truncate(
-                forge_address(
-                    511,
-                    511,
-                    *a,
-                    0,
-                    0,
-                )
-            );
-
-            let user_stack_to = VirtAddr::new_truncate(
-                forge_address(
-                    511,
-                    511,
-                    *a,
-                    (2i32.pow(9) - 1) as u16,
-                    (2i32.pow(12) - 1) as u16,
-                )
-            );
-
-            logger.writer(|w| write!(w, "\n{:?} -> {:?}\n", user_stack_from, user_stack_to));
-        }
-
-        loop {}
-
-        let address = VirtAddr::new_truncate(
-            forge_address(
-                511,
-                0,
-                511,
-                511,
-                0,
-            )
-        );
-
-        logger.writer(|w| write!(w, "\n{:?}\n", address));
-
-        let mut current_table = this.active_page_table();
-
-        for (i, index) in [address.p4_index(), address.p3_index(), address.p2_index(), address.p1_index()].iter().enumerate() {
-            logger.writer(|w| write!(w, "{:?}; ", index));
-        }
-
-        logger.writer(|w| write!(w, "\n"));
-
-        for (i, index) in [address.p4_index(), address.p3_index(), address.p2_index(), address.p1_index()].iter().enumerate() {
-            let entry = current_table[*index].clone();
-
-            logger.writer(|w| write!(w, "[{:?}] {:?}\n", index, entry));
-
-            if !entry.flags().contains(PageTableFlags::PRESENT) {
-                break;
-            }
-        }
-
-        loop {}*/
-
-        // Physical Region
-
-        // Kernel Code
-        // Kernel Heap
-
-        // CPU-centric Kernel Stacks + Guards
-
-        // Actor-centric Heap
-        // Actor-centric Code
-        // Actor-centric Stack + Guards
-        //
-        // Actor-centric Stack Guard
-        // Actor-centric Stack Data (n * 4096)
-        // Actor-centric Stack Guard
-        // Actor-centric Kernel System Call Stack
-        // Actor-centric Stack Guard
-
-        let mut mapper = this.page_table_mapper();
 
         let start_address = 0x0000_0000_FFFF_0000u64;
         let frame_count = 10000;
@@ -335,7 +323,7 @@ impl X86_64MemoryManager {
                 .unwrap();
 
             unsafe {
-                mapper
+                page_table_mapper
                     .map_to(
                         Page::<Size4KiB>::from_start_address_unchecked(VirtAddr::new(
                             current_address,
@@ -374,6 +362,14 @@ impl X86_64MemoryManager {
         }
     }
 
+    pub fn physical_memory_size_in_bytes(&self) -> u64 {
+        self.physical_memory_size_in_bytes
+    }
+
+    pub fn usable_memory_in_bytes(&self) -> u64 {
+        self.usable_memory_in_bytes
+    }
+
     pub fn kernel_image_virtual_memory_region(&self) -> VirtualMemoryRegion {
         VirtualMemoryRegion::new(
             self.kernel_image_start_virtual_memory_address,
@@ -409,7 +405,7 @@ impl X86_64MemoryManager {
                 FRAME_SIZE,
                 from_raw_parts_mut(
                     self.physical_memory_offset.cast_mut::<u8>(),
-                    self.physical_memory_size_in_bytes.r#as(),
+                    self.managed_memory_size.r#as(),
                 ),
             )
         }

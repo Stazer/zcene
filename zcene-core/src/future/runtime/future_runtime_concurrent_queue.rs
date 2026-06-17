@@ -1,7 +1,7 @@
 use crate::future::runtime::{
     FutureRuntimeHandler, FutureRuntimeQueue, FutureRuntimeTaskReference,
 };
-use concurrent_queue::{ConcurrentQueue, PushError};
+use crate::queue::{ConcurrentQueue, PushError};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

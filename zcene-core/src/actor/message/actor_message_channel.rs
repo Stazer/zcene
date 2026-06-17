@@ -19,7 +19,7 @@ where
     where
         A: ActorAllocator,
     {
-        let (sender, receiver) = futures_channel::mpsc::unbounded_in(allocator);
+        let (sender, receiver) = crate::channel::mpsc::unbounded_in(allocator);
 
         (
             ActorMessageChannelSender::new(sender),
