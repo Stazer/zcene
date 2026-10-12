@@ -8,8 +8,8 @@ use crate::common::memory::address::VirtualMemoryAddress;
 use crate::common::memory::address::VirtualMemoryAddressPerspective;
 use crate::common::memory::allocator::LinkedListHeapMemoryAllocator;
 use crate::common::memory::allocator::SelfContainedHeapAllocator;
+use crate::common::memory::FrameIdentifierAddressTranslator;
 use crate::common::memory::allocator::FrameManager;
-use crate::common::memory::allocator::FrameManagerAllocationError;
 use crate::common::memory::region::VirtualMemoryRegion;
 use bootloader_api::BootInfo;
 use bootloader_api::info::MemoryRegionKind;
@@ -133,7 +133,28 @@ impl X86_64MemoryManager {
                 .ok_or(X86_64MemoryManagerInitializeError::UnsupportedMapping)?
         );
 
-        let mut frame_manager = FrameManager::new(
+        let frame_identifier_address_translator = FrameIdentifierAddressTranslator::new(FRAME_SIZE);
+
+        let allocated_frame_identifiers = boot_info
+            .memory_regions
+            .iter()
+            .filter(|region| !matches!(region.kind, MemoryRegionKind::Usable))
+            .flat_map(|region| {
+                let start = frame_identifier_address_translator
+                    .translate_physical_memory_address(PhysicalMemoryAddress::from(region.start));
+                let end = frame_identifier_address_translator
+                    .translate_physical_memory_address(PhysicalMemoryAddress::from(region.end));
+
+                start..end
+            })
+            .filter(|identifier| {
+                frame_identifier_address_translator
+                    .translate_frame_identifier(*identifier)
+                    .as_u64()
+                    < highest_usable_address
+            });
+
+        let frame_manager = FrameManager::new(
             FRAME_SIZE,
             unsafe {
                 from_raw_parts_mut(
@@ -141,7 +162,8 @@ impl X86_64MemoryManager {
                     highest_usable_address.r#as(),
                 )
             },
-        );
+            allocated_frame_identifiers,
+        )?;
 
         let address_translator = X86_64MemoryManagerAddressTranslator::new(
             physical_memory_offset,
@@ -181,31 +203,6 @@ impl X86_64MemoryManager {
                     (window[1].start - window[0].end) / (1024 * 1024),
                 );
             });*/
-
-        boot_info
-            .memory_regions
-            .iter()
-            .filter(|r| !matches!(r.kind, MemoryRegionKind::Usable))
-            .for_each(|region| {
-                let start = frame_manager
-                    .translate_memory_address(PhysicalMemoryAddress::from(region.start));
-                let end = frame_manager
-                    .translate_memory_address(PhysicalMemoryAddress::from(region.end));
-
-                (start..end).for_each(|identifier| {
-                    if frame_manager
-                        .translate_frame_identifier(identifier)
-                        .as_u64()
-                        < highest_usable_address
-                    {
-                        match frame_manager.allocate_frames(once(identifier)) {
-                            Ok(()) => {}
-                            Err(FrameManagerAllocationError::Allocated(_)) => {}
-                            Err(error) => todo!(),
-                        }
-                    }
-                });
-            });
 
         let page_table = unsafe {
             address_translator

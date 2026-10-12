@@ -1,6 +1,7 @@
 use crate::common::bits::{BitField, BitFieldLeftToRight};
 use crate::common::memory::address::{MemoryAddress, MemoryAddressPerspective};
-use crate::common::memory::allocator::frame::FrameIdentifier;
+use crate::common::memory::FrameIdentifier;
+use crate::common::memory::FrameIdentifierMemoryAddressTranslator;
 use core::fmt::{self, Debug, Formatter};
 use core::marker::PhantomData;
 use core::ops::Range;
@@ -29,7 +30,7 @@ pub struct FlatBitmapFrameManager<'a, P>
 where
     P: MemoryAddressPerspective,
 {
-    frame_byte_size: usize,
+    frame_identifier_memory_address_translator: FrameIdentifierMemoryAddressTranslator,
     slice: &'a mut [u8],
     memory_address_perspective: PhantomData<P>,
 }
@@ -41,7 +42,10 @@ where
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("FlatBitmapFrameManager")
-            .field("frame_byte_size", &self.frame_byte_size)
+            .field(
+                "frame_identifier_memory_address_translator",
+                &self.frame_identifier_memory_address_translator,
+            )
             .finish_non_exhaustive()
     }
 }
@@ -52,21 +56,46 @@ impl<'a, P> FlatBitmapFrameManager<'a, P>
 where
     P: MemoryAddressPerspective,
 {
-    pub fn new(frame_byte_size: usize, slice: &'a mut [u8]) -> Self {
+    pub fn new<I>(
+        frame_byte_size: usize,
+        slice: &'a mut [u8],
+        allocated_frame_identifiers: I,
+    ) -> Result<Self, FrameManagerAllocationError>
+    where
+        I: IntoIterator<Item = FrameIdentifier>,
+    {
         let mut instance = Self {
-            frame_byte_size,
+            frame_identifier_memory_address_translator: FrameIdentifierMemoryAddressTranslator::new(
+                frame_byte_size,
+            ),
             slice,
             memory_address_perspective: PhantomData::<P>,
         };
 
         instance.allocation_slice_mut().fill(0);
 
-        instance
+        let data_frame_count = instance.data_frame_count();
+
+        let mut field = BitField::<BitFieldLeftToRight, BitFieldLeftToRight, _>::new(
+            instance.allocation_slice_mut(),
+        );
+
+        for identifier in allocated_frame_identifiers {
+            if data_frame_count < identifier.as_usize() {
+                return Err(FrameManagerAllocationError::OutOfRange(identifier));
+            }
+
+            field.enable(identifier.as_usize());
+        }
+
+        Ok(instance)
     }
 
     pub unsafe fn new_initialized(frame_byte_size: usize, slice: &'a mut [u8]) -> Self {
         Self {
-            frame_byte_size,
+            frame_identifier_memory_address_translator: FrameIdentifierMemoryAddressTranslator::new(
+                frame_byte_size,
+            ),
             slice,
             memory_address_perspective: PhantomData::<P>,
         }
@@ -81,17 +110,18 @@ where
     }
 
     pub fn frame_byte_size(&self) -> usize {
-        self.frame_byte_size
+        self.frame_identifier_memory_address_translator.frame_size()
     }
 
     #[inline]
     pub fn frame_bit_size(&self) -> usize {
-        self.frame_byte_size * u8::BITS as usize
+        self.frame_byte_size() * u8::BITS as usize
     }
 
     #[inline]
     pub fn translate_memory_address(&self, memory_address: MemoryAddress<P>) -> FrameIdentifier {
-        FrameIdentifier::new(memory_address.as_usize() / self.frame_byte_size)
+        self.frame_identifier_memory_address_translator
+            .translate_memory_address(memory_address)
     }
 
     #[inline]
@@ -99,12 +129,13 @@ where
         &self,
         frame_identifier: FrameIdentifier,
     ) -> MemoryAddress<P> {
-        MemoryAddress::new(frame_identifier.as_usize() * self.frame_byte_size)
+        self.frame_identifier_memory_address_translator
+            .translate_frame_identifier(frame_identifier)
     }
 
     #[inline]
     pub fn total_frame_count(&self) -> usize {
-        self.slice.len() / self.frame_byte_size
+        self.slice.len() / self.frame_byte_size()
     }
 
     #[inline]
@@ -366,7 +397,7 @@ use alloc::vec::Vec;
 #[cfg(test)]
 fn translate_memory_address() {
     let mut memory: [u8; 1024] = [0; 1024];
-    let manager = FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory);
+    let manager = FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory, []).unwrap();
 
     assert_eq!(
         4,
@@ -379,7 +410,7 @@ fn translate_memory_address() {
 #[test]
 fn translate_frame_identifier() {
     let mut memory: [u8; 1024] = [0; 1024];
-    let manager = FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory);
+    let manager = FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory, []).unwrap();
 
     assert_eq!(
         16,
@@ -393,7 +424,7 @@ fn translate_frame_identifier() {
 #[cfg(test)]
 fn total_frame_count() {
     let mut memory: [u8; 1024] = [0; 1024];
-    let manager = FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory);
+    let manager = FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory, []).unwrap();
 
     assert_eq!(256, manager.total_frame_count());
 }
@@ -402,7 +433,7 @@ fn total_frame_count() {
 #[cfg(test)]
 fn allocation_frame_count() {
     let mut memory: [u8; 1024] = [0; 1024];
-    let manager = FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory);
+    let manager = FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory, []).unwrap();
 
     assert_eq!(8, manager.allocation_frame_count());
 }
@@ -410,7 +441,7 @@ fn allocation_frame_count() {
 #[test]
 fn data_frame_count() {
     let mut memory: [u8; 1024] = [0; 1024];
-    let manager = FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory);
+    let manager = FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory, []).unwrap();
 
     assert_eq!(248, manager.data_frame_count());
 }
@@ -418,7 +449,7 @@ fn data_frame_count() {
 #[test]
 fn allocation_frame_initialized_with_zero() {
     let mut memory: [u8; 1024] = [1; 1024];
-    let manager = FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory);
+    let manager = FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory, []).unwrap();
 
     assert!(manager.allocation_slice().iter().all(|x| *x == 0));
 }
@@ -426,7 +457,7 @@ fn allocation_frame_initialized_with_zero() {
 #[test]
 fn allocation_slice_range() {
     let mut memory: [u8; 1024] = [0; 1024];
-    let manager = FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory);
+    let manager = FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory, []).unwrap();
 
     assert_eq!(992..1024, manager.allocation_slice_range());
 }
@@ -435,7 +466,7 @@ fn allocation_slice_range() {
 #[cfg(test)]
 fn data_slice_range() {
     let mut memory: [u8; 1024] = [0; 1024];
-    let manager = FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory);
+    let manager = FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory, []).unwrap();
 
     assert_eq!(0..992, manager.data_slice_range());
 }
@@ -445,7 +476,7 @@ fn data_slice_range() {
 fn allocate_window() {
     let mut memory: [u8; 1024] = [0; 1024];
     let mut manager =
-        FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory);
+        FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory, []).unwrap();
 
     assert_eq!(
         Ok((0..4).collect::<Vec<usize>>()),
@@ -489,7 +520,7 @@ fn allocate_window() {
 fn allocate_window_bounds_checking() {
     let mut memory: [u8; 1024] = [0; 1024];
     let mut manager =
-        FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory);
+        FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory, []).unwrap();
 
     assert_eq!(
         Err(FrameManagerAllocationError::NotFeasible),
@@ -527,7 +558,7 @@ fn allocate_window_bounds_checking() {
 fn allocate_window_empty() {
     let mut memory: [u8; 1024] = [0; 1024];
     let mut manager =
-        FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory);
+        FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory, []).unwrap();
 
     assert_eq!(
         Ok((0..0).collect::<Vec<usize>>()),
@@ -544,7 +575,7 @@ fn allocate_window_empty() {
 fn deallocate_frames() {
     let mut memory: [u8; 1024] = [0; 1024];
     let mut manager =
-        FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory);
+        FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory, []).unwrap();
 
     assert_eq!(
         Ok((0..4).collect::<Vec<usize>>()),
@@ -575,7 +606,7 @@ fn deallocate_frames() {
 fn reallocation() {
     let mut memory: [u8; 1024] = [0; 1024];
     let mut manager =
-        FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory);
+        FlatBitmapFrameManager::<UnknownMemoryAddressPerspective>::new(4, &mut memory, []).unwrap();
 
     assert_eq!(
         Ok((0..4).collect::<Vec<usize>>()),

@@ -1,5 +1,5 @@
 use crate::common::memory::address::{MemoryAddress, MemoryAddressPerspective};
-use crate::common::memory::allocator::frame::FrameIdentifier;
+use crate::common::memory::FrameIdentifier;
 use core::marker::PhantomData;
 use core::mem::size_of;
 
