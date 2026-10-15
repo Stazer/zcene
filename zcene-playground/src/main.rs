@@ -78,6 +78,12 @@ impl Actor<ActorRootEnvironment> for PingActor {
             if root.send(PingMessage(counter)).await.is_err() {
                 break;
             }
+
+            // The runtime is cooperative: an unbounded channel's `send` never actually returns
+            // `Pending`, so without this, a single core never gets back to the executor's queue
+            // to run anything else (including `RootActor` itself) — fine with a core to spare,
+            // but it starves the whole system on `-smp 1`.
+            yield_now().await;
         }
 
         Ok(())
@@ -90,6 +96,28 @@ fn spin_delay() {
     for _ in 0..20_000_000u64 {
         core::hint::spin_loop();
     }
+}
+
+/// Returns `Pending` once (rescheduling this task via the waker) before resolving, so the
+/// calling core gets back to the executor's queue in between.
+fn yield_now() -> impl Future<Output = ()> {
+    struct YieldNow(bool);
+
+    impl Future for YieldNow {
+        type Output = ();
+
+        fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<()> {
+            if self.0 {
+                Poll::Ready(())
+            } else {
+                self.0 = true;
+                context.waker().wake_by_ref();
+                Poll::Pending
+            }
+        }
+    }
+
+    YieldNow(false)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
