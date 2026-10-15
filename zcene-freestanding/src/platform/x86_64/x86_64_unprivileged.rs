@@ -67,26 +67,24 @@ macro_rules! save_kernel_stack {
 /// The kernel stack (saved in KernelGSBase) holds: [event_ptr, return_addr, callee_saved_regs].
 #[unsafe(naked)]
 pub unsafe extern "C" fn x86_64_system_call_entry_point() -> ! {
-    unsafe {
-        naked_asm!(
-            // Save user context registers that syscall doesn't preserve
-            "mov r9, rcx",   // user rip (rcx clobbered by syscall)
-            "mov r10, rsp",  // user rsp
-            // Load kernel stack from KernelGSBase MSR
-            "mov rcx, 0xC0000102",
-            "rdmsr",
-            "shl rdx, 32",
-            "or rax, rdx",
-            "mov rsp, rax",
-            // Translate r8 (message pointer) into rdx for the restore fn (arg2)
-            "mov rdx, r8",
-            // Pop event pointer (was pushed before sysretq in execute_in_unprivileged)
-            "pop rcx",
-            // Tail-call restore; on return, execution continues at the saved return address
-            "jmp x86_64_unprivileged_system_call_restore",
-            "hlt",
-        )
-    }
+    naked_asm!(
+        // Save user context registers that syscall doesn't preserve
+        "mov r9, rcx",   // user rip (rcx clobbered by syscall)
+        "mov r10, rsp",  // user rsp
+        // Load kernel stack from KernelGSBase MSR
+        "mov rcx, 0xC0000102",
+        "rdmsr",
+        "shl rdx, 32",
+        "or rax, rdx",
+        "mov rsp, rax",
+        // Translate r8 (message pointer) into rdx for the restore fn (arg2)
+        "mov rdx, r8",
+        // Pop event pointer (was pushed before sysretq in execute_in_unprivileged)
+        "pop rcx",
+        // Tail-call restore; on return, execution continues at the saved return address
+        "jmp x86_64_unprivileged_system_call_restore",
+        "hlt",
+    )
 }
 
 /// Deadline preemption interrupt handler (x86-interrupt ABI, uses IST slot 0).
@@ -95,38 +93,36 @@ pub unsafe extern "C" fn x86_64_system_call_entry_point() -> ! {
 /// kernel stack and calls the preemption restore function.
 #[unsafe(naked)]
 pub unsafe extern "C" fn x86_64_deadline_preemption_entry_point() {
-    unsafe {
-        naked_asm!(
-            // Save all GP registers (CPU has already pushed rip/cs/rflags/rsp/ss below these)
-            "push r15",
-            "push r14",
-            "push r13",
-            "push r12",
-            "push r11",
-            "push r10",
-            "push r9",
-            "push r8",
-            "push rbp",
-            "push rdi",
-            "push rsi",
-            "push rdx",
-            "push rcx",
-            "push rbx",
-            "push rax",
-            // rdi = pointer to saved context (X86_64UnprivilegedPreemptionContext)
-            "mov rdi, rsp",
-            // Load kernel stack from KernelGSBase MSR
-            "mov rcx, 0xC0000102",
-            "rdmsr",
-            "shl rdx, 32",
-            "or rax, rdx",
-            "mov rsp, rax",
-            // Pop event pointer into rsi (second arg to restore fn)
-            "pop rsi",
-            "jmp x86_64_unprivileged_preemption_restore",
-            "hlt",
-        )
-    }
+    naked_asm!(
+        // Save all GP registers (CPU has already pushed rip/cs/rflags/rsp/ss below these)
+        "push r15",
+        "push r14",
+        "push r13",
+        "push r12",
+        "push r11",
+        "push r10",
+        "push r9",
+        "push r8",
+        "push rbp",
+        "push rdi",
+        "push rsi",
+        "push rdx",
+        "push rcx",
+        "push rbx",
+        "push rax",
+        // rdi = pointer to saved context (X86_64UnprivilegedPreemptionContext)
+        "mov rdi, rsp",
+        // Load kernel stack from KernelGSBase MSR
+        "mov rcx, 0xC0000102",
+        "rdmsr",
+        "shl rdx, 32",
+        "or rax, rdx",
+        "mov rsp, rax",
+        // Pop event pointer into rsi (second arg to restore fn)
+        "pop rsi",
+        "jmp x86_64_unprivileged_preemption_restore",
+        "hlt",
+    )
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

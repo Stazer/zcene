@@ -7,7 +7,7 @@ use core::marker::PhantomData;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait ActorMailboxMessageSender<M, E>: ActorCommonBounds
+pub trait ActorMailboxMessageSender<M, E>: Send + Sync + 'static
 where
     M: ActorMessage,
     E: ActorEnvironment + ActorEnvironmentAllocator,

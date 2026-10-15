@@ -20,14 +20,14 @@ use zcene_core::future::r#yield;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-type PlatformEvent<P: Platform> = UnprivilegedEvent<
+type PlatformEvent<P> = UnprivilegedEvent<
     <P as Platform>::UnprivilegedSystemCallContext,
     <P as Platform>::UnprivilegedPreemptionContext,
 >;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct ActorUnprivilegedExecutorInner<AI, AR, H, P>
+pub struct ActorUnprivilegedExecutorInner<AI, AR, H, P>
 where
     AI: Actor<ActorUnprivilegedEnvironment>,
     AR: Actor<ActorRootEnvironment<H, P>, Message = AI::Message>,
@@ -43,7 +43,7 @@ where
     deadline_in_milliseconds: Option<NonZero<usize>>,
     message_handlers: Vec<
         Box<
-            dyn ActorUnprivilegedMessageHandler<ActorRootEnvironment<H, P>>,
+            dyn ActorUnprivilegedMessageHandler<ActorRootEnvironment<H, P>> + Send + Sync,
             <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
         >,
         <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
@@ -68,7 +68,7 @@ where
         deadline_in_milliseconds: Option<NonZero<usize>>,
         message_handlers: Vec<
             Box<
-                dyn ActorUnprivilegedMessageHandler<ActorRootEnvironment<H, P>>,
+                dyn ActorUnprivilegedMessageHandler<ActorRootEnvironment<H, P>> + Send + Sync,
                 <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
             >,
             <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
@@ -281,7 +281,7 @@ where
         deadline_in_milliseconds: Option<NonZero<usize>>,
         message_handlers: Vec<
             Box<
-                dyn ActorUnprivilegedMessageHandler<ActorRootEnvironment<H, P>>,
+                dyn ActorUnprivilegedMessageHandler<ActorRootEnvironment<H, P>> + Send + Sync,
                 <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
             >,
             <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
@@ -289,7 +289,7 @@ where
     ) -> Self {
         let allocator = environment.allocator().clone();
 
-        let inner = ActorUnprivilegedExecutorInner::new(
+        let inner = ActorUnprivilegedExecutorInner::<AI, AR, H, P>::new(
             environment,
             actor,
             receiver,

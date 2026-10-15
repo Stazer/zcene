@@ -14,7 +14,7 @@ where
     M: ActorMessage,
     E: ActorEnvironment + ActorEnvironmentAllocator,
 {
-    caller: Arc<dyn ActorMailboxMessageSender<M, E>, E::Allocator>,
+    caller: Arc<dyn ActorMailboxMessageSender<M, E> + Send + Sync, E::Allocator>,
 }
 
 impl<M, E> Clone for ActorMailbox<M, E>

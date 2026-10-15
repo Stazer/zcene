@@ -1,4 +1,4 @@
-#![feature(allocator_api)]
+#![feature(allocator_ext)]
 
 use std::alloc::Global;
 use std::error::Error;

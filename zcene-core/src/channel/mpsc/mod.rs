@@ -1,7 +1,7 @@
 // Taken from the futures-channel crate (https://github.com/rust-lang/futures-rs/tree/master/futures-channel)
 
 use alloc::sync::Arc;
-use core::alloc::Allocator;
+use core::alloc::{Allocator, AllocatorClone};
 use core::fmt;
 use core::future::Future;
 use core::hint;
@@ -20,31 +20,31 @@ mod queue;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct UnboundedSenderInner<T, A: Allocator + Clone> {
+struct UnboundedSenderInner<T, A: Allocator + AllocatorClone + Clone> {
     inner: Arc<UnboundedInner<T, A>, A>,
 }
 
-struct BoundedSenderInner<T, A: Allocator + Clone> {
+struct BoundedSenderInner<T, A: Allocator + AllocatorClone + Clone> {
     inner: Arc<BoundedInner<T, A>, A>,
     sender_task: Arc<Mutex<SenderTask>, A>,
     maybe_parked: bool,
 }
 
-impl<T, A: Allocator + Clone> Unpin for UnboundedSenderInner<T, A> {}
-impl<T, A: Allocator + Clone> Unpin for BoundedSenderInner<T, A> {}
+impl<T, A: Allocator + AllocatorClone + Clone> Unpin for UnboundedSenderInner<T, A> {}
+impl<T, A: Allocator + AllocatorClone + Clone> Unpin for BoundedSenderInner<T, A> {}
 
-pub struct Sender<T, A: Allocator + Clone>(Option<BoundedSenderInner<T, A>>);
-pub struct UnboundedSender<T, A: Allocator + Clone>(Option<UnboundedSenderInner<T, A>>);
+pub struct Sender<T, A: Allocator + AllocatorClone + Clone>(Option<BoundedSenderInner<T, A>>);
+pub struct UnboundedSender<T, A: Allocator + AllocatorClone + Clone>(Option<UnboundedSenderInner<T, A>>);
 
-pub struct Receiver<T, A: Allocator + Clone> {
+pub struct Receiver<T, A: Allocator + AllocatorClone + Clone> {
     inner: Option<Arc<BoundedInner<T, A>, A>>,
 }
 
-pub struct UnboundedReceiver<T, A: Allocator + Clone> {
+pub struct UnboundedReceiver<T, A: Allocator + AllocatorClone + Clone> {
     inner: Option<Arc<UnboundedInner<T, A>, A>>,
 }
 
-impl<T, A: Allocator + Clone> Unpin for UnboundedReceiver<T, A> {}
+impl<T, A: Allocator + AllocatorClone + Clone> Unpin for UnboundedReceiver<T, A> {}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SendError {
@@ -167,14 +167,14 @@ impl fmt::Display for TryRecvError {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct UnboundedInner<T, A: Allocator + Clone> {
+struct UnboundedInner<T, A: Allocator + AllocatorClone + Clone> {
     state: AtomicUsize,
     message_queue: Queue<T, A>,
     num_senders: AtomicUsize,
     recv_task: AtomicWaker,
 }
 
-struct BoundedInner<T, A: Allocator + Clone> {
+struct BoundedInner<T, A: Allocator + AllocatorClone + Clone> {
     buffer: usize,
     state: AtomicUsize,
     message_queue: Queue<T, A>,
@@ -214,7 +214,7 @@ impl SenderTask {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub fn channel_in<T, A: Allocator + Clone>(
+pub fn channel_in<T, A: Allocator + AllocatorClone + Clone>(
     buffer: usize,
     alloc: A,
 ) -> (Sender<T, A>, Receiver<T, A>) {
@@ -243,7 +243,7 @@ pub fn channel_in<T, A: Allocator + Clone>(
     (Sender(Some(tx)), rx)
 }
 
-pub fn unbounded_in<T, A: Allocator + Clone>(
+pub fn unbounded_in<T, A: Allocator + AllocatorClone + Clone>(
     alloc: A,
 ) -> (UnboundedSender<T, A>, UnboundedReceiver<T, A>) {
     let inner = Arc::new_in(
@@ -264,7 +264,7 @@ pub fn unbounded_in<T, A: Allocator + Clone>(
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-impl<T, A: Allocator + Clone> UnboundedSenderInner<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> UnboundedSenderInner<T, A> {
     fn poll_ready_nb(&self) -> Poll<Result<(), SendError>> {
         let state = decode_state(self.inner.state.load(SeqCst));
         if state.is_open {
@@ -326,7 +326,7 @@ impl<T, A: Allocator + Clone> UnboundedSenderInner<T, A> {
     }
 }
 
-impl<T, A: Allocator + Clone> BoundedSenderInner<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> BoundedSenderInner<T, A> {
     fn try_send(&mut self, msg: T) -> Result<(), TrySendError<T>> {
         if !self.poll_unparked(None).is_ready() {
             return Err(TrySendError { err: SendError { kind: SendErrorKind::Full }, val: msg });
@@ -447,7 +447,7 @@ impl<T, A: Allocator + Clone> BoundedSenderInner<T, A> {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-impl<T, A: Allocator + Clone> Sender<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> Sender<T, A> {
     pub fn try_send(&mut self, msg: T) -> Result<(), TrySendError<T>> {
         if let Some(inner) = &mut self.0 {
             inner.try_send(msg)
@@ -500,7 +500,7 @@ impl<T, A: Allocator + Clone> Sender<T, A> {
     }
 }
 
-impl<T, A: Allocator + Clone> UnboundedSender<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> UnboundedSender<T, A> {
     pub fn poll_ready(&self, _: &mut Context<'_>) -> Poll<Result<(), SendError>> {
         let inner = self.0.as_ref().ok_or(SendError { kind: SendErrorKind::Disconnected })?;
         inner.poll_ready_nb()
@@ -573,19 +573,19 @@ impl<T, A: Allocator + Clone> UnboundedSender<T, A> {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-impl<T, A: Allocator + Clone> Clone for Sender<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> Clone for Sender<T, A> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<T, A: Allocator + Clone> Clone for UnboundedSender<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> Clone for UnboundedSender<T, A> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<T, A: Allocator + Clone> Clone for UnboundedSenderInner<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> Clone for UnboundedSenderInner<T, A> {
     fn clone(&self) -> Self {
         let mut curr = self.inner.num_senders.load(SeqCst);
 
@@ -605,7 +605,7 @@ impl<T, A: Allocator + Clone> Clone for UnboundedSenderInner<T, A> {
     }
 }
 
-impl<T, A: Allocator + Clone> Clone for BoundedSenderInner<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> Clone for BoundedSenderInner<T, A> {
     fn clone(&self) -> Self {
         let mut curr = self.inner.num_senders.load(SeqCst);
 
@@ -636,7 +636,7 @@ impl<T, A: Allocator + Clone> Clone for BoundedSenderInner<T, A> {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-impl<T, A: Allocator + Clone> Drop for UnboundedSenderInner<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> Drop for UnboundedSenderInner<T, A> {
     fn drop(&mut self) {
         let prev = self.inner.num_senders.fetch_sub(1, SeqCst);
         if prev == 1 {
@@ -645,7 +645,7 @@ impl<T, A: Allocator + Clone> Drop for UnboundedSenderInner<T, A> {
     }
 }
 
-impl<T, A: Allocator + Clone> Drop for BoundedSenderInner<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> Drop for BoundedSenderInner<T, A> {
     fn drop(&mut self) {
         let prev = self.inner.num_senders.fetch_sub(1, SeqCst);
         if prev == 1 {
@@ -654,13 +654,13 @@ impl<T, A: Allocator + Clone> Drop for BoundedSenderInner<T, A> {
     }
 }
 
-impl<T, A: Allocator + Clone> fmt::Debug for Sender<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> fmt::Debug for Sender<T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Sender").field("closed", &self.is_closed()).finish()
     }
 }
 
-impl<T, A: Allocator + Clone> fmt::Debug for UnboundedSender<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> fmt::Debug for UnboundedSender<T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("UnboundedSender").field("closed", &self.is_closed()).finish()
     }
@@ -668,7 +668,7 @@ impl<T, A: Allocator + Clone> fmt::Debug for UnboundedSender<T, A> {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-impl<T, A: Allocator + Clone> Receiver<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> Receiver<T, A> {
     pub fn recv(&mut self) -> Recv<'_, Self> {
         Recv::new(self)
     }
@@ -736,15 +736,15 @@ impl<T, A: Allocator + Clone> Receiver<T, A> {
     }
 }
 
-impl<T, A: Allocator + Clone> Unpin for Receiver<T, A> {}
+impl<T, A: Allocator + AllocatorClone + Clone> Unpin for Receiver<T, A> {}
 
-impl<T, A: Allocator + Clone> FusedStream for Receiver<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> FusedStream for Receiver<T, A> {
     fn is_terminated(&self) -> bool {
         self.inner.is_none()
     }
 }
 
-impl<T, A: Allocator + Clone> Stream for Receiver<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> Stream for Receiver<T, A> {
     type Item = T;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<T>> {
@@ -771,7 +771,7 @@ impl<T, A: Allocator + Clone> Stream for Receiver<T, A> {
     }
 }
 
-impl<T, A: Allocator + Clone> Drop for Receiver<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> Drop for Receiver<T, A> {
     fn drop(&mut self) {
         self.close();
         if self.inner.is_some() {
@@ -792,7 +792,7 @@ impl<T, A: Allocator + Clone> Drop for Receiver<T, A> {
     }
 }
 
-impl<T, A: Allocator + Clone> fmt::Debug for Receiver<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> fmt::Debug for Receiver<T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let closed = if let Some(ref inner) = self.inner {
             decode_state(inner.state.load(SeqCst)).is_closed()
@@ -805,7 +805,7 @@ impl<T, A: Allocator + Clone> fmt::Debug for Receiver<T, A> {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-impl<T, A: Allocator + Clone> UnboundedReceiver<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> UnboundedReceiver<T, A> {
     pub fn recv(&mut self) -> Recv<'_, Self> {
         Recv::new(self)
     }
@@ -861,13 +861,13 @@ impl<T, A: Allocator + Clone> UnboundedReceiver<T, A> {
     }
 }
 
-impl<T, A: Allocator + Clone> FusedStream for UnboundedReceiver<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> FusedStream for UnboundedReceiver<T, A> {
     fn is_terminated(&self) -> bool {
         self.inner.is_none()
     }
 }
 
-impl<T, A: Allocator + Clone> Stream for UnboundedReceiver<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> Stream for UnboundedReceiver<T, A> {
     type Item = T;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<T>> {
@@ -894,7 +894,7 @@ impl<T, A: Allocator + Clone> Stream for UnboundedReceiver<T, A> {
     }
 }
 
-impl<T, A: Allocator + Clone> Drop for UnboundedReceiver<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> Drop for UnboundedReceiver<T, A> {
     fn drop(&mut self) {
         self.close();
         if self.inner.is_some() {
@@ -915,7 +915,7 @@ impl<T, A: Allocator + Clone> Drop for UnboundedReceiver<T, A> {
     }
 }
 
-impl<T, A: Allocator + Clone> fmt::Debug for UnboundedReceiver<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> fmt::Debug for UnboundedReceiver<T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let closed = if let Some(ref inner) = self.inner {
             decode_state(inner.state.load(SeqCst)).is_closed()
@@ -928,7 +928,7 @@ impl<T, A: Allocator + Clone> fmt::Debug for UnboundedReceiver<T, A> {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-impl<T, A: Allocator + Clone> UnboundedInner<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> UnboundedInner<T, A> {
     fn set_closed(&self) {
         let curr = self.state.load(SeqCst);
         if !decode_state(curr).is_open {
@@ -938,7 +938,7 @@ impl<T, A: Allocator + Clone> UnboundedInner<T, A> {
     }
 }
 
-impl<T, A: Allocator + Clone> BoundedInner<T, A> {
+impl<T, A: Allocator + AllocatorClone + Clone> BoundedInner<T, A> {
     fn max_senders(&self) -> usize {
         MAX_CAPACITY - self.buffer
     }
@@ -952,10 +952,10 @@ impl<T, A: Allocator + Clone> BoundedInner<T, A> {
     }
 }
 
-unsafe impl<T: Send, A: Allocator + Clone + Send + Sync> Send for UnboundedInner<T, A> {}
-unsafe impl<T: Send, A: Allocator + Clone + Send + Sync> Sync for UnboundedInner<T, A> {}
-unsafe impl<T: Send, A: Allocator + Clone + Send + Sync> Send for BoundedInner<T, A> {}
-unsafe impl<T: Send, A: Allocator + Clone + Send + Sync> Sync for BoundedInner<T, A> {}
+unsafe impl<T: Send, A: Allocator + AllocatorClone + Clone + Send + Sync> Send for UnboundedInner<T, A> {}
+unsafe impl<T: Send, A: Allocator + AllocatorClone + Clone + Send + Sync> Sync for UnboundedInner<T, A> {}
+unsafe impl<T: Send, A: Allocator + AllocatorClone + Clone + Send + Sync> Send for BoundedInner<T, A> {}
+unsafe impl<T: Send, A: Allocator + AllocatorClone + Clone + Send + Sync> Sync for BoundedInner<T, A> {}
 
 impl State {
     fn is_closed(&self) -> bool {

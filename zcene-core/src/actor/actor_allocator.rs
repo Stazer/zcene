@@ -1,6 +1,6 @@
 use crate::actor::ActorCommonBounds;
-use core::alloc::Allocator;
+use core::alloc::{Allocator, AllocatorClone, StaticAllocator};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait ActorAllocator = Allocator + Clone + ActorCommonBounds;
+pub trait ActorAllocator = Allocator + AllocatorClone + StaticAllocator + Clone + ActorCommonBounds;

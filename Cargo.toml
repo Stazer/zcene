@@ -8,3 +8,8 @@ members = [
     "zcene-hosted",
     "zcene-hosted-playground",
 ]
+
+[patch.crates-io]
+# Upstream 0.5.0 uses the removed `ptr_internals`/`core::ptr::Unique` nightly
+# API; patched locally to use `core::ptr::NonNull` instead.
+x2apic = { path = "vendor/x2apic" }

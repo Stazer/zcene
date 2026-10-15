@@ -1,11 +1,8 @@
 use crate::common::memory::address::{
-    DefaultMemoryAddressTransformer, MemoryAddress, MemoryAddressTransformer,
-    PhysicalMemoryAddressPerspective,
+    DefaultMemoryAddressTransformer, MemoryAddress, PhysicalMemoryAddressPerspective,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub type PhysicalMemoryAddress<T = DefaultMemoryAddressTransformer>
-    = MemoryAddress<PhysicalMemoryAddressPerspective, T>
-where
-    T: MemoryAddressTransformer;
+pub type PhysicalMemoryAddress<T = DefaultMemoryAddressTransformer> =
+    MemoryAddress<PhysicalMemoryAddressPerspective, T>;

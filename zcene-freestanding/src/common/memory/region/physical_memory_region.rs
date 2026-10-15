@@ -1,11 +1,9 @@
 use crate::common::memory::address::{
-    DefaultMemoryAddressTransformer, MemoryAddressTransformer, PhysicalMemoryAddressPerspective,
+    DefaultMemoryAddressTransformer, PhysicalMemoryAddressPerspective,
 };
 use crate::common::memory::region::MemoryRegion;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub type PhysicalMemoryRegion<T = DefaultMemoryAddressTransformer>
-    = MemoryRegion<PhysicalMemoryAddressPerspective, T>
-where
-    T: MemoryAddressTransformer;
+pub type PhysicalMemoryRegion<T = DefaultMemoryAddressTransformer> =
+    MemoryRegion<PhysicalMemoryAddressPerspective, T>;

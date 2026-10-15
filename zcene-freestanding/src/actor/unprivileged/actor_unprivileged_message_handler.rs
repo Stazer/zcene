@@ -1,13 +1,13 @@
 use alloc::boxed::Box;
 use core::fmt::Debug;
 use zcene_core::actor::{
-    Actor, ActorBoxFuture, ActorCommonBounds, ActorEnvironment, ActorEnvironmentAllocator,
-    ActorMessage, ActorMessageChannelAddress, ActorMessageSender, ActorSendError,
+    Actor, ActorBoxFuture, ActorEnvironment, ActorEnvironmentAllocator,
+    ActorMessageChannelAddress, ActorMessageSender, ActorSendError,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait ActorUnprivilegedMessageHandler<E>: ActorCommonBounds
+pub trait ActorUnprivilegedMessageHandler<E>: Send + Sync + 'static
 where
     E: ActorEnvironment + ActorEnvironmentAllocator,
 {

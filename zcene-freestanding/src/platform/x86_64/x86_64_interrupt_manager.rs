@@ -47,12 +47,6 @@ pub struct X86_64LocalInterruptManager {
 
 pub type InterruptIdentifier = u8;
 
-#[inline(always)]
-extern "x86-interrupt" fn unhandled_interrupt_loop(stack_frame: InterruptStackFrame) -> ! {
-    println!("unhandled interrupt\n{:?}", stack_frame);
-    loop {}
-}
-
 extern "x86-interrupt" fn unhandled_interrupt_entry_point<const N: &'static str>(
     stack_frame: InterruptStackFrame,
 ) {
@@ -257,10 +251,7 @@ impl X86_64LocalInterruptManager {
             //.set_code_selector(SegmentSelector::new(4, PrivilegeLevel::Ring3));
         }
         //entry.set_privilege_level(PrivilegeLevel::Ring3);
-
-        unsafe {
-            //entry.set_code_selector(SegmentSelector::new(0x08, PrivilegeLevel::Ring0));
-        }
+        //entry.set_code_selector(SegmentSelector::new(0x08, PrivilegeLevel::Ring0));
 
         unsafe {
             self.descriptor_table.load_unsafe();

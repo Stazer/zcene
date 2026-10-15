@@ -14,7 +14,7 @@ where
     M: ActorMessage,
     E: ActorEnvironment + ActorEnvironmentAllocator,
 {
-    caller: Weak<dyn ActorMailboxMessageSender<M, E>, E::Allocator>,
+    caller: Weak<dyn ActorMailboxMessageSender<M, E> + Send + Sync, E::Allocator>,
 }
 
 impl<M, E> Debug for ActorWeakMailbox<M, E>

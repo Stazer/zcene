@@ -34,6 +34,18 @@ impl Step for FrameIdentifier {
     unsafe fn backward_unchecked(start: Self, count: usize) -> Self {
         unsafe { Self::new(<usize as Step>::backward_unchecked(start.0, count)) }
     }
+
+    fn forward_overflowing(start: Self, count: usize) -> (Self, bool) {
+        let (value, overflowed) = <usize as Step>::forward_overflowing(start.0, count);
+
+        (Self::new(value), overflowed)
+    }
+
+    fn backward_overflowing(start: Self, count: usize) -> (Self, bool) {
+        let (value, overflowed) = <usize as Step>::backward_overflowing(start.0, count);
+
+        (Self::new(value), overflowed)
+    }
 }
 
 impl FrameIdentifier {

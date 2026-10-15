@@ -1,6 +1,7 @@
 use crate::future::runtime::FutureRuntimeCommonBounds;
-use core::alloc::Allocator;
+use core::alloc::{Allocator, AllocatorClone, StaticAllocator};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait FutureRuntimeAllocator = Allocator + Clone + FutureRuntimeCommonBounds;
+pub trait FutureRuntimeAllocator =
+    Allocator + AllocatorClone + StaticAllocator + Clone + FutureRuntimeCommonBounds;

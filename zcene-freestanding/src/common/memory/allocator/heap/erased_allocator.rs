@@ -1,6 +1,6 @@
 use crate::common::memory::allocator::EmptyHeapMemoryAllocator;
 use alloc::sync::Arc;
-use core::alloc::{AllocError, Allocator, Layout};
+use core::alloc::{AllocError, Allocator, AllocatorClone, Layout, StaticAllocator};
 use core::fmt::{self, Debug, Formatter};
 use core::ptr::NonNull;
 
@@ -32,3 +32,8 @@ unsafe impl Allocator for ErasedAllocator {
         unsafe { self.0.deallocate(ptr, layout) }
     }
 }
+
+// The erased allocator only ever forwards to the heap allocator it wraps,
+// which never invalidates allocations except on explicit deallocation.
+unsafe impl AllocatorClone for ErasedAllocator {}
+unsafe impl StaticAllocator for ErasedAllocator {}

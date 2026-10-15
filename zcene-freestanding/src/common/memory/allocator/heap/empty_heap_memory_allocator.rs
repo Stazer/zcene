@@ -1,4 +1,4 @@
-use core::alloc::{AllocError, Allocator, GlobalAlloc, Layout};
+use core::alloc::{AllocError, Allocator, AllocatorClone, GlobalAlloc, Layout, StaticAllocator};
 use core::ptr::{NonNull, null_mut};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -21,3 +21,7 @@ unsafe impl Allocator for EmptyHeapMemoryAllocator {
 
     unsafe fn deallocate(&self, _ptr: NonNull<u8>, _layout: Layout) {}
 }
+
+// Never allocates, so there is nothing a clone could invalidate.
+unsafe impl AllocatorClone for EmptyHeapMemoryAllocator {}
+unsafe impl StaticAllocator for EmptyHeapMemoryAllocator {}

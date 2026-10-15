@@ -21,7 +21,7 @@ impl Actor<ActorRootEnvironment> for RootActor {
         &'a mut self,
         context: <ActorRootEnvironment as ActorEnvironment>::CreateContext<'a>,
     ) -> Result<(), ActorCreateError> {
-        let _ = write!(context.environment().logger(), "ztage");
+        let _ = write!(context.environment().logger(), "hello world");
 
         Ok(())
     }

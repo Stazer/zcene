@@ -345,6 +345,7 @@ impl X86_64MemoryManager {
         Ok(this)
     }
 
+    #[allow(dead_code)]
     fn physical_memory(&self) -> &'static mut [u8] {
         unsafe {
             from_raw_parts_mut(
@@ -413,16 +414,6 @@ impl X86_64MemoryManager {
         unsafe { &mut *(pointer as *mut PageTable) }
     }
 
-    fn active_root_page_table(&self) -> &'static mut PageTable {
-        let pointer = self
-            .translate_physical_memory_address(PhysicalMemoryAddress::from(
-                Cr3::read().0.start_address().as_u64(),
-            ))
-            .as_u64();
-
-        unsafe { &mut *(pointer as *mut PageTable) }
-    }
-
     fn page_table_mapper(&self) -> OffsetPageTable<'static> {
         unsafe {
             OffsetPageTable::new(
@@ -437,11 +428,10 @@ impl X86_64MemoryManager {
         let stack_size = stack_frame_count * FRAME_SIZE;
 
         let mut first_address = 0;
-        let mut stack_address = 0;
         let mut mapper = self.page_table_mapper();
 
         for stack_frame_identifier in self.frame_manager().allocate_window(8).unwrap() {
-            stack_address = self
+            let stack_address = self
                 .frame_manager()
                 .translate_frame_identifier(stack_frame_identifier)
                 .as_usize();
@@ -483,11 +473,10 @@ impl X86_64MemoryManager {
         let stack_size = stack_frame_count * FRAME_SIZE;
 
         let mut first_address = 0;
-        let mut stack_address = 0;
         let mut mapper = self.page_table_mapper();
 
         for stack_frame_identifier in self.frame_manager().allocate_window(8).unwrap() {
-            stack_address = self
+            let stack_address = self
                 .frame_manager()
                 .translate_frame_identifier(stack_frame_identifier)
                 .as_usize();
