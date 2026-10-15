@@ -1,11 +1,12 @@
 use crate::common::logger::LoggerService;
 use crate::platform::unprivileged_event::UnprivilegedEvent;
 use crate::platform::x86_64::x86_64_unprivileged::{
-    x86_64_execute_in_unprivileged, x86_64_resume_after_preemption, x86_64_resume_after_system_call,
+    x86_64_deadline_preemption_entry_point, x86_64_execute_in_unprivileged,
+    x86_64_resume_after_preemption, x86_64_resume_after_system_call,
 };
 use crate::platform::x86_64::{
-    X86_64MemoryManager, X86_64UnprivilegedPreemptionContext, X86_64UnprivilegedSystemCallContext,
-    TimerService,
+    InterruptEntryPoint, X86_64InterruptManager, X86_64LocalInterruptManager, X86_64MemoryManager,
+    X86_64UnprivilegedPreemptionContext, X86_64UnprivilegedSystemCallContext, TimerService,
 };
 use crate::platform::Platform;
 use core::fmt::Write;
@@ -30,6 +31,7 @@ pub struct X86_64Platform {
     logger: LoggerService,
     memory: X86_64MemoryManager,
     timer: TimerService,
+    interrupt_manager: X86_64InterruptManager,
     // Kept alive: the GDT/TSS registers hold raw pointers into these allocations.
     #[allow(dead_code)]
     global_descriptor_table: Box<GlobalDescriptorTable, ErasedAllocator>,
@@ -82,7 +84,11 @@ impl Platform for X86_64Platform {
             }
         };
 
-        let timer = TimerService::new();
+        let timer = boot_info
+            .rsdp_addr
+            .into_option()
+            .and_then(|rsdp_address| TimerService::from_hpet(rsdp_address, &memory))
+            .unwrap_or_else(TimerService::new);
 
         let ring0_stack = memory
             .allocate_stack()
@@ -130,26 +136,44 @@ impl Platform for X86_64Platform {
             wrmsr(IA32_FMASK, RFlags::FLAGS_IF.bits());
         }
 
-        Self { logger, memory, timer, global_descriptor_table, task_state_segment }
+        // The naked handler takes no typed argument (it reads the interrupt stack frame
+        // itself via rsp), so its address is reinterpreted as the x86-interrupt ABI
+        // function pointer the IDT expects.
+        let deadline_preemption_entry_point = unsafe {
+            core::mem::transmute::<unsafe extern "C" fn(), InterruptEntryPoint>(
+                x86_64_deadline_preemption_entry_point,
+            )
+        };
+
+        // Requires the TSS (loaded above) to already be in place: allocated interrupt
+        // vectors are pinned to IST slot 0, i.e. `timer_stack`.
+        let mut local_interrupt_manager = X86_64LocalInterruptManager::new(&timer, &memory);
+        local_interrupt_manager
+            .enable_oneshot(deadline_preemption_entry_point, Duration::from_millis(1));
+
+        let mut interrupt_manager = X86_64InterruptManager::new(memory.heap_allocator());
+        interrupt_manager.bootstrap_local_interrupt_manager(local_interrupt_manager);
+
+        Self {
+            logger,
+            memory,
+            timer,
+            interrupt_manager,
+            global_descriptor_table,
+            task_state_segment,
+        }
     }
 
     fn allocate_unprivileged_stack(&self) -> Option<u64> {
-        /*Some(
-            self.memory
-                .allocate_user_stack()?
-                .start()
-                .as_u64(),
-    )*/
-
-        todo!()
+        Some(self.memory.allocate_user_stack()?.start().as_u64())
     }
 
-    fn set_preemption_deadline(&self, _duration: Duration) {
-        todo!("interrupt manager not yet wired into X86_64Platform")
+    fn set_preemption_deadline(&self, duration: Duration) {
+        self.interrupt_manager.reset_oneshot(duration);
     }
 
     fn notify_end_of_interrupt(&self) {
-        todo!("interrupt manager not yet wired into X86_64Platform")
+        self.interrupt_manager.notify_local_end_of_interrupt();
     }
 
     fn execute_in_unprivileged(
