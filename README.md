@@ -56,11 +56,11 @@ rustup component add rust-src llvm-tools-preview
 cargo install cargo-binutils cargo-make
 ```
 
-# zcene-core
-
-# zcene-platform
-# zcene-platform-freestanding
-# zcene-platform-freestanding-x86_64
-# zcene-platform-hosted
-
 # zcene
+Includes zcene-core as the `zcene::core` module.
+
+# zcene-playground
+# zcene-playground-x86_64
+
+# zcene-hosted
+# zcene-hosted-playground

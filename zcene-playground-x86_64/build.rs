@@ -13,11 +13,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("cargo:rerun-if-changed={}", target_path.display());
 
-    let image_builder = DiskImageBuilder::new(target_path.join("zcene-freestanding-playground"));
+    let image_builder = DiskImageBuilder::new(target_path.join("zcene-playground"));
     image_builder
-        .create_uefi_image(&target_path.join("zcene-freestanding-playground-x86_64-uefi.img"))?;
+        .create_uefi_image(&target_path.join("zcene-playground-x86_64-uefi.img"))?;
     image_builder
-        .create_bios_image(&target_path.join("zcene-freestanding-playground-x86_64-bios.img"))?;
+        .create_bios_image(&target_path.join("zcene-playground-x86_64-bios.img"))?;
 
     Ok(())
 }

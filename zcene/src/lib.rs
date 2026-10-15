@@ -27,6 +27,8 @@ pub mod driver;
 pub mod future;
 pub mod utility;
 
+pub use zcene_core as core;
+
 #[global_allocator]
 static GLOBAL_ALLOCATOR: common::memory::allocator::PanicHeapAllocator =
     common::memory::allocator::PanicHeapAllocator;
@@ -36,8 +38,8 @@ pub mod r#extern {
 }
 
 use alloc::sync::Arc;
-use core::cell::SyncUnsafeCell;
-use core::mem::MaybeUninit;
+use ::core::cell::SyncUnsafeCell;
+use ::core::mem::MaybeUninit;
 
 use crate::future::runtime::FutureRuntimeHandler;
 
@@ -68,7 +70,7 @@ macro_rules! define_system {
 
         #[panic_handler]
         fn panic_handler(panic_info: &::core::panic::PanicInfo) -> ! {
-            use core::fmt::Write;
+            use ::core::fmt::Write;
 
             let _ = write!(
                 $crate::actor::ActorRootEnvironment::get().logger(),

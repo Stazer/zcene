@@ -11,40 +11,40 @@ args = [
 ]
 command = "cargo"
 
-[tasks.build-freestanding-playground]
+[tasks.build-playground]
 args = [
     "build",
-    "--package", "zcene-freestanding-playground",
+    "--package", "zcene-playground",
     "--release",
-    "--target", "zcene-freestanding/x86_64.json",
+    "--target", "zcene/x86_64.json",
     "-Z", "build-std=core,alloc,compiler_builtins",
     "-Z", "build-std-features=compiler-builtins-mem",
     "-Z", "json-target-spec",
 ]
 command = "cargo"
 
-[tasks.build-freestanding-playground-x86_64]
+[tasks.build-playground-x86_64]
 args = [
     "build",
-    "--package", "zcene-freestanding-playground-x86_64",
+    "--package", "zcene-playground-x86_64",
     "--release",
-    "--target", "zcene-freestanding/x86_64.json",
+    "--target", "zcene/x86_64.json",
     "-Z", "build-std=core,alloc,compiler_builtins",
     "-Z", "build-std-features=compiler-builtins-mem",
     "-Z", "json-target-spec",
 ]
 command = "cargo"
 dependencies = [
-    "build-freestanding-playground",
+    "build-playground",
 ]
 
-[tasks.run-freestanding-playground-x86_64-uefi]
+[tasks.run-playground-x86_64-uefi]
 args = [
     #"-d", "int",
     "-no-reboot",
     "-nographic",
     "-cpu", "qemu64",
-    "-drive", "format=raw,unit=1,file=target/x86_64/release/zcene-freestanding-playground-x86_64-uefi.img",
+    "-drive", "format=raw,unit=1,file=target/x86_64/release/zcene-playground-x86_64-uefi.img",
     "-drive", "if=pflash,format=raw,unit=0,file=QEMU_UEFI_CODE-x86_64.fd",
     "-nic", "none",
     "-m", "1024",
@@ -52,10 +52,10 @@ args = [
 ]
 command = "qemu-system-x86_64"
 dependencies = [
-    "build-freestanding-playground-x86_64",
+    "build-playground-x86_64",
 ]
 
-[tasks.prepare-freestanding-playground-x86_64-uefi]
+[tasks.prepare-playground-x86_64-uefi]
 args = [
      "-o",
      "QEMU_UEFI_CODE-x86_64.fd",

@@ -5,9 +5,9 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 use core::fmt::Write;
-use zcene_core::actor::{Actor, ActorCreateError, ActorEnvironment, ActorMessage};
-use zcene_freestanding::actor::ActorRootEnvironment;
-use zcene_freestanding::define_system;
+use zcene::actor::ActorRootEnvironment;
+use zcene::core::actor::{Actor, ActorCreateError, ActorEnvironment, ActorMessage};
+use zcene::define_system;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

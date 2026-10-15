@@ -1,5 +1,5 @@
 [package]
-name = "zcene-freestanding-playground-x86_64"
+name = "zcene-playground-x86_64"
 version = "0.0.0"
 edition = "2021"
 

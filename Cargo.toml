@@ -2,9 +2,9 @@
 resolver = "2"
 members = [
     "zcene-core",
-    "zcene-freestanding",
-    "zcene-freestanding-playground",
-    "zcene-freestanding-playground-x86_64",
+    "zcene",
+    "zcene-playground",
+    "zcene-playground-x86_64",
     "zcene-hosted",
     "zcene-hosted-playground",
 ]
