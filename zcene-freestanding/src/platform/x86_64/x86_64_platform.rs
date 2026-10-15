@@ -30,7 +30,10 @@ pub struct X86_64Platform {
     logger: LoggerService,
     memory: X86_64MemoryManager,
     timer: TimerService,
+    // Kept alive: the GDT/TSS registers hold raw pointers into these allocations.
+    #[allow(dead_code)]
     global_descriptor_table: Box<GlobalDescriptorTable, ErasedAllocator>,
+    #[allow(dead_code)]
     task_state_segment: Box<TaskStateSegment, ErasedAllocator>,
 }
 
@@ -74,8 +77,8 @@ impl Platform for X86_64Platform {
         let memory = match X86_64MemoryManager::new(boot_info, &logger) {
             Ok(memory) => memory,
             Err(error) => {
-                write!(logger.writer(), "{:?}", error);
-                return todo!();
+                let _ = write!(logger.writer(), "{:?}", error);
+                todo!();
             }
         };
 

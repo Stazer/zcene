@@ -177,13 +177,13 @@ impl X86_64MemoryManager {
             usable_memory_in_bytes += region.end.saturating_sub(region.start);
         }
 
-        let mut total_memory_in_bytes: u64 = 0;
+        /*let mut total_memory_in_bytes: u64 = 0;
 
         for region in boot_info.memory_regions.iter() {
             total_memory_in_bytes += region.end.saturating_sub(region.start);
         }
 
-        /*let _ = write!(w, "total memory of all regions: {}\n",total_memory_in_bytes / (1024 * 1024));
+        let _ = write!(w, "total memory of all regions: {}\n",total_memory_in_bytes / (1024 * 1024));
 
         boot_info
             .memory_regions
