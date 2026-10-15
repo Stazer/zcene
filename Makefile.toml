@@ -12,7 +12,6 @@ args = [
 command = "cargo"
 
 [tasks.build-freestanding-playground]
-env = { "RUSTFLAGS" = "-Zhigher-ranked-assumptions" }
 args = [
     "build",
     "--package", "zcene-freestanding-playground",

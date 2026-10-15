@@ -47,13 +47,78 @@ pub struct X86_64LocalInterruptManager {
 
 pub type InterruptIdentifier = u8;
 
-extern "x86-interrupt" fn unhandled_interrupt_entry_point<const N: &'static str>(
+#[derive(Debug, Clone, Copy, PartialEq, Eq, core::marker::ConstParamTy)]
+pub enum InterruptName {
+    DivideError,
+    Debug,
+    NonMaskableInterrupt,
+    Breakpoint,
+    Overflow,
+    BoundRangeExceeded,
+    InvalidOpcode,
+    DeviceNotAvailable,
+    DoubleFault,
+    InvalidTss,
+    SegmentNotPresent,
+    StackSegmentFault,
+    GeneralProtectionFault,
+    PageFault,
+    X87FloatingPoint,
+    AlignmentCheck,
+    MachineCheck,
+    SimdFloatingPoint,
+    Virtualization,
+    CpProtectionException,
+    HvInjectionException,
+    VmmCommunicationException,
+    SecurityException,
+    Interrupt,
+}
+
+impl InterruptName {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::DivideError => "divide error",
+            Self::Debug => "debug",
+            Self::NonMaskableInterrupt => "non maskable interrupt",
+            Self::Breakpoint => "breakpoint",
+            Self::Overflow => "overflow",
+            Self::BoundRangeExceeded => "bound range",
+            Self::InvalidOpcode => "invalid opcode",
+            Self::DeviceNotAvailable => "device not available",
+            Self::DoubleFault => "double fault",
+            Self::InvalidTss => "invalid tss",
+            Self::SegmentNotPresent => "segment not present",
+            Self::StackSegmentFault => "stack segment fault",
+            Self::GeneralProtectionFault => "general protection fault",
+            Self::PageFault => "page fault",
+            Self::X87FloatingPoint => "x87 floating point",
+            Self::AlignmentCheck => "alignment check",
+            Self::MachineCheck => "machine check",
+            Self::SimdFloatingPoint => "simd floating point",
+            Self::Virtualization => "virtualization",
+            Self::CpProtectionException => "cp protection exception",
+            Self::HvInjectionException => "hv injection exception",
+            Self::VmmCommunicationException => "vmm communication exception",
+            Self::SecurityException => "security exception",
+            Self::Interrupt => "interrupt",
+        }
+    }
+}
+
+impl core::fmt::Display for InterruptName {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+extern "x86-interrupt" fn unhandled_interrupt_entry_point<const N: InterruptName>(
     stack_frame: InterruptStackFrame,
 ) {
     println!("unhandled interrupt {}\n{:?}", N, stack_frame);
 }
 
-extern "x86-interrupt" fn unhandled_interrupt_entry_point_loop<const N: &'static str>(
+extern "x86-interrupt" fn unhandled_interrupt_entry_point_loop<const N: InterruptName>(
     stack_frame: InterruptStackFrame,
 ) -> ! {
     println!("unhandled interrupt {}\n{:?}", N, stack_frame);
@@ -61,7 +126,7 @@ extern "x86-interrupt" fn unhandled_interrupt_entry_point_loop<const N: &'static
 }
 
 extern "x86-interrupt" fn unhandled_interrupt_entry_point_with_error_code<
-    const N: &'static str,
+    const N: InterruptName,
     E,
 >(
     stack_frame: InterruptStackFrame,
@@ -78,7 +143,7 @@ extern "x86-interrupt" fn unhandled_interrupt_entry_point_with_error_code<
 }
 
 extern "x86-interrupt" fn unhandled_interrupt_entry_point_with_error_code_loop<
-    const N: &'static str,
+    const N: InterruptName,
     E,
 >(
     stack_frame: InterruptStackFrame,
@@ -101,74 +166,98 @@ impl X86_64LocalInterruptManager {
             memory_manager.heap_allocator(),
         );
 
-        table
-            .divide_error
-            .set_handler_fn(unhandled_interrupt_entry_point::<"divide error">);
+        table.divide_error.set_handler_fn(
+            unhandled_interrupt_entry_point::<{ InterruptName::DivideError }>,
+        );
         table
             .debug
-            .set_handler_fn(unhandled_interrupt_entry_point::<"debug">);
-        table
-            .non_maskable_interrupt
-            .set_handler_fn(unhandled_interrupt_entry_point::<"non maskable interrupt">);
-        table
-            .breakpoint
-            .set_handler_fn(unhandled_interrupt_entry_point::<"breakpoint">);
+            .set_handler_fn(unhandled_interrupt_entry_point::<{ InterruptName::Debug }>);
+        table.non_maskable_interrupt.set_handler_fn(
+            unhandled_interrupt_entry_point::<{ InterruptName::NonMaskableInterrupt }>,
+        );
+        table.breakpoint.set_handler_fn(
+            unhandled_interrupt_entry_point::<{ InterruptName::Breakpoint }>,
+        );
         table
             .overflow
-            .set_handler_fn(unhandled_interrupt_entry_point::<"overflow">);
-        table
-            .bound_range_exceeded
-            .set_handler_fn(unhandled_interrupt_entry_point::<"bound range">);
-        table
-            .invalid_opcode
-            .set_handler_fn(unhandled_interrupt_entry_point::<"invalid opcode">);
-        table
-            .device_not_available
-            .set_handler_fn(unhandled_interrupt_entry_point::<"device not available">);
-        table.double_fault.set_handler_fn(
-            unhandled_interrupt_entry_point_with_error_code_loop::<"double fault", _>,
+            .set_handler_fn(unhandled_interrupt_entry_point::<{ InterruptName::Overflow }>);
+        table.bound_range_exceeded.set_handler_fn(
+            unhandled_interrupt_entry_point::<{ InterruptName::BoundRangeExceeded }>,
         );
-        table
-            .invalid_tss
-            .set_handler_fn(unhandled_interrupt_entry_point_with_error_code::<"invalid tss", _>);
+        table.invalid_opcode.set_handler_fn(
+            unhandled_interrupt_entry_point::<{ InterruptName::InvalidOpcode }>,
+        );
+        table.device_not_available.set_handler_fn(
+            unhandled_interrupt_entry_point::<{ InterruptName::DeviceNotAvailable }>,
+        );
+        table.double_fault.set_handler_fn(
+            unhandled_interrupt_entry_point_with_error_code_loop::<
+                { InterruptName::DoubleFault },
+                _,
+            >,
+        );
+        table.invalid_tss.set_handler_fn(
+            unhandled_interrupt_entry_point_with_error_code::<{ InterruptName::InvalidTss }, _>,
+        );
         table.segment_not_present.set_handler_fn(
-            unhandled_interrupt_entry_point_with_error_code::<"segment not present", _>,
+            unhandled_interrupt_entry_point_with_error_code::<
+                { InterruptName::SegmentNotPresent },
+                _,
+            >,
         );
         table.stack_segment_fault.set_handler_fn(
-            unhandled_interrupt_entry_point_with_error_code::<"stack segment fault", _>,
+            unhandled_interrupt_entry_point_with_error_code::<
+                { InterruptName::StackSegmentFault },
+                _,
+            >,
         );
         table.general_protection_fault.set_handler_fn(
-            unhandled_interrupt_entry_point_with_error_code::<"general protection fault", _>,
+            unhandled_interrupt_entry_point_with_error_code::<
+                { InterruptName::GeneralProtectionFault },
+                _,
+            >,
         );
-        table
-            .page_fault
-            .set_handler_fn(unhandled_interrupt_entry_point_with_error_code::<"page fault", _>);
-        table
-            .x87_floating_point
-            .set_handler_fn(unhandled_interrupt_entry_point::<"x87 floating point">);
+        table.page_fault.set_handler_fn(
+            unhandled_interrupt_entry_point_with_error_code::<{ InterruptName::PageFault }, _>,
+        );
+        table.x87_floating_point.set_handler_fn(
+            unhandled_interrupt_entry_point::<{ InterruptName::X87FloatingPoint }>,
+        );
         table.alignment_check.set_handler_fn(
-            unhandled_interrupt_entry_point_with_error_code::<"alignment check", _>,
+            unhandled_interrupt_entry_point_with_error_code::<
+                { InterruptName::AlignmentCheck },
+                _,
+            >,
         );
-        table
-            .machine_check
-            .set_handler_fn(unhandled_interrupt_entry_point_loop::<"machine check">);
-        table
-            .simd_floating_point
-            .set_handler_fn(unhandled_interrupt_entry_point::<"simd floating point">);
-        table
-            .virtualization
-            .set_handler_fn(unhandled_interrupt_entry_point::<"virtualization">);
+        table.machine_check.set_handler_fn(
+            unhandled_interrupt_entry_point_loop::<{ InterruptName::MachineCheck }>,
+        );
+        table.simd_floating_point.set_handler_fn(
+            unhandled_interrupt_entry_point::<{ InterruptName::SimdFloatingPoint }>,
+        );
+        table.virtualization.set_handler_fn(
+            unhandled_interrupt_entry_point::<{ InterruptName::Virtualization }>,
+        );
         table.cp_protection_exception.set_handler_fn(
-            unhandled_interrupt_entry_point_with_error_code::<"cp protection exception", _>,
+            unhandled_interrupt_entry_point_with_error_code::<
+                { InterruptName::CpProtectionException },
+                _,
+            >,
         );
-        table
-            .hv_injection_exception
-            .set_handler_fn(unhandled_interrupt_entry_point::<"hv injection exception">);
+        table.hv_injection_exception.set_handler_fn(
+            unhandled_interrupt_entry_point::<{ InterruptName::HvInjectionException }>,
+        );
         table.vmm_communication_exception.set_handler_fn(
-            unhandled_interrupt_entry_point_with_error_code::<"vmm communication exception", _>,
+            unhandled_interrupt_entry_point_with_error_code::<
+                { InterruptName::VmmCommunicationException },
+                _,
+            >,
         );
         table.security_exception.set_handler_fn(
-            unhandled_interrupt_entry_point_with_error_code::<"security exception", _>,
+            unhandled_interrupt_entry_point_with_error_code::<
+                { InterruptName::SecurityException },
+                _,
+            >,
         );
 
         let mut free_vectors = BTreeSet::new_in(memory_manager.heap_allocator());
@@ -177,7 +266,7 @@ impl X86_64LocalInterruptManager {
 
         for vector in EXTERNAL_INTERRUPTS_START..255u8 {
             let mut entry: Entry<_> = table[vector];
-            entry.set_handler_fn(unhandled_interrupt_entry_point::<"interrupt">);
+            entry.set_handler_fn(unhandled_interrupt_entry_point::<{ InterruptName::Interrupt }>);
 
             free_vectors.insert(vector.into());
         }

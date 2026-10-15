@@ -6,7 +6,6 @@
 #![feature(step_trait)]
 #![feature(stmt_expr_attributes)]
 #![feature(sync_unsafe_cell)]
-#![feature(unsized_const_params)]
 #![no_std]
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
