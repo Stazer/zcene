@@ -21,11 +21,17 @@ fn main() -> Result<(), Box<dyn Error>> {
             "cargo:rustc-link-arg-bins=--script={}/../zcene/linker.ld",
             manifest_dir.display(),
         );
+
+        assemble_sources(&out_dir, &manifest_dir.join("..").join("zcene").join("src"))?;
     }
 
-    let source_dir = manifest_dir.join("src");
+    assemble_sources(&out_dir, &manifest_dir.join("src"))?;
 
-    let glob_pattern = format!("{}/**/*.asm", source_dir.display(),);
+    Ok(())
+}
+
+fn assemble_sources(out_dir: &str, source_dir: &PathBuf) -> Result<(), Box<dyn Error>> {
+    let glob_pattern = format!("{}/**/*.asm", source_dir.display());
 
     for entry in glob(&glob_pattern)? {
         let path = entry?;
@@ -33,7 +39,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let object_name = &format!("{}.o", path.file_stem().ok_or("Expect stem")?.display());
 
         Command::new("nasm")
-            .current_dir(&out_dir)
+            .current_dir(out_dir)
             .args(&[
                 "-felf64",
                 "-g",

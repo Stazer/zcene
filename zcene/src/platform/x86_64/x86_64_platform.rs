@@ -32,6 +32,7 @@ pub struct X86_64Platform {
     memory: X86_64MemoryManager,
     timer: TimerService,
     interrupt_manager: X86_64InterruptManager,
+    rsdp_address: Option<u64>,
     // Kept alive: the GDT/TSS registers hold raw pointers into these allocations.
     #[allow(dead_code)]
     global_descriptor_table: Box<GlobalDescriptorTable, ErasedAllocator>,
@@ -51,6 +52,23 @@ impl X86_64Platform {
     pub fn timer(&self) -> &TimerService {
         &self.timer
     }
+
+    pub fn interrupt_manager(&self) -> &X86_64InterruptManager {
+        &self.interrupt_manager
+    }
+
+    pub fn rsdp_address(&self) -> Option<u64> {
+        self.rsdp_address
+    }
+
+    /// Brings up every other logical core found in the ACPI MADT (INIT-SIPI-SIPI) and sets
+    /// each one on a path to `crate::platform::x86_64::smp::application_processor_entry_point`.
+    ///
+    /// Must only be called after `ACTOR_ROOT_ENVIRONMENT` has been written: application
+    /// processors read it as soon as they land in Rust.
+    pub fn start_application_processors(&self) {
+        crate::platform::x86_64::smp::start_application_processors(self);
+    }
 }
 
 impl Platform for X86_64Platform {
@@ -64,6 +82,8 @@ impl Platform for X86_64Platform {
     }
 
     fn initialize(boot_info: Self::BootInfo) -> Self {
+        let rsdp_address = boot_info.rsdp_addr.into_option();
+
         let logger = LoggerService::new(
             boot_info.framebuffer.take().map(|frame_buffer| {
                 let info = frame_buffer.info().clone();
@@ -159,6 +179,7 @@ impl Platform for X86_64Platform {
             memory,
             timer,
             interrupt_manager,
+            rsdp_address,
             global_descriptor_table,
             task_state_segment,
         }

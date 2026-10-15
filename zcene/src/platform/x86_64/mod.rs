@@ -80,6 +80,8 @@ macro_rules! x86_64_entry_point {
 
             let address = environment.spawn($root_actor).unwrap();
 
+            environment.platform().start_application_processors();
+
             environment.enter().unwrap();
 
             loop {}

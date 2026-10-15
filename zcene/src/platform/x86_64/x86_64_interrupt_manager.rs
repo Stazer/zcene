@@ -406,6 +406,22 @@ impl X86_64LocalInterruptManager {
             _ => todo!(),
         }
     }
+
+    /// Loads this interrupt descriptor table into the calling core's IDTR. The table is shared
+    /// across cores (no per-core customization yet), so every core that wants to survive a CPU
+    /// exception without triple-faulting must call this once after it boots.
+    pub fn load_descriptor_table(&self) {
+        unsafe {
+            self.descriptor_table.load_unsafe();
+        }
+    }
+
+    pub fn xapic_base(&self) -> Option<*mut u32> {
+        match self.r#type {
+            X86_64X86_64LocalInterruptManagerType::XAPIC { base, .. } => Some(base),
+            _ => None,
+        }
+    }
 }
 
 pub struct X86_64InterruptManager {
@@ -442,5 +458,19 @@ impl X86_64InterruptManager {
             .get(&0)
             .unwrap()
             .reset_oneshot(duration);
+    }
+
+    /// Loads the bootstrap core's (shared) interrupt descriptor table into the calling core's
+    /// IDTR. Intended to be called by an application processor right after it boots.
+    pub fn load_bootstrap_descriptor_table(&self) {
+        self.local_interrupt_managers
+            .lock()
+            .get(&0)
+            .unwrap()
+            .load_descriptor_table();
+    }
+
+    pub fn bootstrap_xapic_base(&self) -> Option<*mut u32> {
+        self.local_interrupt_managers.lock().get(&0).unwrap().xapic_base()
     }
 }

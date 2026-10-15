@@ -33,6 +33,12 @@ smp_long_mode_entry:
     ; Setup Stack
     mov rsp, rax
 
+    ; `rsp` is page-aligned (so 16-byte aligned) here, but we `jmp` instead of `call` into a
+    ; normal C-ABI Rust function, which pushes no return address. The SysV ABI expects `rsp` to
+    ; be 16-byte aligned *before* a call, i.e. rsp+8 aligned at function entry; without this, the
+    ; first aligned SSE access in Rust (`movaps`) takes a #GP.
+    sub rsp, 8
+
     jmp application_processor_entry_point
 
     hlt

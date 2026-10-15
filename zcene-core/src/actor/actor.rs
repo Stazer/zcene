@@ -19,7 +19,7 @@ where
     }
 
     fn handle<'a>(
-        &mut self,
+        &'a mut self,
         _context: E::HandleContext<'a, Self::Message>,
     ) -> impl ActorFuture<'a, Result<(), ActorHandleError>> {
         async { Ok(()) }

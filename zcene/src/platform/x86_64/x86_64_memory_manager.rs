@@ -147,7 +147,17 @@ impl X86_64MemoryManager {
                     .translate_frame_identifier::<PhysicalMemoryAddressPerspective>(*identifier)
                     .as_u64()
                     < highest_usable_address
-            });
+            })
+            // `linker.ld` links the application-processor trampoline (`.smp_sections`) at a
+            // fixed low physical address, overwritten in place at SMP bring-up time (see
+            // `smp::start_application_processors`). That frame has to be carved out here, before
+            // the heap-backing loop below claims the lowest free frames for the heap: otherwise
+            // relocating the trampoline later clobbers live heap data sitting at the same frame.
+            .chain(once(frame_identifier_address_translator.translate_memory_address(
+                PhysicalMemoryAddress::from(unsafe {
+                    crate::common::linker_value(&crate::platform::x86_64::smp::SMP_SECTIONS_START)
+                } as u64),
+            )));
 
         let frame_manager = FrameManager::new(
             FRAME_SIZE,
@@ -414,7 +424,7 @@ impl X86_64MemoryManager {
         unsafe { &mut *(pointer as *mut PageTable) }
     }
 
-    fn page_table_mapper(&self) -> OffsetPageTable<'static> {
+    pub(crate) fn page_table_mapper(&self) -> OffsetPageTable<'static> {
         unsafe {
             OffsetPageTable::new(
                 self.active_page_table(),

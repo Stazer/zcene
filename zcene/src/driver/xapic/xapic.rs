@@ -68,4 +68,22 @@ impl<'a> XApic<'a> {
     }
 
     pub fn reset_deadline(&mut self) {}
+
+    /// Broadcasts an INIT IPI to every logical core except the sender, as the first step of
+    /// the Intel MP startup sequence (INIT-SIPI-SIPI).
+    pub fn send_init_ipi_all_excluding_self(&mut self) {
+        self.registers.interrupt_command_high_mut().write(0);
+        self.registers
+            .interrupt_command_low_mut()
+            .write(0x000C4500);
+    }
+
+    /// Broadcasts a Startup IPI (SIPI) to every logical core except the sender, pointing at
+    /// the real-mode entry point `vector * 0x1000` (so `vector` must address a frame below 1 MiB).
+    pub fn send_startup_ipi_all_excluding_self(&mut self, vector: u8) {
+        self.registers.interrupt_command_high_mut().write(0);
+        self.registers
+            .interrupt_command_low_mut()
+            .write(0x000C4600 | vector as u32);
+    }
 }
