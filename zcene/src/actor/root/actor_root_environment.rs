@@ -3,7 +3,7 @@ use crate::actor::{
     ActorRootEnvironmentExecutor, ActorRootEnvironmentHandleContext,
 };
 use crate::common::time::Timer;
-use crate::platform::x86_64::X86_64Platform;
+use crate::platform::ActivePlatform;
 use crate::platform::Platform;
 use alloc::sync::Arc;
 use core::fmt::Write;
@@ -19,7 +19,7 @@ use ztd::Constructor;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Constructor)]
-pub struct ActorRootEnvironment<H = crate::future::runtime::FutureRuntimeHandler, P = crate::platform::x86_64::X86_64Platform>
+pub struct ActorRootEnvironment<H = crate::future::runtime::FutureRuntimeHandler, P = ActivePlatform>
 where
     H: FutureRuntimeHandler,
     P: Platform,
@@ -116,7 +116,7 @@ where
     }
 }
 
-impl<H> ActorRootEnvironment<H, X86_64Platform>
+impl<H> ActorRootEnvironment<H, ActivePlatform>
 where
     H: FutureRuntimeHandler,
 {
@@ -129,7 +129,7 @@ where
     }
 }
 
-impl ActorRootEnvironment<crate::future::runtime::FutureRuntimeHandler, X86_64Platform> {
+impl ActorRootEnvironment<crate::future::runtime::FutureRuntimeHandler, ActivePlatform> {
     pub fn get() -> &'static ActorEnvironmentReference<Self> {
         unsafe {
             crate::ACTOR_ROOT_ENVIRONMENT

@@ -28,6 +28,71 @@ use x86::cpuid::CpuId;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#[macro_export]
+macro_rules! x86_64_panic_handler {
+    () => {
+        #[panic_handler]
+        fn panic_handler(panic_info: &::core::panic::PanicInfo) -> ! {
+            use ::core::fmt::Write;
+
+            let _ = write!(
+                $crate::actor::ActorRootEnvironment::get().logger(),
+                "Panic: {:?}",
+                panic_info,
+            );
+
+            loop {}
+        }
+    };
+}
+
+pub use x86_64_panic_handler;
+
+#[macro_export]
+macro_rules! x86_64_entry_point {
+    ($root_actor:expr) => {
+        static BOOTLOADER_CONFIG: $crate::r#extern::bootloader_api::BootloaderConfig = {
+            let mut config = $crate::r#extern::bootloader_api::BootloaderConfig::new_default();
+            config.kernel_stack_size = 4 * 4096;
+            config.mappings.physical_memory =
+                Some($crate::r#extern::bootloader_api::config::Mapping::Dynamic);
+
+            config
+        };
+
+        fn __x86_64_entry_point(
+            boot_info: &'static mut $crate::r#extern::bootloader_api::BootInfo,
+        ) -> ! {
+            use $crate::ACTOR_ROOT_ENVIRONMENT;
+            use $crate::actor::ActorRootEnvironment;
+            use $crate::future::runtime::FutureRuntimeHandler;
+
+            let environment =
+                ActorRootEnvironment::root(FutureRuntimeHandler::new, boot_info);
+
+            unsafe {
+                ACTOR_ROOT_ENVIRONMENT
+                    .get()
+                    .as_mut()
+                    .unwrap()
+                    .write(environment.clone());
+            }
+
+            let address = environment.spawn($root_actor).unwrap();
+
+            environment.enter().unwrap();
+
+            loop {}
+        }
+
+        $crate::r#extern::bootloader_api::entry_point!(__x86_64_entry_point, config = &BOOTLOADER_CONFIG);
+    };
+}
+
+pub use x86_64_entry_point;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 pub fn initial_local_apic_id() -> Option<usize> {
     CpuId::new()
         .get_feature_info()

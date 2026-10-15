@@ -38,6 +38,22 @@ dependencies = [
     "build-playground",
 ]
 
+[tasks.build-playground-hosted]
+args = [
+    "build",
+    "--package", "zcene-playground",
+    "--release",
+]
+command = "cargo"
+
+[tasks.run-playground-hosted]
+args = [
+    "run",
+    "--package", "zcene-playground",
+    "--release",
+]
+command = "cargo"
+
 [tasks.run-playground-x86_64-uefi]
 args = [
     #"-d", "int",

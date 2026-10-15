@@ -3,8 +3,11 @@ name = "zcene-playground"
 version = "0.0.0"
 edition = "2024"
 
-[dependencies]
-zcene = { path = "../zcene" }
+[target.'cfg(target_os = "none")'.dependencies]
+zcene = { path = "../zcene", default-features = false, features = ["x86_64"] }
+
+[target.'cfg(not(target_os = "none"))'.dependencies]
+zcene = { path = "../zcene", default-features = false, features = ["hosted"] }
 
 [build-dependencies]
 glob = "*"

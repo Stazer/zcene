@@ -15,10 +15,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     let manifest_dir = PathBuf::from(var("CARGO_MANIFEST_DIR")?);
 
     println!("cargo:rerun-if-changed=build.rs");
-    println!(
-        "cargo:rustc-link-arg-bins=--script={}/../zcene/linker.ld",
-        manifest_dir.display(),
-    );
+
+    if var("CARGO_CFG_TARGET_OS").as_deref() == Ok("none") {
+        println!(
+            "cargo:rustc-link-arg-bins=--script={}/../zcene/linker.ld",
+            manifest_dir.display(),
+        );
+    }
 
     let source_dir = manifest_dir.join("src");
 

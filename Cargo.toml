@@ -5,8 +5,6 @@ members = [
     "zcene",
     "zcene-playground",
     "zcene-playground-x86_64",
-    "zcene-hosted",
-    "zcene-hosted-playground",
 ]
 
 [patch.crates-io]
