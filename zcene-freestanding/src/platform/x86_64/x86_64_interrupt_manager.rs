@@ -246,7 +246,7 @@ impl X86_64LocalInterruptManager {
         let free_vector = self.free_vectors.pop_first()?;
 
         unsafe {
-            let entry = self.descriptor_table[free_vector]
+            let _entry = self.descriptor_table[free_vector]
                 .set_handler_fn(entry_point)
                 .set_stack_index(0);
             //.set_privilege_level(x86_64::PrivilegeLevel::Ring3) // Erlaubt User Mode
@@ -269,7 +269,7 @@ impl X86_64LocalInterruptManager {
         Some(free_vector)
     }
 
-    pub fn enable_timer(&mut self, entry_point: InterruptEntryPoint, duration: Duration) {
+    pub fn enable_timer(&mut self, entry_point: InterruptEntryPoint, _duration: Duration) {
         match self.r#type {
             X86_64X86_64LocalInterruptManagerType::XAPIC {
                 base,

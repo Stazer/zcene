@@ -5,19 +5,15 @@ use crate::common::memory::address::DefaultMemoryAddressTransformer;
 use crate::common::memory::address::PhysicalMemoryAddress;
 use crate::common::memory::address::PhysicalMemoryAddressPerspective;
 use crate::common::memory::address::VirtualMemoryAddress;
-use crate::common::memory::address::VirtualMemoryAddressPerspective;
 use crate::common::memory::allocator::LinkedListHeapMemoryAllocator;
 use crate::common::memory::allocator::SelfContainedHeapAllocator;
-use crate::common::memory::FrameIdentifierAddressTranslator;
+use crate::common::memory::FrameIdentifierMemoryAddressTranslator;
 use crate::common::memory::allocator::FrameManager;
 use crate::common::memory::region::VirtualMemoryRegion;
 use bootloader_api::BootInfo;
 use bootloader_api::info::MemoryRegionKind;
-use core::alloc::AllocError;
-use core::alloc::Allocator;
 use core::fmt::Write;
 use core::iter::once;
-use core::mem::MaybeUninit;
 use core::slice::from_raw_parts_mut;
 use linked_list_allocator::LockedHeap;
 use x86_64::registers::control::Cr3;
@@ -30,7 +26,6 @@ use x86_64::structures::paging::Size4KiB;
 use x86_64::structures::paging::{Mapper, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
 use ztd::Method;
-use alloc::boxed::Box;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -133,7 +128,7 @@ impl X86_64MemoryManager {
                 .ok_or(X86_64MemoryManagerInitializeError::UnsupportedMapping)?
         );
 
-        let frame_identifier_address_translator = FrameIdentifierAddressTranslator::new(FRAME_SIZE);
+        let frame_identifier_address_translator = FrameIdentifierMemoryAddressTranslator::new(FRAME_SIZE);
 
         let allocated_frame_identifiers = boot_info
             .memory_regions
@@ -141,15 +136,15 @@ impl X86_64MemoryManager {
             .filter(|region| !matches!(region.kind, MemoryRegionKind::Usable))
             .flat_map(|region| {
                 let start = frame_identifier_address_translator
-                    .translate_physical_memory_address(PhysicalMemoryAddress::from(region.start));
+                    .translate_memory_address(PhysicalMemoryAddress::from(region.start));
                 let end = frame_identifier_address_translator
-                    .translate_physical_memory_address(PhysicalMemoryAddress::from(region.end));
+                    .translate_memory_address(PhysicalMemoryAddress::from(region.end));
 
                 start..end
             })
             .filter(|identifier| {
                 frame_identifier_address_translator
-                    .translate_frame_identifier(*identifier)
+                    .translate_frame_identifier::<PhysicalMemoryAddressPerspective>(*identifier)
                     .as_u64()
                     < highest_usable_address
             });
@@ -308,7 +303,7 @@ impl X86_64MemoryManager {
             Cr3::write_raw(a.0, a.1);
         }
 
-        for (i, heap_frame_identifier) in this.frame_manager
+        for (_i, heap_frame_identifier) in this.frame_manager
             .unallocated_frame_identifiers()
             .take(frame_count)
             .enumerate()

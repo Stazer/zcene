@@ -99,10 +99,10 @@ impl Platform for X86_64Platform {
 
         let mut global_descriptor_table = Box::new_in(GlobalDescriptorTable::new(), memory.heap_allocator());
         let kernel_code_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_CODE64.bits()));
-        let kernel_data_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_DATA.bits()));
+        let _kernel_data_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_DATA.bits()));
         let user_code32_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE32.bits()));
-        let user_data_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::USER_DATA.bits()));
-        let user_code64_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits()));
+        let _user_data_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::USER_DATA.bits()));
+        let _user_code64_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits()));
 
         let mut task_state_segment = Box::new_in(TaskStateSegment::new(), memory.heap_allocator());
         task_state_segment.privilege_stack_table[0] = VirtAddr::new(ring0_stack);

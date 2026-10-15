@@ -211,11 +211,11 @@ where
     }
 
     pub fn allocation_frames(&self) -> impl Iterator<Item = &[u8]> {
-        self.allocation_slice().chunks(self.frame_byte_size)
+        self.allocation_slice().chunks(self.frame_byte_size())
     }
 
     pub fn data_frames(&self) -> impl Iterator<Item = &[u8]> {
-        self.data_slice().chunks(self.frame_byte_size)
+        self.data_slice().chunks(self.frame_byte_size())
     }
 
     pub fn frame_identifiers(&self) -> impl Iterator<Item = FrameIdentifier> + use<'_, P> {

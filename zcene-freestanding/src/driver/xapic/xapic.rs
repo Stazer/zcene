@@ -19,7 +19,7 @@ impl<'a> XApic<'a> {
     }
 
     pub fn set_spurious_interrupt_vector(&mut self, vector: u8) {
-        let svr: u32 = 1 << 8 | 15;
+        let _svr: u32 = 1 << 8 | 15;
         self.registers
             .spurious_interrupt_vector_mut()
             .write(1 << 8 | vector as u32);

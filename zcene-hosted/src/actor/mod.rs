@@ -104,7 +104,8 @@ where
         mut self,
         system: &ActorEnvironmentReference<ActorRootEnvironment<H>>,
     ) -> Result<<ActorRootEnvironment<H> as ActorEnvironment>::Address<A>, ActorSpawnError> {
-        let (sender, receiver) = ActorMessageChannel::<A::Message>::new_unbounded();
+        let (sender, mut receiver) =
+            ActorMessageChannel::<A::Message>::new_unbounded_in(system.allocator().clone());
 
         let inner_system = system.clone();
 
