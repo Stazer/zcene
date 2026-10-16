@@ -284,10 +284,6 @@ fn prepare_application_processor_stacks(
                 SMP_HEADER.page_table_start =
                     Cr3::read().0.start_address().as_u64().try_into().ok()?;
                 SMP_HEADER.gdt64_pointer = sgdt();
-                // Mirror the bootstrap processor's CR4 wholesale (PAE, OSFXSR/OSXMMEXCPT for
-                // SSE, and whatever else it ends up with) instead of hand-picking bits in
-                // `protected_mode.asm`: an application processor resets with CR4 cleared, and
-                // anything the BSP needed to run normally, it needs too.
                 SMP_HEADER.cr4 = Cr4::read_raw();
             }
         }

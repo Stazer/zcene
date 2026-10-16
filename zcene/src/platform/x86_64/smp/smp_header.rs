@@ -17,6 +17,13 @@ pub struct SMPHeader {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+const _: () = assert!(offset_of!(SMPHeader, stack_size) == 0x08);
+const _: () = assert!(offset_of!(SMPHeader, page_table_start) == 0x10);
+const _: () = assert!(offset_of!(SMPHeader, gdt64_pointer) == 0x14);
+const _: () = assert!(offset_of!(SMPHeader, cr4) == 0x1e);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".smp_header_section")]
 pub static mut SMP_HEADER: SMPHeader = SMPHeader {
@@ -29,10 +36,3 @@ pub static mut SMP_HEADER: SMPHeader = SMPHeader {
     },
     cr4: 0,
 };
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-const _: () = assert!(offset_of!(SMPHeader, stack_size) == 0x08);
-const _: () = assert!(offset_of!(SMPHeader, page_table_start) == 0x10);
-const _: () = assert!(offset_of!(SMPHeader, gdt64_pointer) == 0x14);
-const _: () = assert!(offset_of!(SMPHeader, cr4) == 0x1e);
