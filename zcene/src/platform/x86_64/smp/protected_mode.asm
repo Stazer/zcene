@@ -20,12 +20,11 @@ smp_protected_mode_entry:
     mov gs, ax
     mov ss, ax
 
-    ; PAE, and enable SSE (OSFXSR, OSXMMEXCPT): the BSP's CR4 was already set up this way by
-    ; the bootloader, but application processors start from a clean reset, and the compiler
-    ; freely emits SSE2 for ordinary code (it's x86-64 ABI baseline) — without this, the first
-    ; SSE instruction after jumping into Rust raises #UD.
-    mov eax, cr4
-    or eax, 0x20 | 0x200 | 0x400
+    ; CR4: copied wholesale from the bootstrap processor (PAE for long mode, OSFXSR/OSXMMEXCPT
+    ; for SSE, and whatever else it runs with) instead of hand-picking bits here — an
+    ; application processor resets with CR4 cleared, and anything the BSP needed to run
+    ; normally (e.g. the compiler freely emits SSE2, x86-64 ABI baseline), it needs too.
+    mov eax, [SMP_HEADER + 0x1E]
     mov cr4, eax
 
     ; Page Table Pointer
