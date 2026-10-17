@@ -8,7 +8,8 @@ use crate::platform::Platform;
 use alloc::sync::Arc;
 use core::fmt::Write;
 use zcene_core::actor::{
-    Actor, ActorEnterError, ActorEnvironmentAllocator, ActorMessage, ActorMessageChannelAddress,
+    Actor, ActorAddressExt, ActorDiscovery, ActorDiscoverySpinMutex, ActorEnterError,
+    ActorEnvironmentAllocator, ActorMessage, ActorMessageChannelAddress,
 };
 use zcene_core::actor::{
     ActorEnvironment, ActorEnvironmentReference, ActorMessageChannel, ActorSpawnError,
@@ -26,6 +27,7 @@ where
 {
     future_runtime: FutureRuntimeReference<H>,
     platform: P,
+    discovery: ActorDiscoverySpinMutex<Self>,
 }
 
 impl<H, P> ActorEnvironment for ActorRootEnvironment<H, P>
@@ -73,11 +75,25 @@ where
         let (sender, receiver) =
             ActorMessageChannel::<A::Message>::new_unbounded_in(self.allocator().clone());
 
-        self.future_runtime.spawn(
-            ActorRootEnvironmentExecutor::new(self.clone(), actor, receiver),
-        )?;
+        let address = <ActorRootEnvironment<H, P> as ActorEnvironment>::Address::<A>::new(sender);
 
-        Ok(<ActorRootEnvironment<H, P> as ActorEnvironment>::Address::<A>::new(sender))
+        let address_reference = Arc::new_in(address.clone(), self.allocator().clone());
+
+        // The executor holds this mailbox for as long as the actor's task is actually running;
+        // `discovery` only keeps a weak reference, so an actor becomes unreachable through
+        // lookup as soon as its task ends instead of being kept alive forever by the registry.
+        let mailbox = address_reference.mailbox()?;
+
+        self.discovery.register(mailbox.clone());
+
+        self.future_runtime.spawn(ActorRootEnvironmentExecutor::new(
+            self.clone(),
+            actor,
+            receiver,
+            mailbox,
+        ))?;
+
+        Ok(address)
     }
 
     pub fn platform(&self) -> &P {
@@ -86,6 +102,10 @@ where
 
     pub fn future_runtime(&self) -> &FutureRuntimeReference<H> {
         &self.future_runtime
+    }
+
+    pub fn discovery(&self) -> &ActorDiscoverySpinMutex<Self> {
+        &self.discovery
     }
 }
 
@@ -105,8 +125,9 @@ where
         let allocator = platform.allocator();
 
         let runtime = FutureRuntime::new(handler(allocator.clone())).unwrap();
+        let discovery = ActorDiscoverySpinMutex::new_in(allocator.clone());
 
-        Arc::new_in(Self::new(runtime, platform), allocator)
+        Arc::new_in(Self::new(runtime, platform, discovery), allocator)
     }
 
     pub fn enter(&self) -> Result<(), ActorEnterError> {

@@ -9,7 +9,8 @@ use core::marker::PhantomData;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 use zcene_core::actor::{
-    Actor, ActorEnvironmentAllocator, ActorEnvironmentReference, ActorMessageChannelReceiver,
+    Actor, ActorEnvironmentAllocator, ActorEnvironmentReference, ActorMailbox,
+    ActorMessageChannelReceiver,
 };
 use zcene_core::future::runtime::FutureRuntimeHandler;
 
@@ -41,6 +42,7 @@ where
         environment: ActorEnvironmentReference<ActorRootEnvironment<H, P>>,
         actor: A,
         receiver: ActorMessageChannelReceiver<A::Message, <H as FutureRuntimeHandler>::Allocator>,
+        mailbox: ActorMailbox<A::Message, ActorRootEnvironment<H, P>>,
     ) -> Self {
         let allocator = environment.allocator().clone();
 
@@ -48,6 +50,9 @@ where
             future: Box::pin_in(async move {
                 let mut actor = actor;
                 let mut receiver = receiver;
+                // Held for the task's lifetime so `discovery`'s weak entry for this actor can
+                // only be upgraded while the actor is actually running.
+                let _mailbox = mailbox;
 
                 let _result = actor
                     .create(ActorRootEnvironmentCreateContext::new(&*environment))

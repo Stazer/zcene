@@ -10,7 +10,8 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 use zcene::actor::ActorRootEnvironment;
 use zcene::core::actor::{
-    Actor, ActorCreateError, ActorEnvironment, ActorHandleError, ActorMessage, ActorMessageSender,
+    Actor, ActorCreateError, ActorDiscovery, ActorEnvironment, ActorHandleError, ActorMessage,
+    ActorMessageSender,
 };
 use zcene::define_system;
 
@@ -52,6 +53,37 @@ impl Actor<ActorRootEnvironment> for RootActor {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/// Looks up `RootActor`'s mailbox via `ActorDiscovery` (keyed by its message type, `PingMessage`)
+/// instead of being handed it directly, to exercise `ActorRootEnvironment`'s automatic
+/// registration on `spawn`.
+#[derive(Default)]
+pub struct LookupActor;
+
+impl Actor<ActorRootEnvironment> for LookupActor {
+    type Message = ();
+
+    async fn create<'a>(
+        &'a mut self,
+        context: <ActorRootEnvironment as ActorEnvironment>::CreateContext<'a>,
+    ) -> Result<(), ActorCreateError> {
+        let mailboxes = context.environment().discovery().lookup::<PingMessage>();
+
+        let _ = write!(
+            context.environment().logger(),
+            "lookup: found {} mailbox(es) for PingMessage\n",
+            mailboxes.len(),
+        );
+
+        for mailbox in mailboxes.iter() {
+            let _ = mailbox.send(PingMessage(999)).await;
+        }
+
+        Ok(())
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 /// Spawns `RootActor` and then keeps nudging it with messages from a second actor, so the
 /// message path is actually exercised end to end (and, with multiple cores, exercised across
 /// cores) instead of the system sitting idle after printing its one startup line.
@@ -70,6 +102,10 @@ impl Actor<ActorRootEnvironment> for PingActor {
         // inside an actor (it's valid as soon as any actor is running at all).
         let root = ActorRootEnvironment::get()
             .spawn(RootActor::default())
+            .unwrap();
+
+        let _lookup = ActorRootEnvironment::get()
+            .spawn(LookupActor::default())
             .unwrap();
 
         for counter in 0u32.. {
