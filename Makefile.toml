@@ -54,19 +54,30 @@ args = [
 ]
 command = "cargo"
 
+[tasks.run-playground-x86_64-uefi.env]
+KVM = { value = "false", condition = { env_not_set = ["KVM"] } }
+
+# Runs under plain TCG software emulation by default. Pass `--env KVM=true` to accelerate
+# with KVM and `-cpu host` instead.
 [tasks.run-playground-x86_64-uefi]
-args = [
-    #"-d", "int",
-    "-no-reboot",
-    "-nographic",
-    "-cpu", "qemu64",
-    "-drive", "format=raw,unit=1,file=target/x86_64/release/zcene-playground-x86_64-uefi.img",
-    "-drive", "if=pflash,format=raw,unit=0,file=QEMU_UEFI_CODE-x86_64.fd",
-    "-nic", "none",
-    "-m", "1024",
-    "-smp", "2",
-]
-command = "qemu-system-x86_64"
+script_runner = "@shell"
+script = '''
+if [ "${KVM}" = "true" ]; then
+    ACCEL_ARGS="-enable-kvm -cpu host"
+else
+    ACCEL_ARGS="-cpu qemu64"
+fi
+
+qemu-system-x86_64 \
+    -no-reboot \
+    -nographic \
+    ${ACCEL_ARGS} \
+    -drive format=raw,unit=1,file=target/x86_64/release/zcene-playground-x86_64-uefi.img \
+    -drive if=pflash,format=raw,unit=0,file=QEMU_UEFI_CODE-x86_64.fd \
+    -nic none \
+    -m 1024 \
+    -smp 2
+'''
 dependencies = [
     "build-playground-x86_64",
 ]

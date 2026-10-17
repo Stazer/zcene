@@ -31,10 +31,17 @@ smp_protected_mode_entry:
     mov edi, [SMP_HEADER + 0x10]
     mov cr3, edi
 
-    ; Enable Long Mode and No-Execute Flag
+    ; Enable Long Mode (EFER.LME, bit 8) and No-Execute (EFER.NXE, bit 11).
+    ;
+    ; Bit 9 is reserved in EFER (AMD64 Architecture Programmer's Manual Vol. 2, EFER
+    ; register). Setting it used to happen here by mistake (0x300 instead of 0x100), which a
+    ; real CPU / KVM's EFER write validation rejects with #GP; since the AP has no IDT loaded
+    ; yet at this point, that #GP immediately escalates to a triple fault and resets the whole
+    ; machine. QEMU's TCG CPU model doesn't validate reserved EFER bits on `wrmsr`, so this was
+    ; silently tolerated there and only KVM ever hit the fault.
     mov ecx, 0xC0000080
     rdmsr
-    or eax, 0x00000300
+    or eax, 0x00000100
     or eax, 0x00000800
     wrmsr
 

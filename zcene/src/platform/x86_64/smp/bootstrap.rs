@@ -1,6 +1,6 @@
 use crate::common::linker_value;
 use crate::common::memory::address::PhysicalMemoryAddress;
-use crate::common::memory::allocator::FrameManagerAllocationError;
+use crate::common::memory::allocator::FlatBitmapFrameAllocatorAllocationError;
 use crate::driver::xapic::{XApic, XApicRegisters};
 use crate::platform::x86_64::smp::{SMP_HEADER, SMP_SECTIONS_SIZE, SMP_SECTIONS_START, smp_real_mode_entry};
 use crate::platform::x86_64::{FRAME_SIZE, KernelMemoryManagerAcpiHandler, KernelMemoryManagerFrameAllocator};
@@ -188,15 +188,15 @@ unsafe fn relocate_trampoline(memory: &X86_64MemoryManager) -> Option<PhysicalMe
     }
 
     let smp_frame_identifier = memory
-        .frame_manager()
+        .frame_allocator()
         .translate_memory_address(smp_physical_address);
 
     // `X86_64MemoryManager::new` carves this exact frame out before anything else (in
     // particular, before the heap claims the lowest free frames for its own backing memory), so
     // it is expected to already show up as allocated here; only a genuine allocator problem
     // (out of range, bitmap busy, ...) should abort bring-up.
-    match memory.frame_manager().allocate_frames(once(smp_frame_identifier)) {
-        Ok(()) | Err(FrameManagerAllocationError::Allocated(_)) => {}
+    match memory.frame_allocator().allocate_frames(once(smp_frame_identifier)) {
+        Ok(()) | Err(FlatBitmapFrameAllocatorAllocationError::Allocated(_)) => {}
         Err(_) => return None,
     }
 
@@ -249,20 +249,20 @@ fn prepare_application_processor_stacks(
     let stack_frame_count = 4;
     let stack_size = stack_frame_count * FRAME_SIZE;
 
-    let mut frame_manager = memory.frame_manager();
+    let mut frame_allocator = memory.frame_allocator();
     let mut stack_frame_identifiers = Vec::new_in(memory.heap_allocator());
     stack_frame_identifiers.extend(
-        frame_manager
+        frame_allocator
             .allocate_window(application_processor_count * stack_frame_count)
             .ok()?,
     );
-    drop(frame_manager);
+    drop(frame_allocator);
 
     let mut mapper = memory.page_table_mapper();
 
     for stack_frame_identifier in stack_frame_identifiers {
         let stack_address = memory
-            .frame_manager()
+            .frame_allocator()
             .translate_frame_identifier(stack_frame_identifier);
 
         let page = Page::<Size4KiB>::containing_address(VirtAddr::new(stack_address.as_u64()));

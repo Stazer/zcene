@@ -8,7 +8,7 @@ use crate::common::memory::address::VirtualMemoryAddress;
 use crate::common::memory::allocator::LinkedListHeapMemoryAllocator;
 use crate::common::memory::allocator::SelfContainedHeapAllocator;
 use crate::common::memory::FrameIdentifierMemoryAddressTranslator;
-use crate::common::memory::allocator::FrameManager;
+use crate::common::memory::allocator::FlatBitmapFrameAllocator;
 use crate::common::memory::region::VirtualMemoryRegion;
 use bootloader_api::BootInfo;
 use bootloader_api::info::MemoryRegionKind;
@@ -68,7 +68,7 @@ pub struct X86_64MemoryManager {
     usable_memory_in_bytes: u64,
     kernel_image_start_virtual_memory_address: VirtualMemoryAddress,
     kernel_image_length: u64,
-    frame_manager: FrameManager<'static, PhysicalMemoryAddressPerspective>,
+    frame_allocator: FlatBitmapFrameAllocator<'static, PhysicalMemoryAddressPerspective>,
     heap_allocator_reference: Option<ErasedAllocator>,
 }
 
@@ -159,7 +159,7 @@ impl X86_64MemoryManager {
                 } as u64),
             )));
 
-        let frame_manager = FrameManager::new(
+        let frame_allocator = FlatBitmapFrameAllocator::new(
             FRAME_SIZE,
             unsafe {
                 from_raw_parts_mut(
@@ -234,7 +234,7 @@ impl X86_64MemoryManager {
             kernel_image_length: boot_info.kernel_len,
             kernel_image_start_virtual_memory_address:
                 physical_memory_offset + VirtualMemoryAddress::from(boot_info.kernel_addr),
-            frame_manager,
+            frame_allocator,
             heap_allocator_reference: None,
         };
 
@@ -313,14 +313,14 @@ impl X86_64MemoryManager {
             Cr3::write_raw(a.0, a.1);
         }
 
-        for (_i, heap_frame_identifier) in this.frame_manager
+        for (_i, heap_frame_identifier) in this.frame_allocator
             .unallocated_frame_identifiers()
             .take(frame_count)
             .enumerate()
         {
-            let physical_address = this.frame_manager.translate_frame_identifier(heap_frame_identifier);
+            let physical_address = this.frame_allocator.translate_frame_identifier(heap_frame_identifier);
 
-            this.frame_manager()
+            this.frame_allocator()
                 .allocate_frames(once(heap_frame_identifier))
                 .unwrap();
 
@@ -337,14 +337,14 @@ impl X86_64MemoryManager {
                     .flush();
             }
 
-            current_address += this.frame_manager.frame_byte_size().r#as();
+            current_address += this.frame_allocator.frame_byte_size().r#as();
         }
 
         let allocator = LinkedListHeapMemoryAllocator::new(unsafe {
             LockedHeap::new(
                 VirtualMemoryAddress::<DefaultMemoryAddressTransformer>::from(start_address)
                     .cast_mut(),
-                frame_count * this.frame_manager.frame_byte_size(),
+                frame_count * this.frame_allocator.frame_byte_size(),
             )
         });
 
@@ -402,9 +402,9 @@ impl X86_64MemoryManager {
         )
     }
 
-    pub fn frame_manager(&self) -> FrameManager<'static, PhysicalMemoryAddressPerspective> {
+    pub fn frame_allocator(&self) -> FlatBitmapFrameAllocator<'static, PhysicalMemoryAddressPerspective> {
         unsafe {
-            FrameManager::new_initialized(
+            FlatBitmapFrameAllocator::new_initialized(
                 FRAME_SIZE,
                 from_raw_parts_mut(
                     self.physical_memory_offset.cast_mut::<u8>(),
@@ -440,9 +440,9 @@ impl X86_64MemoryManager {
         let mut first_address = 0;
         let mut mapper = self.page_table_mapper();
 
-        for stack_frame_identifier in self.frame_manager().allocate_window(8).unwrap() {
+        for stack_frame_identifier in self.frame_allocator().allocate_window(8).unwrap() {
             let stack_address = self
-                .frame_manager()
+                .frame_allocator()
                 .translate_frame_identifier(stack_frame_identifier)
                 .as_usize();
 
@@ -485,9 +485,9 @@ impl X86_64MemoryManager {
         let mut first_address = 0;
         let mut mapper = self.page_table_mapper();
 
-        for stack_frame_identifier in self.frame_manager().allocate_window(8).unwrap() {
+        for stack_frame_identifier in self.frame_allocator().allocate_window(8).unwrap() {
             let stack_address = self
-                .frame_manager()
+                .frame_allocator()
                 .translate_frame_identifier(stack_frame_identifier)
                 .as_usize();
 
@@ -538,18 +538,18 @@ unsafe impl FrameAllocator<Size4KiB> for KernelMemoryManagerFrameAllocator<'_> {
     fn allocate_frame(&mut self) -> Option<PhysFrame> {
         let frame_identifier = self
             .memory_manager
-            .frame_manager()
+            .frame_allocator()
             .unallocated_frame_identifiers()
             .next()?;
         self.memory_manager
-            .frame_manager()
+            .frame_allocator()
             .allocate_frames(once(frame_identifier))
             .ok()?;
 
         Some(
             PhysFrame::from_start_address(PhysAddr::new(
                 self.memory_manager
-                    .frame_manager()
+                    .frame_allocator()
                     .translate_frame_identifier(frame_identifier)
                     .as_u64(),
             ))
@@ -569,11 +569,11 @@ impl FrameDeallocator<Size4KiB> for KernelMemoryManagerFrameDeallocator<'_> {
     unsafe fn deallocate_frame(&mut self, frame: PhysFrame<Size4KiB>) {
         let frame_identifier = self
             .memory_manager
-            .frame_manager()
+            .frame_allocator()
             .translate_memory_address(PhysicalMemoryAddress::from(frame.start_address().as_u64()));
 
         self.memory_manager
-            .frame_manager()
+            .frame_allocator()
             .deallocate_frames(once(frame_identifier))
             .unwrap();
     }

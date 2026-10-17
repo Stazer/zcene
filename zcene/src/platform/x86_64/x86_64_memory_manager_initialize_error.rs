@@ -1,4 +1,4 @@
-use crate::common::memory::allocator::FrameManagerAllocationError;
+use crate::common::memory::allocator::FlatBitmapFrameAllocatorAllocationError;
 use core::alloc::AllocError;
 use x86_64::structures::paging::PageSize;
 use x86_64::structures::paging::mapper::MapToError;
@@ -9,7 +9,7 @@ use x86_64::structures::paging::page::AddressNotAligned;
 #[derive(Debug)]
 pub enum X86_64MemoryManagerInitializeError {
     UnsupportedMapping,
-    FrameAllocation(FrameManagerAllocationError),
+    FrameAllocation(FlatBitmapFrameAllocatorAllocationError),
     AddressNotAligned(AddressNotAligned),
     MapToErrorFrameAllocationFailed,
     MapToErrorParentEntryHugePage,
@@ -23,8 +23,8 @@ impl From<AddressNotAligned> for X86_64MemoryManagerInitializeError {
     }
 }
 
-impl From<FrameManagerAllocationError> for X86_64MemoryManagerInitializeError {
-    fn from(error: FrameManagerAllocationError) -> Self {
+impl From<FlatBitmapFrameAllocatorAllocationError> for X86_64MemoryManagerInitializeError {
+    fn from(error: FlatBitmapFrameAllocatorAllocationError) -> Self {
         Self::FrameAllocation(error)
     }
 }
