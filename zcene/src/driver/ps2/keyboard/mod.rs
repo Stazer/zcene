@@ -1,8 +1,9 @@
-use core::alloc::vec::Vec;
+use crate::actor::ActorRootEnvironment;
+use alloc::vec::Vec;
 use pc_keyboard::DecodedKey;
 use zcene_core::actor::{
-    Actor, ActorContextMessageProvider, ActorEnvironment, ActorEnvironmentAllocator, ActorFuture,
-    ActorHandleError, ActorMailbox,
+    Actor, ActorEnvironment, ActorEnvironmentAllocator, ActorFuture, ActorHandleError,
+    ActorMailbox,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -10,45 +11,34 @@ use zcene_core::actor::{
 #[derive(Clone, Debug)]
 pub struct KeyboardDecodedKeyMessage(DecodedKey);
 
-#[derive(Debug)]
-pub enum KeyboardMessage<E>
-where
-    E: ActorEnvironment + ActorEnvironmentAllocator,
-{
-    Subscription(ActorMailbox<KeyboardDecodedKeyMessage, E>),
+#[derive(Clone, Debug)]
+pub enum KeyboardMessage {
+    Subscription(ActorMailbox<KeyboardDecodedKeyMessage, ActorRootEnvironment>),
     Byte(u16),
 }
 
-impl<E> Clone for KeyboardMessage<E>
-where
-    E: ActorEnvironment + ActorEnvironmentAllocator,
-{
-    fn clone(&self) -> Self {
-        match self {
-            Self::Subscription(mailbox) => Self::Subscription(mailbox.clone()),
-            Self::Byte(byte) => Self::Byte(*byte),
+pub struct KeyboardActor {
+    subscriptions: Vec<
+        ActorMailbox<KeyboardDecodedKeyMessage, ActorRootEnvironment>,
+        <ActorRootEnvironment as ActorEnvironmentAllocator>::Allocator,
+    >,
+}
+
+impl KeyboardActor {
+    pub fn new(allocator: <ActorRootEnvironment as ActorEnvironmentAllocator>::Allocator) -> Self {
+        Self {
+            subscriptions: Vec::new_in(allocator),
         }
     }
 }
 
-pub struct KeyboardActor<E>
-where
-    E: ActorEnvironment + ActorEnvironmentAllocator,
-{
-    subscriptions: Vec<ActorMailbox<KeyboardDecodedKeyMessage, E>, E::Allocator>,
-}
+impl Actor<ActorRootEnvironment> for KeyboardActor {
+    type Message = KeyboardMessage;
 
-impl<E> Actor<E> for KeyboardActor<E>
-where
-    E: ActorEnvironment + ActorEnvironmentAllocator,
-    E::HandleContext<KeyboardMessage<E>>: ActorContextMessageProvider<KeyboardMessage<E>>,
-{
-    type Message = KeyboardMessage<E>;
-
-    fn handle(
-        &mut self,
-        context: E::HandleContext<Self::Message>,
-    ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
+    fn handle<'a>(
+        &'a mut self,
+        context: <ActorRootEnvironment as ActorEnvironment>::HandleContext<'a, Self::Message>,
+    ) -> impl ActorFuture<'a, Result<(), ActorHandleError>> {
         async move {
             match context.message() {
                 KeyboardMessage::Subscription(mailbox) => self.subscriptions.push(mailbox.clone()),

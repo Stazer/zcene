@@ -8,7 +8,7 @@ use crate::platform::Platform;
 use alloc::sync::Arc;
 use core::fmt::Write;
 use zcene_core::actor::{
-    Actor, ActorAddressExt, ActorDiscovery, ActorDiscoverySpinMutex, ActorEnterError,
+    Actor, ActorAddressExt, ActorDiscovery, ActorSpinDiscovery, ActorEnterError,
     ActorEnvironmentAllocator, ActorMessage, ActorMessageChannelAddress,
 };
 use zcene_core::actor::{
@@ -27,7 +27,7 @@ where
 {
     future_runtime: FutureRuntimeReference<H>,
     platform: P,
-    discovery: ActorDiscoverySpinMutex<Self>,
+    discovery: ActorSpinDiscovery<Self>,
 }
 
 impl<H, P> ActorEnvironment for ActorRootEnvironment<H, P>
@@ -104,7 +104,7 @@ where
         &self.future_runtime
     }
 
-    pub fn discovery(&self) -> &ActorDiscoverySpinMutex<Self> {
+    pub fn discovery(&self) -> &ActorSpinDiscovery<Self> {
         &self.discovery
     }
 }
@@ -125,7 +125,7 @@ where
         let allocator = platform.allocator();
 
         let runtime = FutureRuntime::new(handler(allocator.clone())).unwrap();
-        let discovery = ActorDiscoverySpinMutex::new_in(allocator.clone());
+        let discovery = ActorSpinDiscovery::new_in(allocator.clone());
 
         Arc::new_in(Self::new(runtime, platform, discovery), allocator)
     }

@@ -11,9 +11,7 @@ use spin::Mutex as SpinMutex;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// Entries hold weak mailboxes only: a registered actor must not be kept alive by its presence
-// in the discovery table. Dead entries are pruned opportunistically while looking up their type.
-pub struct ActorDiscoverySpinMutex<E>
+pub struct ActorSpinDiscovery<E>
 where
     E: ActorEnvironment + ActorEnvironmentAllocator,
 {
@@ -21,16 +19,16 @@ where
     entries: SpinMutex<BTreeMap<TypeId, Box<dyn Any + Send + Sync, E::Allocator>, E::Allocator>>,
 }
 
-impl<E> Debug for ActorDiscoverySpinMutex<E>
+impl<E> Debug for ActorSpinDiscovery<E>
 where
     E: ActorEnvironment + ActorEnvironmentAllocator,
 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        formatter.debug_struct("ActorDiscoverySpinMutex").finish()
+        formatter.debug_struct("ActorSpinDiscovery").finish()
     }
 }
 
-impl<E> ActorDiscoverySpinMutex<E>
+impl<E> ActorSpinDiscovery<E>
 where
     E: ActorEnvironment + ActorEnvironmentAllocator,
 {
@@ -42,7 +40,7 @@ where
     }
 }
 
-impl<E> ActorDiscovery<E> for ActorDiscoverySpinMutex<E>
+impl<E> ActorDiscovery<E> for ActorSpinDiscovery<E>
 where
     E: ActorEnvironment + ActorEnvironmentAllocator,
 {
@@ -98,6 +96,10 @@ where
                     weak_mailboxes.swap_remove(index);
                 }
             }
+        }
+
+        if weak_mailboxes.is_empty() {
+            entries.remove(&TypeId::of::<M>());
         }
 
         mailboxes

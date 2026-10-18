@@ -15,6 +15,11 @@ use zcene::core::actor::{
 };
 use zcene::define_system;
 
+#[cfg(target_os = "none")]
+use zcene::core::actor::ActorEnvironmentAllocator;
+#[cfg(target_os = "none")]
+use zcene::driver::ps2::keyboard::KeyboardActor;
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone)]
@@ -33,6 +38,14 @@ impl Actor<ActorRootEnvironment> for RootActor {
         context: <ActorRootEnvironment as ActorEnvironment>::CreateContext<'a>,
     ) -> Result<(), ActorCreateError> {
         let _ = write!(context.environment().logger(), "hello world\n");
+
+        // The PS/2 driver is x86_64-specific, so there is no `KeyboardActor` to spawn on the
+        // hosted platform.
+        #[cfg(target_os = "none")]
+        {
+            let keyboard = KeyboardActor::new(ActorRootEnvironment::get().allocator().clone());
+            let _keyboard = ActorRootEnvironment::get().spawn(keyboard).unwrap();
+        }
 
         Ok(())
     }

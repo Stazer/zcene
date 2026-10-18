@@ -1,15 +1,18 @@
-use crate::platform::x86_64::X86_64MemoryManager;
-use crate::platform::x86_64::ExecutionUnitIdentifier;
+use alloc::boxed::Box;
+use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use core::fmt::Debug;
+use core::mem::MaybeUninit;
+use core::time::Duration;
 use crate::common::memory::allocator::ErasedAllocator;
 use crate::common::synchronization::Mutex;
 use crate::common::time::Timer;
 use crate::driver::xapic::XApic;
 use crate::driver::xapic::XApicRegisters;
+use crate::platform::x86_64::ExecutionUnitIdentifier;
+use crate::platform::x86_64::X86_64MemoryManager;
 use crate::utility::println;
-use alloc::boxed::Box;
-use alloc::collections::{BTreeMap, BTreeSet};
-use core::fmt::Debug;
-use core::time::Duration;
 use pic8259::ChainedPics;
 use x86::cpuid::CpuId;
 use x86_64::structures::idt::InterruptDescriptorTable;
@@ -34,6 +37,8 @@ pub type InterruptEntryPoint = extern "x86-interrupt" fn(InterruptStackFrame);
 
 pub type InterruptVectorIdentifier = u8;
 
+pub type InterruptHandler = Arc<dyn Fn() + Send + Sync, ErasedAllocator>;
+
 unsafe impl Sync for X86_64X86_64LocalInterruptManagerType {}
 unsafe impl Send for X86_64X86_64LocalInterruptManagerType {}
 
@@ -43,6 +48,7 @@ pub struct X86_64LocalInterruptManager {
     r#type: X86_64X86_64LocalInterruptManagerType,
     descriptor_table: Box<InterruptDescriptorTable, ErasedAllocator>,
     free_vectors: BTreeSet<InterruptVectorIdentifier, ErasedAllocator>,
+    handlers: Box<[Vec<InterruptHandler, ErasedAllocator>; 256], ErasedAllocator>,
 }
 
 pub type InterruptIdentifier = u8;
@@ -116,6 +122,15 @@ extern "x86-interrupt" fn unhandled_interrupt_entry_point<const N: InterruptName
     stack_frame: InterruptStackFrame,
 ) {
     println!("unhandled interrupt {}\n{:?}", N, stack_frame);
+}
+
+extern "x86-interrupt" fn external_interrupt_entry_point<const VECTOR: u8>(
+    _stack_frame: InterruptStackFrame,
+) {
+    crate::actor::ActorRootEnvironment::get()
+        .platform()
+        .interrupt_manager()
+        .dispatch(VECTOR);
 }
 
 extern "x86-interrupt" fn unhandled_interrupt_entry_point_loop<const N: InterruptName>(
@@ -262,6 +277,23 @@ impl X86_64LocalInterruptManager {
 
         let mut free_vectors = BTreeSet::new_in(memory_manager.heap_allocator());
 
+        let mut handlers: Box<
+            MaybeUninit<[Vec<InterruptHandler, ErasedAllocator>; 256]>,
+            ErasedAllocator,
+        > = Box::new_uninit_in(memory_manager.heap_allocator());
+
+        let handlers_base = handlers.as_mut_ptr() as *mut Vec<InterruptHandler, ErasedAllocator>;
+
+        for index in 0..256 {
+            unsafe {
+                handlers_base
+                    .add(index)
+                    .write(Vec::new_in(memory_manager.heap_allocator()));
+            }
+        }
+
+        let handlers = unsafe { handlers.assume_init() };
+
         use x86_64::structures::idt::Entry;
 
         for vector in EXTERNAL_INTERRUPTS_START..255u8 {
@@ -270,6 +302,11 @@ impl X86_64LocalInterruptManager {
 
             free_vectors.insert(vector.into());
         }
+
+        // Test wiring for the registry-backed dispatch path (`external_interrupt_entry_point`):
+        // just one vector for now, to prove the pattern before generating the full 32..255 pool.
+        table[EXTERNAL_INTERRUPTS_START]
+            .set_handler_fn(external_interrupt_entry_point::<{ EXTERNAL_INTERRUPTS_START }>);
 
         unsafe {
             table.load_unsafe();
@@ -303,6 +340,7 @@ impl X86_64LocalInterruptManager {
                 },
                 free_vectors,
                 descriptor_table: table,
+                handlers,
             };
         }
 
@@ -345,6 +383,16 @@ impl X86_64LocalInterruptManager {
         unsafe {
             self.descriptor_table.load_unsafe();
         }
+
+        Some(free_vector)
+    }
+
+    /// Reserves a free vector for `handler` without touching the IDT (dispatch from the
+    /// hardware vector to this registry is not wired up yet, see the `handlers` field).
+    pub fn register_handler(&mut self, handler: InterruptHandler) -> Option<InterruptVectorIdentifier> {
+        let free_vector = self.free_vectors.pop_first()?;
+
+        self.handlers[free_vector as usize].push(handler);
 
         Some(free_vector)
     }
@@ -450,6 +498,26 @@ impl X86_64InterruptManager {
             .get(&0)
             .unwrap()
             .notify_end_of_interrupt();
+    }
+
+    pub fn dispatch(&self, vector: InterruptVectorIdentifier) {
+        // Cloning `Arc`s and dropping the lock immediately, instead of holding it across the
+        // handler calls below: those can take an unbounded amount of time (actor mailbox sends,
+        // allocation, ...), and this lock is shared across *all* cores' local managers, so
+        // holding it that long would stall every other core's interrupt handling too.
+        let handlers = self
+            .local_interrupt_managers
+            .lock()
+            .get(&0)
+            .unwrap()
+            .handlers[vector as usize]
+            .clone();
+
+        for handler in handlers.iter() {
+            handler();
+        }
+
+        self.notify_local_end_of_interrupt();
     }
 
     pub fn reset_oneshot(&self, duration: Duration) {
