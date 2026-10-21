@@ -1,3 +1,11 @@
+[package]
+name = "examples"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+zcene = { path = "zcene", default-features = false, features = ["hosted"] }
+
 [workspace]
 resolver = "2"
 members = [

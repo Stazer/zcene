@@ -5,4 +5,4 @@ use core::pin::Pin;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub type ActorBoxFuture<'a, O, E> =
-    Pin<Box<dyn ActorFuture<'a, O>, <E as ActorEnvironmentAllocator>::Allocator>>;
+    Pin<Box<dyn ActorFuture<'a, O> + 'a, <E as ActorEnvironmentAllocator>::Allocator>>;

@@ -26,7 +26,7 @@ where
     }
 
     fn destroy<'a>(
-        self,
+        &'a mut self,
         _context: E::DestroyContext<'a>,
     ) -> impl ActorFuture<'a, Result<(), ActorDestroyError>> {
         async { Ok(()) }

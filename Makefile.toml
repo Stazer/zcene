@@ -54,6 +54,22 @@ args = [
 ]
 command = "cargo"
 
+[tasks.run-example-migration]
+args = [
+    "run",
+    "--package", "examples",
+    "--example", "migration",
+]
+command = "cargo"
+
+[tasks.run-example-lookup]
+args = [
+    "run",
+    "--package", "examples",
+    "--example", "lookup",
+]
+command = "cargo"
+
 [tasks.run-playground-x86_64-uefi.env]
 KVM = { value = "false", condition = { env_not_set = ["KVM"] } }
 

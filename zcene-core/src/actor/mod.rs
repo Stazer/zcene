@@ -1,6 +1,8 @@
 mod actor;
 mod actor_allocator;
 mod actor_box_future;
+mod actor_dyn;
+mod actor_dyn_cell;
 mod actor_common_bounds;
 mod actor_common_handle_context;
 mod actor_context;
@@ -17,6 +19,8 @@ mod message;
 pub use actor::*;
 pub use actor_allocator::*;
 pub use actor_box_future::*;
+pub use actor_dyn::*;
+pub use actor_dyn_cell::*;
 pub use actor_common_bounds::*;
 pub use actor_common_handle_context::*;
 pub use actor_context::*;

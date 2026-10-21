@@ -9,8 +9,8 @@ use core::marker::PhantomData;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 use zcene_core::actor::{
-    Actor, ActorEnvironmentAllocator, ActorEnvironmentReference, ActorMailbox,
-    ActorMessageChannelReceiver,
+    Actor, ActorDyn, ActorDynCell, ActorEnvironmentAllocator, ActorEnvironmentReference,
+    ActorMailbox, ActorMessageChannelReceiver, ActorMessageEnvelope,
 };
 use zcene_core::future::runtime::FutureRuntimeHandler;
 
@@ -36,19 +36,32 @@ where
     H: FutureRuntimeHandler,
     P: Platform,
     ActorEnvironmentReference<ActorRootEnvironment<H, P>>: Send + 'static,
-    ActorMessageChannelReceiver<A::Message, <H as FutureRuntimeHandler>::Allocator>: Send + 'static,
+    ActorMessageChannelReceiver<
+        ActorMessageEnvelope<A::Message, ActorRootEnvironment<H, P>>,
+        <H as FutureRuntimeHandler>::Allocator,
+    >: Send + 'static,
 {
     pub fn new(
         environment: ActorEnvironmentReference<ActorRootEnvironment<H, P>>,
         actor: A,
-        receiver: ActorMessageChannelReceiver<A::Message, <H as FutureRuntimeHandler>::Allocator>,
+        receiver: ActorMessageChannelReceiver<
+            ActorMessageEnvelope<A::Message, ActorRootEnvironment<H, P>>,
+            <H as FutureRuntimeHandler>::Allocator,
+        >,
         mailbox: ActorMailbox<A::Message, ActorRootEnvironment<H, P>>,
     ) -> Self {
         let allocator = environment.allocator().clone();
+        let cell_allocator = allocator.clone();
 
         Self {
             future: Box::pin_in(async move {
-                let mut actor = actor;
+                let mut actor: Box<
+                    dyn ActorDyn<ActorRootEnvironment<H, P>, Message = A::Message>,
+                    <H as FutureRuntimeHandler>::Allocator,
+                > = Box::new_in(
+                    ActorDynCell::new(actor, cell_allocator.clone()),
+                    cell_allocator,
+                );
                 let mut receiver = receiver;
                 // Held for the task's lifetime so `discovery`'s weak entry for this actor can
                 // only be upgraded while the actor is actually running.
@@ -58,10 +71,29 @@ where
                     .create(ActorRootEnvironmentCreateContext::new(&*environment))
                     .await;
 
-                while let Some(message) = receiver.receive().await {
-                    let _result = actor
-                        .handle(ActorRootEnvironmentHandleContext::new(&*environment, message))
-                        .await;
+                while let Some(envelope) = receiver.receive().await {
+                    match envelope {
+                        ActorMessageEnvelope::Message(message) => {
+                            let _result = actor
+                                .handle(ActorRootEnvironmentHandleContext::new(
+                                    &*environment,
+                                    message,
+                                ))
+                                .await;
+                        }
+
+                        ActorMessageEnvelope::Migrate(new_actor) => {
+                            let _result = actor
+                                .destroy(ActorRootEnvironmentDestroyContext::new(&*environment))
+                                .await;
+
+                            actor = new_actor;
+
+                            let _result = actor
+                                .create(ActorRootEnvironmentCreateContext::new(&*environment))
+                                .await;
+                        }
+                    }
                 }
 
                 let _result = actor

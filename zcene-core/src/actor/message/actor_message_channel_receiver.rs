@@ -1,4 +1,4 @@
-use crate::actor::{ActorAllocator, ActorMessage};
+use crate::actor::{ActorAllocator, ActorCommonBounds};
 use crate::channel::mpsc::UnboundedReceiver;
 use ztd::Constructor;
 
@@ -8,7 +8,7 @@ use ztd::Constructor;
 #[Constructor(visibility = pub(super))]
 pub struct ActorMessageChannelReceiver<M, A>
 where
-    M: ActorMessage,
+    M: ActorCommonBounds,
     A: ActorAllocator,
 {
     receiver: UnboundedReceiver<M, A>,
@@ -16,7 +16,7 @@ where
 
 impl<M, A> ActorMessageChannelReceiver<M, A>
 where
-    M: ActorMessage,
+    M: ActorCommonBounds,
     A: ActorAllocator,
 {
     pub async fn receive(&mut self) -> Option<M> {

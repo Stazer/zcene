@@ -1,5 +1,5 @@
 use crate::actor::{
-    ActorAllocator, ActorMessage, ActorMessageChannelReceiver, ActorMessageChannelSender,
+    ActorAllocator, ActorCommonBounds, ActorMessageChannelReceiver, ActorMessageChannelSender,
 };
 use core::marker::PhantomData;
 
@@ -7,11 +7,11 @@ use core::marker::PhantomData;
 
 pub struct ActorMessageChannel<M>(PhantomData<M>)
 where
-    M: ActorMessage;
+    M: ActorCommonBounds;
 
 impl<M> ActorMessageChannel<M>
 where
-    M: ActorMessage,
+    M: ActorCommonBounds,
 {
     pub fn new_unbounded_in<A>(
         allocator: A,

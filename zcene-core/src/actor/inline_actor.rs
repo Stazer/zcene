@@ -14,7 +14,7 @@ where
     CR: for<'a> ActorFuture<'a, Result<(), ActorCreateError>> + ActorCommonBounds,
     HF: FnMut(E::HandleContext<'_, M>) -> HR + ActorCommonBounds,
     HR: for<'a> ActorFuture<'a, Result<(), ActorHandleError>> + ActorCommonBounds,
-    DF: FnOnce(E::DestroyContext<'_>) -> DR + ActorCommonBounds,
+    DF: FnMut(E::DestroyContext<'_>) -> DR + ActorCommonBounds,
     DR: for<'a> ActorFuture<'a, Result<(), ActorDestroyError>> + ActorCommonBounds,
 {
     create_function: CF,
@@ -31,7 +31,7 @@ where
     CR: for<'a> ActorFuture<'a, Result<(), ActorCreateError>> + ActorCommonBounds,
     HF: FnMut(E::HandleContext<'_, M>) -> HR + ActorCommonBounds,
     HR: for<'a> ActorFuture<'a, Result<(), ActorHandleError>> + ActorCommonBounds,
-    DF: FnOnce(E::DestroyContext<'_>) -> DR + ActorCommonBounds,
+    DF: FnMut(E::DestroyContext<'_>) -> DR + ActorCommonBounds,
     DR: for<'a> ActorFuture<'a, Result<(), ActorDestroyError>> + ActorCommonBounds,
 {
     pub fn new(create_function: CF, handle_function: HF, destroy_function: DF) -> Self {
@@ -52,7 +52,7 @@ where
     CR: for<'a> ActorFuture<'a, Result<(), ActorCreateError>> + ActorCommonBounds,
     HF: FnMut(E::HandleContext<'_, M>) -> HR + ActorCommonBounds,
     HR: for<'a> ActorFuture<'a, Result<(), ActorHandleError>> + ActorCommonBounds,
-    DF: FnOnce(E::DestroyContext<'_>) -> DR + ActorCommonBounds,
+    DF: FnMut(E::DestroyContext<'_>) -> DR + ActorCommonBounds,
     DR: for<'a> ActorFuture<'a, Result<(), ActorDestroyError>> + ActorCommonBounds,
 {
     type Message = M;
@@ -72,9 +72,9 @@ where
     }
 
     fn destroy<'a>(
-        self,
+        &'a mut self,
         context: E::DestroyContext<'a>,
-    ) -> impl ActorFuture<'static, Result<(), ActorDestroyError>> {
+    ) -> impl ActorFuture<'a, Result<(), ActorDestroyError>> {
         (self.destroy_function)(context)
     }
 }

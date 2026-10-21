@@ -234,7 +234,7 @@ where
     }
 
     extern "C" fn destroy_entry(actor: *mut AI, _message: *const ()) -> ! {
-        let actor = unsafe { Box::from_raw_in(actor, LeakingHeapMemoryAllocator) };
+        let mut actor = unsafe { Box::from_raw_in(actor, LeakingHeapMemoryAllocator) };
         let mut ctx = Context::from_waker(Waker::noop());
         let mut fut = pin!(actor.destroy(()));
         let _result = match fut.as_mut().poll(&mut ctx) {

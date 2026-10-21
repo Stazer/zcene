@@ -9,7 +9,7 @@ use alloc::sync::Arc;
 use core::fmt::Write;
 use zcene_core::actor::{
     Actor, ActorAddressExt, ActorDiscovery, ActorSpinDiscovery, ActorEnterError,
-    ActorEnvironmentAllocator, ActorMessage, ActorMessageChannelAddress,
+    ActorEnvironmentAllocator, ActorMessage, ActorMessageChannelAddress, ActorMessageEnvelope,
 };
 use zcene_core::actor::{
     ActorEnvironment, ActorEnvironmentReference, ActorMessageChannel, ActorSpawnError,
@@ -72,10 +72,14 @@ where
     where
         A: Actor<Self>,
     {
-        let (sender, receiver) =
-            ActorMessageChannel::<A::Message>::new_unbounded_in(self.allocator().clone());
+        let (sender, receiver) = ActorMessageChannel::<ActorMessageEnvelope<A::Message, Self>>::new_unbounded_in(
+            self.allocator().clone(),
+        );
 
-        let address = <ActorRootEnvironment<H, P> as ActorEnvironment>::Address::<A>::new(sender);
+        let address = <ActorRootEnvironment<H, P> as ActorEnvironment>::Address::<A>::new(
+            sender,
+            self.allocator().clone(),
+        );
 
         let address_reference = Arc::new_in(address.clone(), self.allocator().clone());
 
