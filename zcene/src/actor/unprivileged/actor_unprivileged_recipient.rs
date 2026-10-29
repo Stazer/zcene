@@ -6,7 +6,8 @@ use zcene_core::actor::{ActorFuture, ActorMessage, ActorMessageSender, ActorSend
 
 /// A destination for messages of type `M` as seen from an unprivileged actor: the index into the
 /// message handlers it was spawned with. It does not care what kind of actor, or which environment,
-/// is behind that handler, only which message type it accepts.
+/// is behind that handler, only which message type it accepts. Counterpart of `ActorRecipient` for
+/// root actors; `ActorUnprivilegedAddress::recipient` turns an address into one.
 pub struct ActorUnprivilegedRecipient<M> {
     index: usize,
     marker: PhantomData<fn() -> M>,
@@ -18,6 +19,10 @@ impl<M> ActorUnprivilegedRecipient<M> {
             index,
             marker: PhantomData,
         }
+    }
+
+    pub const fn index(&self) -> usize {
+        self.index
     }
 }
 
