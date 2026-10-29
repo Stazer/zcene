@@ -74,11 +74,6 @@ where
 }
 
 impl ActorUnprivilegedEnvironment {
-
-    /// Spawns `actor` unprivileged (ring 3 on x86_64). `deadline_in_milliseconds` bounds how long
-    /// it may run before being preempted; `message_handlers` are the root recipients it can reach
-    /// via `ActorUnprivilegedAddress::new(index)`. The actor is reachable from the root through
-    /// the returned address and through discovery.
     pub fn spawn<A>(
         self: &ActorEnvironmentReference<Self>,
         actor: A,
