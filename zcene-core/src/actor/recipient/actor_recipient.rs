@@ -1,6 +1,6 @@
 use crate::actor::{
-    ActorEnvironment, ActorEnvironmentAllocator, ActorFuture, ActorMailboxMessageSender,
-    ActorMessage, ActorMessageSender, ActorSendError, ActorWeakMailbox,
+    ActorEnvironment, ActorEnvironmentAllocator, ActorFuture, ActorRecipientMessageSender,
+    ActorMessage, ActorMessageSender, ActorSendError, ActorWeakRecipient,
 };
 use alloc::sync::Arc;
 use core::fmt::{self, Debug, Formatter};
@@ -9,15 +9,15 @@ use ztd::Constructor;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Constructor)]
-pub struct ActorMailbox<M, E>
+pub struct ActorRecipient<M, E>
 where
     M: ActorMessage,
     E: ActorEnvironment + ActorEnvironmentAllocator,
 {
-    caller: Arc<dyn ActorMailboxMessageSender<M, E> + Send + Sync, E::Allocator>,
+    caller: Arc<dyn ActorRecipientMessageSender<M, E> + Send + Sync, E::Allocator>,
 }
 
-impl<M, E> Clone for ActorMailbox<M, E>
+impl<M, E> Clone for ActorRecipient<M, E>
 where
     M: ActorMessage,
     E: ActorEnvironment + ActorEnvironmentAllocator,
@@ -29,17 +29,17 @@ where
     }
 }
 
-impl<M, E> Debug for ActorMailbox<M, E>
+impl<M, E> Debug for ActorRecipient<M, E>
 where
     M: ActorMessage,
     E: ActorEnvironment + ActorEnvironmentAllocator,
 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        formatter.debug_struct("ActorMailbox").finish()
+        formatter.debug_struct("ActorRecipient").finish()
     }
 }
 
-impl<M, E> ActorMessageSender<M> for ActorMailbox<M, E>
+impl<M, E> ActorMessageSender<M> for ActorRecipient<M, E>
 where
     M: ActorMessage,
     E: ActorEnvironment + ActorEnvironmentAllocator,
@@ -49,12 +49,12 @@ where
     }
 }
 
-impl<M, E> ActorMailbox<M, E>
+impl<M, E> ActorRecipient<M, E>
 where
     M: ActorMessage,
     E: ActorEnvironment + ActorEnvironmentAllocator,
 {
-    pub fn downgrade(&self) -> ActorWeakMailbox<M, E> {
-        ActorWeakMailbox::<M, E>::new(Arc::downgrade(&self.caller))
+    pub fn downgrade(&self) -> ActorWeakRecipient<M, E> {
+        ActorWeakRecipient::<M, E>::new(Arc::downgrade(&self.caller))
     }
 }

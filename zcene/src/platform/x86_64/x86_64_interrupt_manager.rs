@@ -4,8 +4,15 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::fmt::Debug;
 use core::mem::MaybeUninit;
+use core::sync::atomic::Ordering;
 use core::time::Duration;
 use crate::common::memory::allocator::ErasedAllocator;
+use crate::platform::x86_64::x86_64_unprivileged::{
+    X86_64_KERNEL_EXCEPTION_HANDLERS, x86_64_divide_error_entry_point,
+    x86_64_general_protection_fault_entry_point, x86_64_invalid_opcode_entry_point,
+    x86_64_page_fault_entry_point, x86_64_stack_segment_fault_entry_point,
+};
+use x86_64::VirtAddr;
 use crate::common::synchronization::Mutex;
 use crate::common::time::Timer;
 use crate::driver::xapic::XApic;
@@ -155,6 +162,10 @@ extern "x86-interrupt" fn unhandled_interrupt_entry_point_with_error_code<
         N, error_code, stack_frame
     );
 
+    if matches!(N, InterruptName::PageFault) {
+        println!("faulting address {:?}", x86_64::registers::control::Cr2::read());
+    }
+
     loop {}
 }
 
@@ -275,6 +286,31 @@ impl X86_64LocalInterruptManager {
                 _,
             >,
         );
+
+        // Exceptions raised by unprivileged code must not stop the core: route them back to the
+        // executor. Kernel-mode exceptions still end up in the handlers set above.
+        macro_rules! install {
+            ($entry:ident, $vector:expr, $entry_point:path) => {
+                X86_64_KERNEL_EXCEPTION_HANDLERS[$vector]
+                    .store(table.$entry.handler_addr().as_u64(), Ordering::Release);
+
+                unsafe {
+                    table
+                        .$entry
+                        .set_handler_addr(VirtAddr::new($entry_point as *const () as u64));
+                }
+            };
+        }
+
+        install!(divide_error, 0, x86_64_divide_error_entry_point);
+        install!(invalid_opcode, 6, x86_64_invalid_opcode_entry_point);
+        install!(stack_segment_fault, 12, x86_64_stack_segment_fault_entry_point);
+        install!(
+            general_protection_fault,
+            13,
+            x86_64_general_protection_fault_entry_point
+        );
+        install!(page_fault, 14, x86_64_page_fault_entry_point);
 
         let mut free_vectors = BTreeSet::new_in(memory_manager.heap_allocator());
 
@@ -522,7 +558,7 @@ impl X86_64InterruptManager {
 
     pub fn dispatch(&self, vector: InterruptVectorIdentifier) {
         // Cloning `Arc`s and dropping the lock immediately, instead of holding it across the
-        // handler calls below: those can take an unbounded amount of time (actor mailbox sends,
+        // handler calls below: those can take an unbounded amount of time (actor recipient sends,
         // allocation, ...), and this lock is shared across *all* cores' local managers, so
         // holding it that long would stall every other core's interrupt handling too.
         let handlers = self

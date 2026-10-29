@@ -58,9 +58,9 @@ where
 {
     /// Swap the actor instance behind this address for a different implementation that
     /// handles the same message type. The old instance is `destroy`ed and the new one
-    /// `create`d by whichever task is running the executor loop for this mailbox, in
+    /// `create`d by whichever task is running the executor loop for this recipient, in
     /// order relative to every other message already queued - no messages are lost and
-    /// every clone of this address/mailbox keeps working unchanged.
+    /// every clone of this address/recipient keeps working unchanged.
     pub fn migrate<A2>(&self, actor: A2) -> impl ActorFuture<'_, Result<(), ActorSendError>>
     where
         A2: Actor<E, Message = A::Message>,

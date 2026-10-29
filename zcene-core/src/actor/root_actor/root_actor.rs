@@ -1,6 +1,6 @@
 use crate::actor::{
     Actor, ActorCreateError, ActorEnvironment, ActorEnvironmentAllocator, ActorFuture,
-    ActorHandleError, ActorMailbox, RootActorMessage,
+    ActorHandleError, ActorRecipient, RootActorMessage,
 };
 use alloc::vec::Vec;
 
@@ -10,13 +10,13 @@ pub struct RootActor<E>
 where
     E: ActorEnvironment + ActorEnvironmentAllocator,
 {
-    children: Vec<ActorMailbox<(), E>, E::Allocator>,
+    children: Vec<ActorRecipient<(), E>, E::Allocator>,
 }
 
 impl<E> Actor<E> for RootActor<E>
 where
     E: ActorEnvironment + ActorEnvironmentAllocator,
-    for<'a> E::CreateContext<'a>: Into<ActorMailbox<(), E>>,
+    for<'a> E::CreateContext<'a>: Into<ActorRecipient<(), E>>,
     E::HandleContext<RootActorMessage<E>>: Into<RootActorMessage<E>>,
 {
     type Message = RootActorMessage<E>;
@@ -38,8 +38,8 @@ where
     ) -> impl ActorFuture<'_, Result<(), ActorHandleError>> {
         async move {
             match context.into() {
-                Self::Message::Attach(mailbox) => {
-                    self.children.push(mailbox);
+                Self::Message::Attach(recipient) => {
+                    self.children.push(recipient);
                 }
             }
 

@@ -2,7 +2,9 @@ mod platform;
 pub use platform::*;
 
 pub mod unprivileged_event;
-pub use unprivileged_event::{UnprivilegedEvent, UnprivilegedSystemCallEvent};
+pub use unprivileged_event::{
+    UnprivilegedEvent, UnprivilegedExceptionEvent, UnprivilegedSystemCallEvent,
+};
 
 #[cfg(feature = "x86_64")]
 pub mod x86_64;

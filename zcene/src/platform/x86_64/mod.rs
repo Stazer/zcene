@@ -10,7 +10,9 @@ mod x86_64_unprivileged_preemption_context;
 pub use x86_64_unprivileged_preemption_context::*;
 
 pub mod x86_64_unprivileged;
-pub use x86_64_unprivileged::{x86_64_system_call_entry_point, x86_64_deadline_preemption_entry_point};
+pub use x86_64_unprivileged::{
+    x86_64_deadline_preemption_entry_point, x86_64_system_call_entry_point,
+};
 
 mod x86_64_memory_manager;
 pub use x86_64_memory_manager::*;

@@ -15,6 +15,7 @@ pub enum X86_64MemoryManagerInitializeError {
     MapToErrorParentEntryHugePage,
     MapToErrorPageAlreadyMapped,
     AllocError(AllocError),
+    UserAccessGrantFailed,
 }
 
 impl From<AddressNotAligned> for X86_64MemoryManagerInitializeError {

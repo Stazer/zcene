@@ -157,8 +157,11 @@ impl Platform for X86_64Platform {
         }
     }
 
-    fn allocate_unprivileged_stack(&self) -> Option<u64> {
-        Some(self.memory.allocate_user_stack()?.start().as_u64())
+    fn allocate_unprivileged_memory(&self, size: usize) -> Option<&'static mut [u8]> {
+        let region = self.memory.allocate_user_memory(size)?;
+
+        // SAFETY: freshly allocated and mapped, and nothing else refers to it.
+        Some(unsafe { core::slice::from_raw_parts_mut(region.start().as_u64() as *mut u8, region.size()) })
     }
 
     fn set_preemption_deadline(&self, duration: Duration) {

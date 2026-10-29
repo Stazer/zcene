@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use pc_keyboard::DecodedKey;
 use zcene_core::actor::{
     Actor, ActorEnvironment, ActorEnvironmentAllocator, ActorFuture, ActorHandleError,
-    ActorMailbox,
+    ActorRecipient,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -13,13 +13,13 @@ pub struct KeyboardDecodedKeyMessage(DecodedKey);
 
 #[derive(Clone, Debug)]
 pub enum KeyboardMessage {
-    Subscription(ActorMailbox<KeyboardDecodedKeyMessage, ActorRootEnvironment>),
+    Subscription(ActorRecipient<KeyboardDecodedKeyMessage, ActorRootEnvironment>),
     Byte(u16),
 }
 
 pub struct KeyboardActor {
     subscriptions: Vec<
-        ActorMailbox<KeyboardDecodedKeyMessage, ActorRootEnvironment>,
+        ActorRecipient<KeyboardDecodedKeyMessage, ActorRootEnvironment>,
         <ActorRootEnvironment as ActorEnvironmentAllocator>::Allocator,
     >,
 }
@@ -41,7 +41,7 @@ impl Actor<ActorRootEnvironment> for KeyboardActor {
     ) -> impl ActorFuture<'a, Result<(), ActorHandleError>> {
         async move {
             match context.message() {
-                KeyboardMessage::Subscription(mailbox) => self.subscriptions.push(mailbox.clone()),
+                KeyboardMessage::Subscription(recipient) => self.subscriptions.push(recipient.clone()),
                 KeyboardMessage::Byte(_byte) => {}
             }
 

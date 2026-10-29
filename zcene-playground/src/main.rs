@@ -66,7 +66,7 @@ impl Actor<ActorRootEnvironment> for RootActor {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Looks up `RootActor`'s mailbox via `ActorDiscovery` (keyed by its message type, `PingMessage`)
+/// Looks up `RootActor`'s recipient via `ActorDiscovery` (keyed by its message type, `PingMessage`)
 /// instead of being handed it directly, to exercise `ActorRootEnvironment`'s automatic
 /// registration on `spawn`.
 #[derive(Default)]
@@ -79,16 +79,16 @@ impl Actor<ActorRootEnvironment> for LookupActor {
         &'a mut self,
         context: <ActorRootEnvironment as ActorEnvironment>::CreateContext<'a>,
     ) -> Result<(), ActorCreateError> {
-        let mailboxes = context.environment().discovery().lookup::<PingMessage>();
+        let recipients = context.environment().discovery().lookup::<PingMessage>();
 
         let _ = write!(
             context.environment().logger(),
-            "lookup: found {} mailbox(es) for PingMessage\n",
-            mailboxes.len(),
+            "lookup: found {} recipient(s) for PingMessage\n",
+            recipients.len(),
         );
 
-        for mailbox in mailboxes.iter() {
-            let _ = mailbox.send(PingMessage(999)).await;
+        for recipient in recipients.iter() {
+            let _ = recipient.send(PingMessage(999)).await;
         }
 
         Ok(())
@@ -188,7 +188,7 @@ mod unprivileged {
     use alloc::vec::Vec;
     use core::num::NonZero;
     use zcene::actor::{
-        ActorRootEnvironment, ActorUnprivilegedAddress, ActorUnprivilegedEnvironment,
+        ActorRootEnvironment, ActorUnprivilegedEnvironment, ActorUnprivilegedRecipient,
         ActorUnprivilegedMessageHandler, ActorUnprivilegedRootAddress,
     };
     use zcene::core::actor::{
@@ -200,8 +200,8 @@ mod unprivileged {
     pub const FORWARDED: u32 = 2_000_000_000;
 
     pub struct UnprivilegedActor {
-        // Index 0 of the handler list passed to `spawn_unprivileged`: `RootActor`.
-        root: ActorUnprivilegedAddress<UnprivilegedActor>,
+        // Index 0 of the handler list passed to `spawn`: `RootActor`.
+        root: ActorUnprivilegedRecipient<PingMessage>,
     }
 
     impl Actor<ActorUnprivilegedEnvironment> for UnprivilegedActor {
@@ -242,7 +242,7 @@ mod unprivileged {
         environment
             .unprivileged_environment()
             .spawn(
-                UnprivilegedActor { root: ActorUnprivilegedAddress::new(0) },
+                UnprivilegedActor { root: ActorUnprivilegedRecipient::new(0) },
                 NonZero::new(5),
                 handlers,
             )

@@ -7,7 +7,7 @@ use core::marker::PhantomData;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait ActorMailboxMessageSender<M, E>: Send + Sync + 'static
+pub trait ActorRecipientMessageSender<M, E>: Send + Sync + 'static
 where
     M: ActorMessage,
     E: ActorEnvironment + ActorEnvironmentAllocator,
@@ -15,7 +15,7 @@ where
     fn send(&self, message: M) -> ActorBoxFuture<'_, Result<(), ActorSendError>, E>;
 }
 
-impl<A, M, E, F> ActorMailboxMessageSender<M, E>
+impl<A, M, E, F> ActorRecipientMessageSender<M, E>
     for (ActorAddressReference<A, E>, PhantomData<(M, A)>, F)
 where
     A: Actor<E>,

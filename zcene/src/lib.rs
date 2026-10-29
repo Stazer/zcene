@@ -30,7 +30,7 @@ pub mod utility;
 
 pub use zcene_core as core;
 
-#[cfg(not(feature = "hosted"))]
+#[cfg(not(any(feature = "hosted", test)))]
 #[global_allocator]
 static GLOBAL_ALLOCATOR: common::memory::allocator::PanicHeapAllocator =
     common::memory::allocator::PanicHeapAllocator;

@@ -2,7 +2,7 @@ pub enum ActorUnprivilegedSystemCallKind {
     Continue,
     Preempt,
     Complete,
-    SendMessageCopy { mailbox: usize, message: *const () },
+    SendMessageCopy { recipient: usize, message: *const () },
     Unknown(usize),
 }
 
@@ -17,7 +17,7 @@ impl ActorUnprivilegedSystemCallKind {
             1 => Self::Preempt,
             2 => Self::Complete,
             3 => Self::SendMessageCopy {
-                mailbox: argument0 as usize,
+                recipient: argument0 as usize,
                 message: argument1 as *const (),
             },
             id => Self::Unknown(id),

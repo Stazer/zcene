@@ -14,7 +14,8 @@ pub trait Platform: Sized + Send + Sync + 'static {
 
     fn allocator(&self) -> Self::Allocator;
 
-    fn allocate_unprivileged_stack(&self) -> Option<u64>;
+    /// Allocates at least `size` bytes of zeroed memory an unprivileged actor may read and write.
+    fn allocate_unprivileged_memory(&self, size: usize) -> Option<&'static mut [u8]>;
     fn set_preemption_deadline(&self, duration: Duration);
     /// Stops a running preemption deadline, so it cannot expire while the kernel is busy with
     /// something else and then hit the next unprivileged execution immediately.

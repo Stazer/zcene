@@ -45,7 +45,7 @@ impl Platform for HostedPlatform {
         }
     }
 
-    fn allocate_unprivileged_stack(&self) -> Option<u64> {
+    fn allocate_unprivileged_memory(&self, _size: usize) -> Option<&'static mut [u8]> {
         todo!("hosted platform does not support unprivileged execution")
     }
 

@@ -85,18 +85,18 @@ where
 
         let address_reference = Arc::new_in(address.clone(), self.allocator().clone());
 
-        // The executor holds this mailbox for as long as the actor's task is actually running;
+        // The executor holds this recipient for as long as the actor's task is actually running;
         // `discovery` only keeps a weak reference, so an actor becomes unreachable through
         // lookup as soon as its task ends instead of being kept alive forever by the registry.
-        let mailbox = address_reference.mailbox()?;
+        let recipient = address_reference.recipient()?;
 
-        self.discovery.register(mailbox.clone());
+        self.discovery.register(recipient.clone());
 
         self.future_runtime.spawn(ActorRootEnvironmentExecutor::new(
             self.clone(),
             actor,
             receiver,
-            mailbox,
+            recipient,
         ))?;
 
         Ok(address)

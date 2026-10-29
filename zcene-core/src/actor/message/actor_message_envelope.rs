@@ -3,9 +3,9 @@ use alloc::boxed::Box;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// What actually flows through a channel-backed mailbox: either a regular message for the
+/// What actually flows through a channel-backed recipient: either a regular message for the
 /// currently running actor, or a request to replace that actor with a different
-/// implementation (same message type) without losing the mailbox's identity or any
+/// implementation (same message type) without losing the recipient's identity or any
 /// messages still queued behind it.
 pub enum ActorMessageEnvelope<M, E>
 where

@@ -23,7 +23,9 @@ use x86_64::structures::paging::Page;
 use x86_64::structures::paging::PageTable;
 use x86_64::structures::paging::PageTableFlags;
 use x86_64::structures::paging::Size4KiB;
-use x86_64::structures::paging::{Mapper, PhysFrame};
+use x86_64::structures::paging::mapper::TranslateResult;
+use x86_64::structures::paging::{Mapper, PhysFrame, Translate};
+use crate::common::linker_value;
 use x86_64::{PhysAddr, VirtAddr};
 use ztd::Method;
 
@@ -302,7 +304,9 @@ impl X86_64MemoryManager {
                             continue;
                         }
 
-                        entry4.set_flags(entry4.flags() | PageTableFlags::USER_ACCESSIBLE);
+                        // Deliberately no `USER_ACCESSIBLE` on the pages themselves: ring 3
+                        // only gets what `grant_user_access` hands out below. The tables above
+                        // need the bit, or a page could never be made accessible later.
                     }
                 }
             }
@@ -311,6 +315,41 @@ impl X86_64MemoryManager {
         let a = Cr3::read_raw();
         unsafe {
             Cr3::write_raw(a.0, a.1);
+        }
+
+        // What unprivileged actors may use of the kernel image: code to run, constants and vtables
+        // to read. Everything else stays kernel-only.
+        // SAFETY: the symbols are defined by `linker.ld`.
+        let (executable, readable, read_only) = unsafe {
+            (
+                linker_value(&USER_EXECUTABLE_START)..linker_value(&USER_EXECUTABLE_END),
+                linker_value(&USER_READABLE_START)..linker_value(&USER_READABLE_END),
+                linker_value(&USER_READ_ONLY_START)..linker_value(&USER_READ_ONLY_END),
+            )
+        };
+
+        for (range, write_protect) in [(executable, false), (readable, false), (read_only, true)] {
+            for address in range.step_by(FRAME_SIZE) {
+                let page = Page::<Size4KiB>::from_start_address(VirtAddr::new(address as u64))?;
+
+                let mut flags = match page_table_mapper.translate(page.start_address()) {
+                    TranslateResult::Mapped { flags, .. } => flags,
+                    _ => return Err(X86_64MemoryManagerInitializeError::UserAccessGrantFailed),
+                };
+
+                flags |= PageTableFlags::USER_ACCESSIBLE;
+
+                if write_protect {
+                    flags.remove(PageTableFlags::WRITABLE);
+                }
+
+                unsafe {
+                    page_table_mapper
+                        .update_flags(page, flags)
+                        .map_err(|_error| X86_64MemoryManagerInitializeError::UserAccessGrantFailed)?
+                        .flush();
+                }
+            }
         }
 
         for (_i, heap_frame_identifier) in this.frame_allocator
@@ -331,12 +370,7 @@ impl X86_64MemoryManager {
                             current_address,
                         )),
                         PhysFrame::from_start_address(PhysAddr::new(physical_address.as_u64()))?,
-                        // Unprivileged actors run kernel code and read their actor state and
-                        // messages straight from the kernel heap, so it has to be reachable
-                        // from ring 3 as well.
-                        PageTableFlags::PRESENT
-                            | PageTableFlags::WRITABLE
-                            | PageTableFlags::USER_ACCESSIBLE,
+                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
                         &mut KernelMemoryManagerFrameAllocator::new(&this),
                     )?
                     .flush();
@@ -438,49 +472,48 @@ impl X86_64MemoryManager {
         }
     }
 
-    pub fn allocate_user_stack(&self) -> Option<VirtualMemoryRegion> {
-        let stack_frame_count = 8;
-        let stack_size = stack_frame_count * FRAME_SIZE;
-
-        let mut first_address = 0;
+    /// Allocates `size` bytes (rounded up to whole frames) of zeroed memory that ring 3 may read,
+    /// write, but not execute. Physically contiguous, mapped at its physical address.
+    pub fn allocate_user_memory(&self, size: usize) -> Option<VirtualMemoryRegion> {
+        let frame_count = size.div_ceil(FRAME_SIZE).max(1);
         let mut mapper = self.page_table_mapper();
 
-        for stack_frame_identifier in self.frame_allocator().allocate_window(8).unwrap() {
-            let stack_address = self
+        let mut base = None;
+
+        for frame_identifier in self.frame_allocator().allocate_window(frame_count).ok()? {
+            let address = self
                 .frame_allocator()
-                .translate_frame_identifier(stack_frame_identifier)
-                .as_usize();
+                .translate_frame_identifier(frame_identifier)
+                .as_u64();
 
-            let page = Page::<Size4KiB>::containing_address(VirtAddr::new(
-                (stack_address).try_into().unwrap(),
-            ));
+            let page = Page::<Size4KiB>::containing_address(VirtAddr::new(address));
 
-            if first_address == 0 {
-                first_address = page.start_address().as_u64() + stack_size as u64;
-            }
+            base.get_or_insert(page.start_address().as_u64());
 
             unsafe {
                 mapper
                     .map_to(
                         page,
-                        PhysFrame::from_start_address(PhysAddr::new(
-                            stack_address.try_into().unwrap(),
-                        ))
-                        .unwrap(),
+                        PhysFrame::from_start_address(PhysAddr::new(address)).ok()?,
                         PageTableFlags::PRESENT
                             | PageTableFlags::WRITABLE
                             | PageTableFlags::USER_ACCESSIBLE
                             | PageTableFlags::NO_EXECUTE,
                         &mut KernelMemoryManagerFrameAllocator::new(self),
                     )
-                    .expect("Hello World")
+                    .ok()?
                     .flush();
             }
         }
 
-        let first_address = VirtualMemoryAddress::from(first_address);
+        let base = base?;
 
-        Some(VirtualMemoryRegion::new(first_address, stack_size))
+        unsafe { core::ptr::write_bytes(base as *mut u8, 0, frame_count * FRAME_SIZE) };
+
+        Some(VirtualMemoryRegion::new(
+            VirtualMemoryAddress::from(base),
+            frame_count * FRAME_SIZE,
+        ))
     }
 
     pub fn allocate_stack(&self) -> Option<VirtualMemoryRegion> {
@@ -620,3 +653,12 @@ impl<'a> AcpiHandler for KernelMemoryManagerAcpiHandler<'a> {
 
 use crate::common::memory::allocator::ErasedAllocator;
 
+
+unsafe extern "C" {
+    static USER_EXECUTABLE_START: usize;
+    static USER_EXECUTABLE_END: usize;
+    static USER_READABLE_START: usize;
+    static USER_READABLE_END: usize;
+    static USER_READ_ONLY_START: usize;
+    static USER_READ_ONLY_END: usize;
+}

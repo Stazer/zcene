@@ -7,7 +7,7 @@ use crate::actor::{
 
 /// Object-safe view of [`Actor`](crate::actor::Actor), so an executor can hold an actor
 /// behind a `Box<dyn ActorDyn<E, Message = M>, _>` and swap the concrete implementation at
-/// runtime (actor migration) without changing the message type flowing through the mailbox.
+/// runtime (actor migration) without changing the message type flowing through the recipient.
 pub trait ActorDyn<E>: Send + Sync + 'static
 where
     E: ActorEnvironment + ActorEnvironmentAllocator,

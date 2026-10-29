@@ -1,4 +1,7 @@
-use crate::platform::unprivileged_event::{UnprivilegedEvent, UnprivilegedSystemCallEvent};
+use crate::platform::unprivileged_event::{
+    UnprivilegedEvent, UnprivilegedExceptionEvent, UnprivilegedSystemCallEvent,
+};
+use core::sync::atomic::AtomicU64;
 use crate::platform::x86_64::{
     X86_64UnprivilegedPreemptionContext, X86_64UnprivilegedSystemCallContext,
 };
@@ -127,6 +130,85 @@ pub unsafe extern "C" fn x86_64_deadline_preemption_entry_point() {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/// Where the exception entry points below continue when the exception came from the kernel
+/// itself: the handler the IDT had for that vector before they were installed. Indexed by vector.
+pub static X86_64_KERNEL_EXCEPTION_HANDLERS: [AtomicU64; 32] = [const { AtomicU64::new(0) }; 32];
+
+/// Defines an IDT entry point for exception `$vector`. From ring 3 it behaves like the system call
+/// entry point: it switches to the kernel stack saved by the last `execute`/`resume` and returns
+/// into the executor with an `Exception` event, abandoning the faulting code. From ring 0 it hands
+/// over to the previous handler untouched.
+macro_rules! exception_entry_point {
+    ($name:ident, $vector:expr, error_code) => {
+        #[unsafe(naked)]
+        pub unsafe extern "C" fn $name() {
+            naked_asm!(
+                // CPU pushed: error code, rip, cs, rflags, rsp, ss (rsp0 stack, as we came from ring 3).
+                "test qword ptr [rsp + 16], 3",
+                "jz 2f",
+                "pop r9",
+                "mov r10, [rsp]",
+                "mov r8, cr2",
+                "mov r11d, {vector}",
+                "mov ecx, 0xC0000102",
+                "rdmsr",
+                "shl rdx, 32",
+                "or rax, rdx",
+                "mov rsp, rax",
+                "pop rcx",
+                "mov rdi, r11",
+                "mov rsi, r9",
+                "mov rdx, r10",
+                "jmp x86_64_unprivileged_exception_restore",
+                "hlt",
+                "2:",
+                "jmp qword ptr [rip + {table} + {offset}]",
+                vector = const $vector,
+                table = sym X86_64_KERNEL_EXCEPTION_HANDLERS,
+                offset = const ($vector * 8),
+            )
+        }
+    };
+    ($name:ident, $vector:expr) => {
+        #[unsafe(naked)]
+        pub unsafe extern "C" fn $name() {
+            naked_asm!(
+                // CPU pushed: rip, cs, rflags, rsp, ss.
+                "test qword ptr [rsp + 8], 3",
+                "jz 2f",
+                "xor r9d, r9d",
+                "mov r10, [rsp]",
+                "mov r8, cr2",
+                "mov r11d, {vector}",
+                "mov ecx, 0xC0000102",
+                "rdmsr",
+                "shl rdx, 32",
+                "or rax, rdx",
+                "mov rsp, rax",
+                "pop rcx",
+                "mov rdi, r11",
+                "mov rsi, r9",
+                "mov rdx, r10",
+                "jmp x86_64_unprivileged_exception_restore",
+                "hlt",
+                "2:",
+                "jmp qword ptr [rip + {table} + {offset}]",
+                vector = const $vector,
+                table = sym X86_64_KERNEL_EXCEPTION_HANDLERS,
+                offset = const ($vector * 8),
+            )
+        }
+    };
+}
+
+exception_entry_point!(x86_64_divide_error_entry_point, 0);
+exception_entry_point!(x86_64_invalid_opcode_entry_point, 6);
+exception_entry_point!(x86_64_stack_segment_fault_entry_point, 12, error_code);
+exception_entry_point!(x86_64_general_protection_fault_entry_point, 13, error_code);
+exception_entry_point!(x86_64_page_fault_entry_point, 14, error_code);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 /// Called (via tail-call jmp) from `x86_64_system_call_entry_point`.
 ///
 /// Arguments follow the C ABI after the entry point's register setup:
@@ -163,6 +245,29 @@ pub extern "C" fn x86_64_unprivileged_system_call_restore(
         argument0,
         argument1,
         context: X86_64UnprivilegedSystemCallContext::new(rsp, rip, rflags),
+    }));
+}
+
+/// Called (via tail-call jmp) from the exception entry points above.
+///
+/// - rdi = vector
+/// - rsi = error code (0 if the vector has none)
+/// - rdx = instruction pointer of the faulting instruction
+/// - rcx = &mut Option<X86_64UnprivilegedEvent>
+/// - r8 = CR2
+#[unsafe(no_mangle)]
+pub extern "C" fn x86_64_unprivileged_exception_restore(
+    vector: u64,
+    error_code: u64,
+    instruction_pointer: u64,
+    event: &mut Option<X86_64UnprivilegedEvent>,
+    address: u64,
+) {
+    *event = Some(UnprivilegedEvent::Exception(UnprivilegedExceptionEvent {
+        vector,
+        error_code,
+        instruction_pointer,
+        address,
     }));
 }
 

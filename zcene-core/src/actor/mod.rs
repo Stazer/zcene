@@ -12,7 +12,7 @@ mod discovery;
 mod environment;
 mod error;
 //mod inline_actor;
-mod mailbox;
+mod recipient;
 mod message;
 //mod root_actor;
 
@@ -30,6 +30,6 @@ pub use discovery::*;
 pub use environment::*;
 pub use error::*;
 //pub use inline_actor::*;
-pub use mailbox::*;
+pub use recipient::*;
 pub use message::*;
 //pub use root_actor::*;

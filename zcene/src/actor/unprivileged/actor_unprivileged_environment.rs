@@ -10,7 +10,7 @@ use alloc::vec::Vec;
 use core::num::NonZero;
 use zcene_core::actor::{
     Actor, ActorAllocator, ActorCommonHandleContext, ActorEnvironment, ActorEnvironmentAllocator,
-    ActorEnvironmentReference, ActorMailbox, ActorMessage, ActorMessageChannel,
+    ActorEnvironmentReference, ActorRecipient, ActorMessage, ActorMessageChannel,
     ActorMessageChannelAddress, ActorMessageEnvelope, ActorSpawnError, ActorAddressExt,
     ActorDiscovery,
 };
@@ -76,7 +76,7 @@ where
 impl ActorUnprivilegedEnvironment {
 
     /// Spawns `actor` unprivileged (ring 3 on x86_64). `deadline_in_milliseconds` bounds how long
-    /// it may run before being preempted; `message_handlers` are the root mailboxes it can reach
+    /// it may run before being preempted; `message_handlers` are the root recipients it can reach
     /// via `ActorUnprivilegedAddress::new(index)`. The actor is reachable from the root through
     /// the returned address and through discovery.
     pub fn spawn<A>(
@@ -98,18 +98,18 @@ impl ActorUnprivilegedEnvironment {
 
         let address = ActorUnprivilegedRootAddress::<A>::new(sender, allocator.clone());
         let address_reference = Arc::new_in(address.clone(), allocator);
-        let mailbox: ActorMailbox<A::Message, ActorRootEnvironment> = address_reference.mailbox()?;
+        let recipient: ActorRecipient<A::Message, ActorRootEnvironment> = address_reference.recipient()?;
 
-        root.discovery().register(mailbox.clone());
+        root.discovery().register(recipient.clone());
 
         root.future_runtime().spawn(ActorUnprivilegedExecutor::<A>::new(
             root.clone(),
             actor,
             receiver,
-            mailbox,
+            recipient,
             deadline_in_milliseconds,
             message_handlers,
-        ))?;
+        )?)?;
 
         Ok(address)
     }
