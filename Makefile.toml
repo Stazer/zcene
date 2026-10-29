@@ -54,19 +54,11 @@ args = [
 ]
 command = "cargo"
 
-[tasks.run-example-migration]
+[tasks.run-example]
 args = [
     "run",
     "--package", "examples",
-    "--example", "migration",
-]
-command = "cargo"
-
-[tasks.run-example-lookup]
-args = [
-    "run",
-    "--package", "examples",
-    "--example", "lookup",
+    "--example", "${EXAMPLE}",
 ]
 command = "cargo"
 

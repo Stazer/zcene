@@ -209,7 +209,9 @@ pub extern "C" fn x86_64_execute_in_unprivileged(
             in("rdi") argument,
             in("rsi") message,
             event = in(reg) event,
-            stack = in(reg) stack,
+            // `entry` is jumped to, not called: start 8 bytes below the (16-byte aligned) top so
+            // it sees the stack alignment the C ABI expects right after a `call`.
+            stack = in(reg) stack - 8,
             entry = in(reg) entry,
             in("r11") RFlags::FLAGS_IF.bits(),
             out("rax") _,

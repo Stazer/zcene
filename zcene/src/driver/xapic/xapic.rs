@@ -54,13 +54,13 @@ impl<'a> XApic<'a> {
     }
 
     pub fn enable_oneshot(&mut self, vector: u8, ticks: u32) {
-        self.registers.timer_initial_count_mut().write(ticks);
-        self.registers.timer_divide_mut().write(0);
-        //0b1011);
+        // Same divider as `calibrate`, so `ticks` means what the calibration measured.
+        self.registers.timer_divide_mut().write(0b1011);
 
-        self.registers
-            .lvt_timer_mut()
-            .write(0x40000 | (vector as u32));
+        // Timer mode bits 17-18 = 00 is one-shot (0x40000 would be TSC-deadline mode, which
+        // ignores the initial count).
+        self.registers.lvt_timer_mut().write(vector as u32);
+        self.registers.timer_initial_count_mut().write(ticks);
     }
 
     pub fn reset_oneshot(&mut self, ticks: u32) {

@@ -72,6 +72,18 @@ pub fn start_application_processors(platform: &X86_64Platform) {
         return;
     };
 
+    // Same APIC ID assumption as `prepare_application_processor_stacks`.
+    for identifier in 1..=application_processor_count {
+        if platform.prepare_application_execution_unit(identifier).is_none() {
+            let _ = write!(
+                platform.logger().writer(),
+                "smp: could not prepare application processor state, staying single-core\n",
+            );
+
+            return;
+        }
+    }
+
     // Everything an application processor could read (environment, GDT/IDT, trampoline, stacks)
     // is in place now, so it is safe to let them past their spin wait.
     AP_READY.store(true, Ordering::Release);
@@ -107,6 +119,8 @@ pub extern "C" fn application_processor_entry_point() -> ! {
         .platform()
         .interrupt_manager()
         .load_bootstrap_descriptor_table();
+
+    environment.platform().initialize_application_processor();
 
     environment.future_runtime().run();
 

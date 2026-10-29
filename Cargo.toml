@@ -3,7 +3,10 @@ name = "examples"
 version = "0.0.0"
 edition = "2021"
 
-[dependencies]
+[target.'cfg(target_os = "none")'.dependencies]
+zcene = { path = "zcene", default-features = false, features = ["x86_64"] }
+
+[target.'cfg(not(target_os = "none"))'.dependencies]
 zcene = { path = "zcene", default-features = false, features = ["hosted"] }
 
 [workspace]

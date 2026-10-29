@@ -331,7 +331,12 @@ impl X86_64MemoryManager {
                             current_address,
                         )),
                         PhysFrame::from_start_address(PhysAddr::new(physical_address.as_u64()))?,
-                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                        // Unprivileged actors run kernel code and read their actor state and
+                        // messages straight from the kernel heap, so it has to be reachable
+                        // from ring 3 as well.
+                        PageTableFlags::PRESENT
+                            | PageTableFlags::WRITABLE
+                            | PageTableFlags::USER_ACCESSIBLE,
                         &mut KernelMemoryManagerFrameAllocator::new(&this),
                     )?
                     .flush();

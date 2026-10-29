@@ -10,20 +10,11 @@ use crate::platform::x86_64::{
 };
 use crate::platform::Platform;
 use core::fmt::Write;
-use x86_64::structures::gdt::GlobalDescriptorTable;
-use x86_64::structures::gdt::{Descriptor, DescriptorFlags};
-use x86_64::structures::tss::TaskStateSegment;
-use core::time::Duration;
-use alloc::boxed::Box;
-use x86::current::rflags::RFlags;
-use crate::platform::x86_64::x86_64_system_call_entry_point;
-use x86::msr::{IA32_EFER, rdmsr, wrmsr};
-use x86::msr::{IA32_FMASK, IA32_LSTAR, IA32_STAR};
-use x86_64::VirtAddr;
-use x86_64::instructions::segmentation::Segment;
-use x86_64::instructions::tables::load_tss;
-use x86_64::registers::segmentation::CS;
 use crate::common::memory::allocator::ErasedAllocator;
+use crate::common::synchronization::Mutex;
+use crate::platform::x86_64::{current_execution_unit_identifier, ExecutionUnitIdentifier, X86_64ExecutionUnit};
+use alloc::collections::BTreeMap;
+use core::time::Duration;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -33,11 +24,13 @@ pub struct X86_64Platform {
     timer: TimerService,
     interrupt_manager: X86_64InterruptManager,
     rsdp_address: Option<u64>,
-    // Kept alive: the GDT/TSS registers hold raw pointers into these allocations.
+    // Kept alive: the GDTR/TR of the bootstrap core point into it.
     #[allow(dead_code)]
-    global_descriptor_table: Box<GlobalDescriptorTable, ErasedAllocator>,
-    #[allow(dead_code)]
-    task_state_segment: Box<TaskStateSegment, ErasedAllocator>,
+    execution_unit: X86_64ExecutionUnit,
+    // Prepared by the bootstrap core before application processors start, so they do not have
+    // to allocate frames concurrently. Never removed: their GDTR/TR point into them.
+    application_execution_units:
+        Mutex<BTreeMap<ExecutionUnitIdentifier, X86_64ExecutionUnit, ErasedAllocator>>,
 }
 
 impl X86_64Platform {
@@ -68,6 +61,27 @@ impl X86_64Platform {
     /// processors read it as soon as they land in Rust.
     pub fn start_application_processors(&self) {
         crate::platform::x86_64::smp::start_application_processors(self);
+    }
+
+    /// Prepares the per-core state for application processor `identifier`.
+    pub(crate) fn prepare_application_execution_unit(&self, identifier: ExecutionUnitIdentifier) -> Option<()> {
+        let execution_unit = X86_64ExecutionUnit::new(&self.memory)?;
+        self.application_execution_units.lock().insert(identifier, execution_unit);
+        Some(())
+    }
+
+    /// Called on an application processor right after it boots: loads its GDT/TSS/syscall MSRs
+    /// and sets up its local APIC timer for preemption.
+    pub(crate) fn initialize_application_processor(&self) {
+        let identifier = current_execution_unit_identifier();
+
+        if let Some(execution_unit) = self.application_execution_units.lock().get(&identifier) {
+            // SAFETY: each identifier is loaded exactly once, by its own core, and the entry is
+            // never removed.
+            unsafe { execution_unit.load() };
+        }
+
+        self.interrupt_manager.initialize_application_processor_local_apic();
     }
 }
 
@@ -110,51 +124,8 @@ impl Platform for X86_64Platform {
             .and_then(|rsdp_address| TimerService::from_hpet(rsdp_address, &memory))
             .unwrap_or_else(TimerService::new);
 
-        let ring0_stack = memory
-            .allocate_stack()
-            .unwrap()
-            .start()
-            .as_u64();
-
-        let timer_stack = memory
-            .allocate_stack()
-            .unwrap()
-            .start()
-            .as_u64();
-
-        unsafe {
-            wrmsr(IA32_EFER, rdmsr(IA32_EFER) | 1);
-        }
-
-        let mut global_descriptor_table = Box::new_in(GlobalDescriptorTable::new(), memory.heap_allocator());
-        let kernel_code_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_CODE64.bits()));
-        let _kernel_data_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::KERNEL_DATA.bits()));
-        let user_code32_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE32.bits()));
-        let _user_data_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::USER_DATA.bits()));
-        let _user_code64_segment_selector = global_descriptor_table.append(Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits()));
-
-        let mut task_state_segment = Box::new_in(TaskStateSegment::new(), memory.heap_allocator());
-        task_state_segment.privilege_stack_table[0] = VirtAddr::new(ring0_stack);
-        task_state_segment.interrupt_stack_table[0] = VirtAddr::new(timer_stack);
-        task_state_segment.iomap_base = 0xFFFF;
-
-        let task_state_segment_selector = global_descriptor_table.append(
-            unsafe {
-                Descriptor::tss_segment_unchecked(&*task_state_segment)
-            }
-        );
-        let ia32_star_selector =
-            (u64::from(user_code32_segment_selector.0) << 48)
-            | (u64::from(kernel_code_segment_selector.0) << 32);
-
-        unsafe {
-            global_descriptor_table.load_unsafe();
-            CS::set_reg(kernel_code_segment_selector);
-            load_tss(task_state_segment_selector);
-            wrmsr(IA32_STAR, ia32_star_selector);
-            wrmsr(IA32_LSTAR, x86_64_system_call_entry_point as *const () as u64);
-            wrmsr(IA32_FMASK, RFlags::FLAGS_IF.bits());
-        }
+        let execution_unit = X86_64ExecutionUnit::new(&memory).unwrap();
+        unsafe { execution_unit.load() };
 
         // The naked handler takes no typed argument (it reads the interrupt stack frame
         // itself via rsp), so its address is reinterpreted as the x86-interrupt ABI
@@ -168,20 +139,21 @@ impl Platform for X86_64Platform {
         // Requires the TSS (loaded above) to already be in place: allocated interrupt
         // vectors are pinned to IST slot 0, i.e. `timer_stack`.
         let mut local_interrupt_manager = X86_64LocalInterruptManager::new(&timer, &memory);
+        // Configured but not started: unprivileged executors arm it per run.
         local_interrupt_manager
-            .enable_oneshot(deadline_preemption_entry_point, Duration::from_millis(1));
+            .enable_oneshot(deadline_preemption_entry_point, Duration::ZERO);
 
         let mut interrupt_manager = X86_64InterruptManager::new(memory.heap_allocator());
         interrupt_manager.bootstrap_local_interrupt_manager(local_interrupt_manager);
 
         Self {
             logger,
-            memory,
             timer,
             interrupt_manager,
             rsdp_address,
-            global_descriptor_table,
-            task_state_segment,
+            application_execution_units: Mutex::new(BTreeMap::new_in(memory.heap_allocator())),
+            memory,
+            execution_unit,
         }
     }
 
@@ -191,6 +163,11 @@ impl Platform for X86_64Platform {
 
     fn set_preemption_deadline(&self, duration: Duration) {
         self.interrupt_manager.reset_oneshot(duration);
+    }
+
+    fn clear_preemption_deadline(&self) {
+        // An initial count of zero stops the one-shot timer.
+        self.interrupt_manager.reset_oneshot(Duration::ZERO);
     }
 
     fn notify_end_of_interrupt(&self) {

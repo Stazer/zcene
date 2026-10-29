@@ -2,6 +2,7 @@ use crate::actor::{
     ActorRootEnvironmentCreateContext, ActorRootEnvironmentDestroyContext,
     ActorRootEnvironmentExecutor, ActorRootEnvironmentHandleContext,
 };
+use crate::actor::unprivileged::ActorUnprivilegedEnvironment;
 use crate::common::time::Timer;
 use crate::platform::ActivePlatform;
 use crate::platform::Platform;
@@ -28,6 +29,7 @@ where
     future_runtime: FutureRuntimeReference<H>,
     platform: P,
     discovery: ActorSpinDiscovery<Self>,
+    unprivileged_environment: ActorEnvironmentReference<ActorUnprivilegedEnvironment<<H as FutureRuntimeHandler>::Allocator>>,
 }
 
 impl<H, P> ActorEnvironment for ActorRootEnvironment<H, P>
@@ -100,6 +102,13 @@ where
         Ok(address)
     }
 
+    /// The environment for spawning unprivileged actors.
+    pub fn unprivileged_environment(
+        &self,
+    ) -> &ActorEnvironmentReference<ActorUnprivilegedEnvironment<<H as FutureRuntimeHandler>::Allocator>> {
+        &self.unprivileged_environment
+    }
+
     pub fn platform(&self) -> &P {
         &self.platform
     }
@@ -131,7 +140,12 @@ where
         let runtime = FutureRuntime::new(handler(allocator.clone())).unwrap();
         let discovery = ActorSpinDiscovery::new_in(allocator.clone());
 
-        Arc::new_in(Self::new(runtime, platform, discovery), allocator)
+        let unprivileged_environment = ActorUnprivilegedEnvironment::new(allocator.clone());
+
+        Arc::new_in(
+            Self::new(runtime, platform, discovery, unprivileged_environment),
+            allocator,
+        )
     }
 
     pub fn enter(&self) -> Result<(), ActorEnterError> {

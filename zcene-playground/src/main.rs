@@ -22,7 +22,7 @@ use zcene::driver::ps2::keyboard::KeyboardActor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PingMessage(u32);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -117,6 +117,9 @@ impl Actor<ActorRootEnvironment> for PingActor {
             .spawn(RootActor::default())
             .unwrap();
 
+        #[cfg(target_os = "none")]
+        let unprivileged = unprivileged::spawn(&root);
+
         let _lookup = ActorRootEnvironment::get()
             .spawn(LookupActor::default())
             .unwrap();
@@ -126,6 +129,11 @@ impl Actor<ActorRootEnvironment> for PingActor {
 
             if root.send(PingMessage(counter)).await.is_err() {
                 break;
+            }
+
+            #[cfg(target_os = "none")]
+            if counter % 3 == 0 {
+                let _ = unprivileged.send(PingMessage(counter)).await;
             }
 
             // The runtime is cooperative: an unbounded channel's `send` never actually returns
@@ -168,6 +176,82 @@ fn yield_now() -> impl Future<Output = ()> {
 
     YieldNow(false)
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/// An actor running in ring 3. It cannot log (port I/O and `cli` fault outside ring 0), so it
+/// proves it ran by forwarding every ping to `RootActor` with an offset, via a system call.
+#[cfg(target_os = "none")]
+mod unprivileged {
+    use super::{PingMessage, RootActor};
+    use alloc::boxed::Box;
+    use alloc::vec::Vec;
+    use core::num::NonZero;
+    use zcene::actor::{
+        ActorRootEnvironment, ActorUnprivilegedAddress, ActorUnprivilegedEnvironment,
+        ActorUnprivilegedMessageHandler, ActorUnprivilegedRootAddress,
+    };
+    use zcene::core::actor::{
+        Actor, ActorCreateError, ActorEnvironment, ActorEnvironmentAllocator, ActorHandleError,
+        ActorMessageChannelAddress, ActorMessageSender,
+    };
+
+    pub const CREATED: u32 = 1_000_000_000;
+    pub const FORWARDED: u32 = 2_000_000_000;
+
+    pub struct UnprivilegedActor {
+        // Index 0 of the handler list passed to `spawn_unprivileged`: `RootActor`.
+        root: ActorUnprivilegedAddress<UnprivilegedActor>,
+    }
+
+    impl Actor<ActorUnprivilegedEnvironment> for UnprivilegedActor {
+        type Message = PingMessage;
+
+        async fn create<'a>(
+            &'a mut self,
+            _context: <ActorUnprivilegedEnvironment as ActorEnvironment>::CreateContext<'a>,
+        ) -> Result<(), ActorCreateError> {
+            let _ = self.root.send(PingMessage(CREATED)).await;
+            Ok(())
+        }
+
+        async fn handle<'a>(
+            &'a mut self,
+            context: <ActorUnprivilegedEnvironment as ActorEnvironment>::HandleContext<'a, Self::Message>,
+        ) -> Result<(), ActorHandleError> {
+            // Long enough to overrun the deadline a few times, so preemption is exercised.
+            for _ in 0..3_000_000u64 {
+                core::hint::spin_loop();
+            }
+
+            let _ = self.root.send(PingMessage(FORWARDED + context.message().0)).await;
+            Ok(())
+        }
+    }
+
+    pub fn spawn(
+        root: &ActorMessageChannelAddress<RootActor, ActorRootEnvironment>,
+    ) -> ActorUnprivilegedRootAddress<UnprivilegedActor> {
+        let environment = ActorRootEnvironment::get();
+        let allocator = environment.allocator().clone();
+
+        let mut handlers = Vec::new_in(allocator.clone());
+        handlers.push(Box::new_in(root.clone(), allocator.clone())
+            as Box<dyn ActorUnprivilegedMessageHandler<ActorRootEnvironment> + Send + Sync, _>);
+
+        environment
+            .unprivileged_environment()
+            .spawn(
+                UnprivilegedActor { root: ActorUnprivilegedAddress::new(0) },
+                NonZero::new(5),
+                handlers,
+            )
+            .unwrap()
+    }
+}
+
+#[cfg(target_os = "none")]
+extern crate alloc;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

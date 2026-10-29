@@ -53,6 +53,10 @@ impl Platform for HostedPlatform {
         todo!("hosted platform does not support preemption")
     }
 
+    fn clear_preemption_deadline(&self) {
+        todo!("hosted platform does not support preemption")
+    }
+
     fn notify_end_of_interrupt(&self) {
         todo!("hosted platform does not support interrupts")
     }

@@ -49,6 +49,7 @@ pub struct X86_64LocalInterruptManager {
     descriptor_table: Box<InterruptDescriptorTable, ErasedAllocator>,
     free_vectors: BTreeSet<InterruptVectorIdentifier, ErasedAllocator>,
     handlers: Box<[Vec<InterruptHandler, ErasedAllocator>; 256], ErasedAllocator>,
+    oneshot_vector: Option<InterruptVectorIdentifier>,
 }
 
 pub type InterruptIdentifier = u8;
@@ -341,6 +342,7 @@ impl X86_64LocalInterruptManager {
                 free_vectors,
                 descriptor_table: table,
                 handlers,
+                oneshot_vector: None,
             };
         }
 
@@ -419,6 +421,7 @@ impl X86_64LocalInterruptManager {
                 ticks_per_millisecond,
             } => unsafe {
                 let vector = self.allocate(entry_point).unwrap();
+                self.oneshot_vector = Some(vector);
 
                 let mut xapic = XApic::new((base as *mut XApicRegisters).as_mut().unwrap());
 
@@ -461,6 +464,23 @@ impl X86_64LocalInterruptManager {
     pub fn load_descriptor_table(&self) {
         unsafe {
             self.descriptor_table.load_unsafe();
+        }
+    }
+
+    /// Configures the calling core's local APIC like the bootstrap core's: software-enabled and
+    /// with the one-shot timer on the same vector (stopped). The xAPIC MMIO window is per core
+    /// at the same address, so the bootstrap core's base works here too.
+    pub fn initialize_current_local_apic(&self) {
+        if let X86_64X86_64LocalInterruptManagerType::XAPIC { base, .. } = self.r#type {
+            unsafe {
+                let mut xapic = XApic::new((base as *mut XApicRegisters).as_mut().unwrap());
+                // An application processor comes out of INIT with its local APIC disabled.
+                xapic.set_spurious_interrupt_vector(0xFF);
+
+                if let Some(vector) = self.oneshot_vector {
+                    xapic.enable_oneshot(vector, 0);
+                }
+            }
         }
     }
 
@@ -536,6 +556,14 @@ impl X86_64InterruptManager {
             .get(&0)
             .unwrap()
             .load_descriptor_table();
+    }
+
+    pub fn initialize_application_processor_local_apic(&self) {
+        self.local_interrupt_managers
+            .lock()
+            .get(&0)
+            .unwrap()
+            .initialize_current_local_apic();
     }
 
     pub fn bootstrap_xapic_base(&self) -> Option<*mut u32> {

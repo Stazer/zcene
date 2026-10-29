@@ -16,6 +16,9 @@ pub trait Platform: Sized + Send + Sync + 'static {
 
     fn allocate_unprivileged_stack(&self) -> Option<u64>;
     fn set_preemption_deadline(&self, duration: Duration);
+    /// Stops a running preemption deadline, so it cannot expire while the kernel is busy with
+    /// something else and then hit the next unprivileged execution immediately.
+    fn clear_preemption_deadline(&self);
     fn notify_end_of_interrupt(&self);
 
     fn execute_in_unprivileged(

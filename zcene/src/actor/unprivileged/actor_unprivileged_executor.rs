@@ -1,10 +1,11 @@
 use crate::actor::root::ActorRootEnvironment;
-use crate::actor::unprivileged::{ActorUnprivilegedEnvironment, ActorUnprivilegedMessageHandler};
-use crate::common::memory::allocator::LeakingHeapMemoryAllocator;
-use crate::actor::unprivileged::ActorUnprivilegedSystemCallKind;
-use crate::platform::{Platform, UnprivilegedEvent};
+use crate::actor::unprivileged::{
+    ActorUnprivilegedEnvironment, ActorUnprivilegedMessageHandlers,
+    ActorUnprivilegedSystemCallKind,
+};
+use crate::common::memory::allocator::ErasedAllocator;
+use crate::platform::{ActivePlatform, Platform, UnprivilegedEvent};
 use alloc::boxed::Box;
-use alloc::vec::Vec;
 use core::future::Future;
 use core::marker::PhantomData;
 use core::num::NonZero;
@@ -13,132 +14,79 @@ use core::task::{Context, Poll, Waker};
 use core::time::Duration;
 use zcene_core::actor::{
     Actor, ActorCommonHandleContext, ActorEnvironmentAllocator, ActorEnvironmentReference,
-    ActorMessageChannelReceiver,
+    ActorMailbox, ActorMessageChannelReceiver, ActorMessageEnvelope,
 };
-use zcene_core::future::runtime::FutureRuntimeHandler;
 use zcene_core::future::r#yield;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-type PlatformEvent<P> = UnprivilegedEvent<
+type P = ActivePlatform;
+
+type PlatformEvent = UnprivilegedEvent<
     <P as Platform>::UnprivilegedSystemCallContext,
     <P as Platform>::UnprivilegedPreemptionContext,
 >;
 
+type ActorUnprivilegedReceiver<AI> = ActorMessageChannelReceiver<
+    ActorMessageEnvelope<<AI as Actor<ActorUnprivilegedEnvironment>>::Message, ActorRootEnvironment>,
+    ErasedAllocator,
+>;
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct ActorUnprivilegedExecutorInner<AI, AR, H, P>
+/// Stand-in for an unprivileged actor on the root side, so it can be addressed through a regular
+/// `ActorMessageChannelAddress`. It is never instantiated or run.
+pub struct ActorUnprivilegedRootProxy<AI>(PhantomData<fn() -> AI>);
+
+impl<AI> Actor<ActorRootEnvironment> for ActorUnprivilegedRootProxy<AI>
 where
     AI: Actor<ActorUnprivilegedEnvironment>,
-    AR: Actor<ActorRootEnvironment<H, P>, Message = AI::Message>,
-    H: FutureRuntimeHandler,
-    P: Platform,
 {
-    environment: ActorEnvironmentReference<ActorRootEnvironment<H, P>>,
-    actor: Box<AI>,
-    receiver: ActorMessageChannelReceiver<
-        AR::Message,
-        <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
-    >,
-    deadline_in_milliseconds: Option<NonZero<usize>>,
-    message_handlers: Vec<
-        Box<
-            dyn ActorUnprivilegedMessageHandler<ActorRootEnvironment<H, P>> + Send + Sync,
-            <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
-        >,
-        <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
-    >,
-    marker: PhantomData<(AR, H)>,
+    type Message = AI::Message;
 }
 
-impl<AI, AR, H, P> ActorUnprivilegedExecutorInner<AI, AR, H, P>
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub struct ActorUnprivilegedExecutorInner<AI>
 where
     AI: Actor<ActorUnprivilegedEnvironment>,
-    AR: Actor<ActorRootEnvironment<H, P>, Message = AI::Message>,
-    H: FutureRuntimeHandler,
-    P: Platform,
 {
-    fn new(
-        environment: ActorEnvironmentReference<ActorRootEnvironment<H, P>>,
-        actor: Box<AI>,
-        receiver: ActorMessageChannelReceiver<
-        AR::Message,
-        <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
-    >,
-        deadline_in_milliseconds: Option<NonZero<usize>>,
-        message_handlers: Vec<
-            Box<
-                dyn ActorUnprivilegedMessageHandler<ActorRootEnvironment<H, P>> + Send + Sync,
-                <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
-            >,
-            <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
-        >,
-    ) -> Self {
-        Self {
-            environment,
-            actor,
-            receiver,
-            deadline_in_milliseconds,
-            message_handlers,
-            marker: PhantomData,
-        }
-    }
+    environment: ActorEnvironmentReference<ActorRootEnvironment>,
+    actor: Box<AI, ErasedAllocator>,
+    receiver: ActorUnprivilegedReceiver<AI>,
+    // Held for the task's lifetime so discovery's weak entry stays upgradable while running.
+    _mailbox: ActorMailbox<AI::Message, ActorRootEnvironment>,
+    deadline_in_milliseconds: Option<NonZero<usize>>,
+    message_handlers: ActorUnprivilegedMessageHandlers,
+}
 
+impl<AI> ActorUnprivilegedExecutorInner<AI>
+where
+    AI: Actor<ActorUnprivilegedEnvironment>,
+{
     async fn run(mut self) {
-        self.run_phase(|actor, event, stack| {
-            P::execute_in_unprivileged(
-                actor as *mut (),
-                core::ptr::null(),
-                event,
-                stack,
-                unsafe {
-                    core::mem::transmute::<
-                        extern "C" fn(*mut AI, *const ()) -> !,
-                        extern "C" fn(*mut (), *const ()) -> !,
-                    >(Self::create_entry)
-                },
-            );
-        })
-        .await;
+        // One stack per actor, reused by every phase: a phase always runs to completion before
+        // the next one starts, so nothing on it is live in between.
+        let Some(stack) = self.environment.platform().allocate_unprivileged_stack() else {
+            return;
+        };
 
-        loop {
-            let message = match self.receiver.receive().await {
-                None => break,
-                Some(m) => m,
-            };
-
-            self.run_phase(|actor, event, stack| {
-                P::execute_in_unprivileged(
-                    actor as *mut (),
-                    &message as *const AI::Message as *const (),
-                    event,
-                    stack,
-                    unsafe {
-                        core::mem::transmute::<
-                            extern "C" fn(*mut AI, *const AI::Message) -> !,
-                            extern "C" fn(*mut (), *const ()) -> !,
-                        >(Self::handle_entry)
-                    },
-                );
-            })
+        self.run_phase(stack, None, Self::create_entry)
             .await;
+
+        while let Some(envelope) = self.receiver.receive().await {
+            match envelope {
+                ActorMessageEnvelope::Message(message) => {
+                    self.run_phase(stack, Some(&message), Self::handle_entry)
+                        .await;
+                }
+                // Migration swaps in a root actor, which cannot run unprivileged.
+                ActorMessageEnvelope::Migrate(_) => {}
+            }
         }
 
-        self.run_phase(|actor, event, stack| {
-            P::execute_in_unprivileged(
-                actor as *mut (),
-                core::ptr::null(),
-                event,
-                stack,
-                unsafe {
-                    core::mem::transmute::<
-                        extern "C" fn(*mut AI, *const ()) -> !,
-                        extern "C" fn(*mut (), *const ()) -> !,
-                    >(Self::destroy_entry)
-                },
-            );
-        })
-        .await;
+        self.run_phase(stack, None, Self::destroy_entry)
+            .await;
     }
 
     fn enable_deadline(&self) {
@@ -149,18 +97,35 @@ where
         }
     }
 
-    #[inline(never)]
-    async fn run_phase<F>(&mut self, execute: F)
-    where
-        F: FnOnce(*mut AI, &mut Option<PlatformEvent<P>>, u64),
-    {
-        let mut event: Option<PlatformEvent<P>> = None;
+    fn disable_deadline(&self) {
+        if self.deadline_in_milliseconds.is_some() {
+            self.environment.platform().clear_preemption_deadline();
+        }
+    }
 
-        let stack = self.environment.platform().allocate_unprivileged_stack().unwrap();
+    #[inline(never)]
+    async fn run_phase(
+        &mut self,
+        stack: u64,
+        message: Option<&AI::Message>,
+        entry: extern "C" fn(*mut AI, *const ()) -> !,
+    ) {
+        let mut event: Option<PlatformEvent> = None;
 
         self.enable_deadline();
 
-        execute(Box::as_mut_ptr(&mut self.actor), &mut event, stack);
+        P::execute_in_unprivileged(
+            Box::as_mut_ptr(&mut self.actor) as *mut (),
+            message.map_or(core::ptr::null(), |message| message as *const AI::Message as *const ()),
+            &mut event,
+            stack,
+            unsafe {
+                core::mem::transmute::<
+                    extern "C" fn(*mut AI, *const ()) -> !,
+                    extern "C" fn(*mut (), *const ()) -> !,
+                >(entry)
+            },
+        );
 
         loop {
             match event.take() {
@@ -179,6 +144,7 @@ where
                         }
 
                         ActorUnprivilegedSystemCallKind::Preempt => {
+                            self.disable_deadline();
                             r#yield().await;
                             self.enable_deadline();
                             P::resume_after_system_call(&syscall.context, &mut event);
@@ -200,6 +166,7 @@ where
 
                 Some(UnprivilegedEvent::Preemption(context)) => {
                     self.environment.platform().notify_end_of_interrupt();
+                    self.disable_deadline();
                     r#yield().await;
                     self.enable_deadline();
                     P::resume_after_preemption(&context, &mut event);
@@ -208,94 +175,77 @@ where
                 Some(UnprivilegedEvent::Exception) => break,
             }
         }
+
+        self.disable_deadline();
     }
 
+    // The entry points below run in ring 3. They borrow the actor instead of taking ownership:
+    // it lives across phases and is owned (and eventually dropped) by the executor.
+
     extern "C" fn create_entry(actor: *mut AI, _message: *const ()) -> ! {
-        let mut actor = unsafe { Box::from_raw_in(actor, LeakingHeapMemoryAllocator) };
-        let mut ctx = Context::from_waker(Waker::noop());
-        let mut fut = pin!(actor.create(()));
-        let _result = match fut.as_mut().poll(&mut ctx) {
-            Poll::Pending => todo!(),
-            Poll::Ready(r) => r,
-        };
+        let actor = unsafe { &mut *actor };
+        let _ = Self::poll_to_completion(actor.create(()));
         P::complete_unprivileged_execution()
     }
 
-    extern "C" fn handle_entry(actor: *mut AI, message: *const AI::Message) -> ! {
-        let mut actor = unsafe { Box::from_raw_in(actor, LeakingHeapMemoryAllocator) };
-        let message = unsafe { message.as_ref().unwrap() };
-        let mut ctx = Context::from_waker(Waker::noop());
-        let mut fut = pin!(actor.handle(ActorCommonHandleContext::new(message.clone())));
-        let _result = match fut.as_mut().poll(&mut ctx) {
-            Poll::Pending => todo!(),
-            Poll::Ready(r) => r,
-        };
+    extern "C" fn handle_entry(actor: *mut AI, message: *const ()) -> ! {
+        let actor = unsafe { &mut *actor };
+        let message = unsafe { &*(message as *const AI::Message) };
+        let _ = Self::poll_to_completion(actor.handle(ActorCommonHandleContext::new(message.clone())));
         P::complete_unprivileged_execution()
     }
 
     extern "C" fn destroy_entry(actor: *mut AI, _message: *const ()) -> ! {
-        let mut actor = unsafe { Box::from_raw_in(actor, LeakingHeapMemoryAllocator) };
-        let mut ctx = Context::from_waker(Waker::noop());
-        let mut fut = pin!(actor.destroy(()));
-        let _result = match fut.as_mut().poll(&mut ctx) {
-            Poll::Pending => todo!(),
-            Poll::Ready(r) => r,
-        };
+        let actor = unsafe { &mut *actor };
+        let _ = Self::poll_to_completion(actor.destroy(()));
         P::complete_unprivileged_execution()
+    }
+
+    /// Unprivileged actors have no waker infrastructure yet, so their futures must complete on
+    /// the first poll. Waiting has to go through a system call instead.
+    fn poll_to_completion<F: Future>(future: F) -> F::Output {
+        let mut context = Context::from_waker(Waker::noop());
+        match pin!(future).poll(&mut context) {
+            Poll::Ready(result) => result,
+            Poll::Pending => todo!("unprivileged actor futures must not return Pending"),
+        }
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct ActorUnprivilegedExecutor<AI, AR, H, P>
+pub struct ActorUnprivilegedExecutor<AI>
 where
     AI: Actor<ActorUnprivilegedEnvironment>,
-    AR: Actor<ActorRootEnvironment<H, P>, Message = AI::Message>,
-    H: FutureRuntimeHandler,
-    P: Platform,
 {
-    future: Pin<
-        Box<
-            dyn Future<Output = ()> + Send + 'static,
-            <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
-        >,
-    >,
-    _marker: PhantomData<fn() -> (AI, AR, H, P)>,
+    future: Pin<Box<dyn Future<Output = ()> + Send + 'static, ErasedAllocator>>,
+    _marker: PhantomData<fn() -> AI>,
 }
 
-impl<AI, AR, H, P> ActorUnprivilegedExecutor<AI, AR, H, P>
+impl<AI> ActorUnprivilegedExecutor<AI>
 where
     AI: Actor<ActorUnprivilegedEnvironment>,
-    AR: Actor<ActorRootEnvironment<H, P>, Message = AI::Message>,
-    H: FutureRuntimeHandler,
-    P: Platform,
-    ActorUnprivilegedExecutorInner<AI, AR, H, P>: Send + 'static,
+    ActorUnprivilegedExecutorInner<AI>: Send + 'static,
 {
     pub fn new(
-        environment: ActorEnvironmentReference<ActorRootEnvironment<H, P>>,
-        actor: Box<AI>,
-        receiver: ActorMessageChannelReceiver<
-        AR::Message,
-        <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
-    >,
+        environment: ActorEnvironmentReference<ActorRootEnvironment>,
+        actor: AI,
+        receiver: ActorUnprivilegedReceiver<AI>,
+        mailbox: ActorMailbox<AI::Message, ActorRootEnvironment>,
         deadline_in_milliseconds: Option<NonZero<usize>>,
-        message_handlers: Vec<
-            Box<
-                dyn ActorUnprivilegedMessageHandler<ActorRootEnvironment<H, P>> + Send + Sync,
-                <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
-            >,
-            <ActorRootEnvironment<H, P> as ActorEnvironmentAllocator>::Allocator,
-        >,
+        message_handlers: ActorUnprivilegedMessageHandlers,
     ) -> Self {
         let allocator = environment.allocator().clone();
 
-        let inner = ActorUnprivilegedExecutorInner::<AI, AR, H, P>::new(
+        let inner = ActorUnprivilegedExecutorInner::<AI> {
+            actor: Box::new_in(actor, allocator.clone()),
             environment,
-            actor,
             receiver,
+            _mailbox: mailbox,
             deadline_in_milliseconds,
             message_handlers,
-        );
+        };
+
         Self {
             future: Box::pin_in(inner.run(), allocator),
             _marker: PhantomData,
@@ -303,12 +253,9 @@ where
     }
 }
 
-impl<AI, AR, H, P> Future for ActorUnprivilegedExecutor<AI, AR, H, P>
+impl<AI> Future for ActorUnprivilegedExecutor<AI>
 where
     AI: Actor<ActorUnprivilegedEnvironment>,
-    AR: Actor<ActorRootEnvironment<H, P>, Message = AI::Message>,
-    H: FutureRuntimeHandler,
-    P: Platform,
 {
     type Output = ();
 

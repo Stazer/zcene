@@ -15,6 +15,9 @@ pub use x86_64_unprivileged::{x86_64_system_call_entry_point, x86_64_deadline_pr
 mod x86_64_memory_manager;
 pub use x86_64_memory_manager::*;
 
+mod x86_64_execution_unit;
+pub use x86_64_execution_unit::*;
+
 mod x86_64_memory_manager_initialize_error;
 pub use x86_64_memory_manager_initialize_error::*;
 
