@@ -6,8 +6,6 @@ pub enum ActorUnprivilegedSystemCallKind {
     Unknown(usize),
 }
 
-// SAFETY: raw message pointer is a snapshot of a register value from a single-threaded kernel;
-// the kernel never migrates execution between hardware threads.
 unsafe impl Send for ActorUnprivilegedSystemCallKind {}
 
 impl ActorUnprivilegedSystemCallKind {

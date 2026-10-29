@@ -12,15 +12,9 @@ use x86_64::VirtAddr;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Per-core state needed to enter and leave unprivileged mode: a GDT with user segments, a TSS
-/// (ring 0 stack for exceptions from ring 3, IST slot 0 for the preemption interrupt) and the
-/// `syscall`/`sysret` MSRs.
-///
-/// Every core needs its own instance: a TSS is marked busy once loaded, so it cannot be shared.
-/// The selector layout is the same on every core.
 pub struct X86_64ExecutionUnit {
     global_descriptor_table: Box<GlobalDescriptorTable, ErasedAllocator>,
-    // The GDT's TSS descriptor points into this allocation.
+
     #[allow(dead_code)]
     task_state_segment: Box<TaskStateSegment, ErasedAllocator>,
     kernel_code_segment_selector: SegmentSelector,
@@ -29,12 +23,11 @@ pub struct X86_64ExecutionUnit {
     system_call_target_selectors: u64,
 }
 
-// SAFETY: only plain descriptor data; it is loaded by exactly one core.
 unsafe impl Send for X86_64ExecutionUnit {}
 unsafe impl Sync for X86_64ExecutionUnit {}
 
 impl X86_64ExecutionUnit {
-    /// Allocates the stacks and tables. Does not touch the current core; see `load`.
+
     pub fn new(memory: &X86_64MemoryManager) -> Option<Self> {
         let privileged_stack = memory.allocate_stack()?.start().as_u64();
         let preemption_stack = memory.allocate_stack()?.start().as_u64();
@@ -46,8 +39,7 @@ impl X86_64ExecutionUnit {
             .append(Descriptor::UserSegment(DescriptorFlags::KERNEL_CODE64.bits()));
         let kernel_data_segment_selector = global_descriptor_table
             .append(Descriptor::UserSegment(DescriptorFlags::KERNEL_DATA.bits()));
-        // `sysret` derives the user selectors from this one: SS = +8, CS = +16. The 32-bit code
-        // segment itself is unused.
+
         let user_code32_segment_selector = global_descriptor_table
             .append(Descriptor::UserSegment(DescriptorFlags::USER_CODE32.bits()));
         let _user_data_segment_selector = global_descriptor_table
@@ -76,14 +68,9 @@ impl X86_64ExecutionUnit {
         })
     }
 
-    /// Loads this unit into the calling core.
-    ///
-    /// # Safety
-    ///
-    /// Must be called at most once, on one core, and `self` must outlive that core's use of it.
     pub unsafe fn load(&self) {
         unsafe {
-            // EFER.SCE: enable `syscall`/`sysret`.
+
             wrmsr(IA32_EFER, rdmsr(IA32_EFER) | 1);
 
             self.global_descriptor_table.load_unsafe();
@@ -93,7 +80,7 @@ impl X86_64ExecutionUnit {
 
             wrmsr(IA32_STAR, self.system_call_target_selectors);
             wrmsr(IA32_LSTAR, x86_64_system_call_entry_point as *const () as u64);
-            // Interrupts stay off in the kernel.
+
             wrmsr(IA32_FMASK, RFlags::FLAGS_IF.bits());
         }
     }

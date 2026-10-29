@@ -1,40 +1,30 @@
 use crate::actor::root::ActorRootEnvironment;
 use crate::actor::unprivileged::{
-    ActorUnprivilegedAddress, ActorUnprivilegedExecutor, ActorUnprivilegedMessageHandler,
-    ActorUnprivilegedRootProxy,
+    ActorUnprivilegedAddress, ActorUnprivilegedExecutor, ActorUnprivilegedKernelPerspective,
+    ActorUnprivilegedMessageHandlers, ActorUnprivilegedPerspective, ActorUnprivilegedRecipient,
+    ActorUnprivilegedUserPerspective,
 };
 use crate::common::memory::allocator::ErasedAllocator;
-use alloc::boxed::Box;
 use alloc::sync::Arc;
-use alloc::vec::Vec;
+use core::marker::PhantomData;
 use core::num::NonZero;
 use zcene_core::actor::{
-    Actor, ActorAllocator, ActorCommonHandleContext, ActorEnvironment, ActorEnvironmentAllocator,
-    ActorEnvironmentReference, ActorRecipient, ActorMessage, ActorMessageChannel,
-    ActorMessageChannelAddress, ActorMessageEnvelope, ActorSpawnError, ActorAddressExt,
-    ActorDiscovery,
+    Actor, ActorAllocator, ActorCommonHandleContext, ActorDiscovery, ActorEnvironment,
+    ActorEnvironmentAllocator, ActorEnvironmentReference, ActorMessage, ActorMessageChannel,
+    ActorMessageEnvelope, ActorRecipient, ActorSpawnError,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub type ActorUnprivilegedMessageHandlers = Vec<
-    Box<dyn ActorUnprivilegedMessageHandler<ActorRootEnvironment> + Send + Sync, ErasedAllocator>,
-    ErasedAllocator,
->;
-
-/// Address of an unprivileged actor as seen from the root environment.
-pub type ActorUnprivilegedRootAddress<A> =
-    ActorMessageChannelAddress<ActorUnprivilegedRootProxy<A>, ActorRootEnvironment>;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// The environment unprivileged actors are spawned into. It is part of every
-/// `ActorRootEnvironment` (see `ActorRootEnvironment::unprivileged_environment`).
-pub struct ActorUnprivilegedEnvironment<A = ErasedAllocator>
-where
+pub struct ActorUnprivilegedEnvironment<
+    P = ActorUnprivilegedUserPerspective,
+    A = ErasedAllocator,
+> where
+    P: ActorUnprivilegedPerspective,
     A: ActorAllocator,
 {
     allocator: A,
+    marker: PhantomData<fn() -> P>,
 }
 
 impl ActorEnvironment for ActorUnprivilegedEnvironment {
@@ -53,7 +43,7 @@ impl ActorEnvironment for ActorUnprivilegedEnvironment {
     type DestroyContext<'a> = ();
 }
 
-impl<A> ActorEnvironmentAllocator for ActorUnprivilegedEnvironment<A>
+impl<A> ActorEnvironmentAllocator for ActorUnprivilegedEnvironment<ActorUnprivilegedKernelPerspective, A>
 where
     A: ActorAllocator,
 {
@@ -64,22 +54,33 @@ where
     }
 }
 
-impl<A> ActorUnprivilegedEnvironment<A>
+impl<A> ActorUnprivilegedEnvironment<ActorUnprivilegedKernelPerspective, A>
 where
     A: ActorAllocator,
 {
     pub(crate) fn new(allocator: A) -> ActorEnvironmentReference<Self> {
-        Arc::new_in(Self { allocator: allocator.clone() }, allocator)
+        Arc::new_in(
+            Self {
+                allocator: allocator.clone(),
+                marker: PhantomData,
+            },
+            allocator,
+        )
     }
 }
 
-impl ActorUnprivilegedEnvironment {
+impl ActorUnprivilegedEnvironment<ActorUnprivilegedKernelPerspective, ErasedAllocator> {
+
+    pub fn handlers(&self) -> ActorUnprivilegedMessageHandlers {
+        ActorUnprivilegedMessageHandlers::new(self.allocator.clone())
+    }
+
     pub fn spawn<A>(
         self: &ActorEnvironmentReference<Self>,
         actor: A,
         deadline_in_milliseconds: Option<NonZero<usize>>,
         message_handlers: ActorUnprivilegedMessageHandlers,
-    ) -> Result<ActorUnprivilegedRootAddress<A>, ActorSpawnError>
+    ) -> Result<ActorUnprivilegedAddress<A, ActorUnprivilegedKernelPerspective>, ActorSpawnError>
     where
         A: Actor<ActorUnprivilegedEnvironment>,
     {
@@ -91,9 +92,8 @@ impl ActorUnprivilegedEnvironment {
                 allocator.clone(),
             );
 
-        let address = ActorUnprivilegedRootAddress::<A>::new(sender, allocator.clone());
-        let address_reference = Arc::new_in(address.clone(), allocator);
-        let recipient: ActorRecipient<A::Message, ActorRootEnvironment> = address_reference.recipient()?;
+        let recipient: ActorRecipient<A::Message, ActorRootEnvironment> =
+            ActorRecipient::from_channel(sender, allocator)?;
 
         root.discovery().register(recipient.clone());
 
@@ -101,11 +101,13 @@ impl ActorUnprivilegedEnvironment {
             root.clone(),
             actor,
             receiver,
-            recipient,
+            recipient.clone(),
             deadline_in_milliseconds,
             message_handlers,
         )?)?;
 
-        Ok(address)
+        Ok(ActorUnprivilegedAddress::new(
+            ActorUnprivilegedRecipient::from_recipient(recipient),
+        ))
     }
 }

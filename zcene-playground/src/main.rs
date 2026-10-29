@@ -184,23 +184,21 @@ fn yield_now() -> impl Future<Output = ()> {
 #[cfg(target_os = "none")]
 mod unprivileged {
     use super::{PingMessage, RootActor};
-    use alloc::boxed::Box;
-    use alloc::vec::Vec;
     use core::num::NonZero;
     use zcene::actor::{
-        ActorRootEnvironment, ActorUnprivilegedEnvironment, ActorUnprivilegedRecipient,
-        ActorUnprivilegedMessageHandler, ActorUnprivilegedRootAddress,
+        ActorRootEnvironment, ActorUnprivilegedAddress, ActorUnprivilegedEnvironment,
+        ActorUnprivilegedKernelPerspective, ActorUnprivilegedRecipient,
     };
     use zcene::core::actor::{
-        Actor, ActorCreateError, ActorEnvironment, ActorEnvironmentAllocator, ActorHandleError,
-        ActorMessageChannelAddress, ActorMessageSender,
+        Actor, ActorCreateError, ActorEnvironment, ActorHandleError, ActorMessageChannelAddress,
+        ActorMessageSender,
     };
 
     pub const CREATED: u32 = 1_000_000_000;
     pub const FORWARDED: u32 = 2_000_000_000;
 
     pub struct UnprivilegedActor {
-        // Index 0 of the handler list passed to `spawn`: `RootActor`.
+        // Granted by the handlers passed to `spawn`: `RootActor`.
         root: ActorUnprivilegedRecipient<PingMessage>,
     }
 
@@ -231,21 +229,14 @@ mod unprivileged {
 
     pub fn spawn(
         root: &ActorMessageChannelAddress<RootActor, ActorRootEnvironment>,
-    ) -> ActorUnprivilegedRootAddress<UnprivilegedActor> {
-        let environment = ActorRootEnvironment::get();
-        let allocator = environment.allocator().clone();
+    ) -> ActorUnprivilegedAddress<UnprivilegedActor, ActorUnprivilegedKernelPerspective> {
+        let environment = ActorRootEnvironment::get().unprivileged_environment();
 
-        let mut handlers = Vec::new_in(allocator.clone());
-        handlers.push(Box::new_in(root.clone(), allocator.clone())
-            as Box<dyn ActorUnprivilegedMessageHandler<ActorRootEnvironment> + Send + Sync, _>);
+        let mut handlers = environment.handlers();
+        let root = handlers.grant_address(root).unwrap();
 
         environment
-            .unprivileged_environment()
-            .spawn(
-                UnprivilegedActor { root: ActorUnprivilegedRecipient::new(0) },
-                NonZero::new(5),
-                handlers,
-            )
+            .spawn(UnprivilegedActor { root }, NonZero::new(5), handlers)
             .unwrap()
     }
 }

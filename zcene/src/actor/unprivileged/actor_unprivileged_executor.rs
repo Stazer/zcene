@@ -31,9 +31,9 @@ type PlatformEvent = UnprivilegedEvent<
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PhaseOutcome {
-    /// The actor finished normally, via the `Complete` system call.
+
     Completed,
-    /// The actor raised an exception or misused the system call interface.
+
     Faulted,
 }
 
@@ -44,19 +44,6 @@ type ActorUnprivilegedReceiver<AI> = ActorMessageChannelReceiver<
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Stand-in for an unprivileged actor on the root side, so it can be addressed through a regular
-/// `ActorMessageChannelAddress`. It is never instantiated or run.
-pub struct ActorUnprivilegedRootProxy<AI>(PhantomData<fn() -> AI>);
-
-impl<AI> Actor<ActorRootEnvironment> for ActorUnprivilegedRootProxy<AI>
-where
-    AI: Actor<ActorUnprivilegedEnvironment>,
-{
-    type Message = AI::Message;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
 pub struct ActorUnprivilegedExecutorInner<AI>
 where
     AI: Actor<ActorUnprivilegedEnvironment>,
@@ -64,7 +51,7 @@ where
     environment: ActorEnvironmentReference<ActorRootEnvironment>,
     memory: ActorUnprivilegedMemory<AI>,
     receiver: ActorUnprivilegedReceiver<AI>,
-    // Held for the task's lifetime so discovery's weak entry stays upgradable while running.
+
     _recipient: ActorRecipient<AI::Message, ActorRootEnvironment>,
     deadline_in_milliseconds: Option<NonZero<usize>>,
     message_handlers: ActorUnprivilegedMessageHandlers,
@@ -82,22 +69,20 @@ where
         while let Some(envelope) = self.receiver.receive().await {
             match envelope {
                 ActorMessageEnvelope::Message(message) => {
-                    // The actor can only read its own memory, so the message is moved in.
+
                     let message = self.memory.store_message(message);
 
-                    // SAFETY: the slot keeps the message alive until `drop_message` below.
                     let outcome = self
                         .run_phase(Some(unsafe { &*message }), Self::handle_entry)
                         .await;
 
-                    // A faulted actor may have scribbled over its message, so leave it alone.
                     if outcome == PhaseOutcome::Faulted {
                         return self.memory.poison();
                     }
 
                     unsafe { self.memory.drop_message() };
                 }
-                // Migration swaps in a root actor, which cannot run unprivileged.
+
                 ActorMessageEnvelope::Migrate(_) => {}
             }
         }
@@ -215,9 +200,6 @@ where
         outcome
     }
 
-    // The entry points below run in ring 3. They borrow the actor instead of taking ownership:
-    // it lives across phases and is owned (and eventually dropped) by the executor.
-
     extern "C" fn create_entry(actor: *mut AI, _message: *const ()) -> ! {
         let actor = unsafe { &mut *actor };
         let _ = Self::poll_to_completion(actor.create(()));
@@ -237,8 +219,6 @@ where
         P::complete_unprivileged_execution()
     }
 
-    /// Unprivileged actors have no waker infrastructure yet, so their futures must complete on
-    /// the first poll. Waiting has to go through a system call instead.
     fn poll_to_completion<F: Future>(future: F) -> F::Output {
         let mut context = Context::from_waker(Waker::noop());
         match pin!(future).poll(&mut context) {

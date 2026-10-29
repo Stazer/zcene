@@ -2,7 +2,7 @@ use crate::actor::{
     ActorRootEnvironmentCreateContext, ActorRootEnvironmentDestroyContext,
     ActorRootEnvironmentExecutor, ActorRootEnvironmentHandleContext,
 };
-use crate::actor::unprivileged::ActorUnprivilegedEnvironment;
+use crate::actor::unprivileged::{ActorUnprivilegedEnvironment, ActorUnprivilegedKernelPerspective};
 use crate::common::time::Timer;
 use crate::platform::ActivePlatform;
 use crate::platform::Platform;
@@ -29,7 +29,9 @@ where
     future_runtime: FutureRuntimeReference<H>,
     platform: P,
     discovery: ActorSpinDiscovery<Self>,
-    unprivileged_environment: ActorEnvironmentReference<ActorUnprivilegedEnvironment<<H as FutureRuntimeHandler>::Allocator>>,
+    unprivileged_environment: ActorEnvironmentReference<
+        ActorUnprivilegedEnvironment<ActorUnprivilegedKernelPerspective, <H as FutureRuntimeHandler>::Allocator>,
+    >,
 }
 
 impl<H, P> ActorEnvironment for ActorRootEnvironment<H, P>
@@ -105,7 +107,9 @@ where
     /// The environment for spawning unprivileged actors.
     pub fn unprivileged_environment(
         &self,
-    ) -> &ActorEnvironmentReference<ActorUnprivilegedEnvironment<<H as FutureRuntimeHandler>::Allocator>> {
+    ) -> &ActorEnvironmentReference<
+        ActorUnprivilegedEnvironment<ActorUnprivilegedKernelPerspective, <H as FutureRuntimeHandler>::Allocator>,
+    > {
         &self.unprivileged_environment
     }
 

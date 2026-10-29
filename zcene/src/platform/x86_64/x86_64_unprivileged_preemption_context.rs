@@ -16,7 +16,7 @@ pub struct X86_64UnprivilegedPreemptionContext {
     pub r13: u64,
     pub r14: u64,
     pub r15: u64,
-    // CPU-pushed interrupt frame
+
     pub rip: u64,
     pub cs: u64,
     pub rflags: u64,

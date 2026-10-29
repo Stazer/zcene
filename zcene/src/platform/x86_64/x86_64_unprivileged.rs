@@ -63,41 +63,32 @@ macro_rules! save_kernel_stack {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// System call entry point registered via IA32_LSTAR MSR.
-///
-/// On syscall: rcx = user rip, r11 = user rflags, rsp = user rsp.
-/// r8 = second argument (message pointer for SendMessageCopy).
-/// The kernel stack (saved in KernelGSBase) holds: [event_ptr, return_addr, callee_saved_regs].
 #[unsafe(naked)]
 pub unsafe extern "C" fn x86_64_system_call_entry_point() -> ! {
     naked_asm!(
-        // Save user context registers that syscall doesn't preserve
-        "mov r9, rcx",   // user rip (rcx clobbered by syscall)
-        "mov r10, rsp",  // user rsp
-        // Load kernel stack from KernelGSBase MSR
+
+        "mov r9, rcx",
+        "mov r10, rsp",
+
         "mov rcx, 0xC0000102",
         "rdmsr",
         "shl rdx, 32",
         "or rax, rdx",
         "mov rsp, rax",
-        // Translate r8 (message pointer) into rdx for the restore fn (arg2)
+
         "mov rdx, r8",
-        // Pop event pointer (was pushed before sysretq in execute_in_unprivileged)
+
         "pop rcx",
-        // Tail-call restore; on return, execution continues at the saved return address
+
         "jmp x86_64_unprivileged_system_call_restore",
         "hlt",
     )
 }
 
-/// Deadline preemption interrupt handler (x86-interrupt ABI, uses IST slot 0).
-///
-/// Saves the full user register file onto the interrupt stack, then switches to the
-/// kernel stack and calls the preemption restore function.
 #[unsafe(naked)]
 pub unsafe extern "C" fn x86_64_deadline_preemption_entry_point() {
     naked_asm!(
-        // Save all GP registers (CPU has already pushed rip/cs/rflags/rsp/ss below these)
+
         "push r15",
         "push r14",
         "push r13",
@@ -113,15 +104,15 @@ pub unsafe extern "C" fn x86_64_deadline_preemption_entry_point() {
         "push rcx",
         "push rbx",
         "push rax",
-        // rdi = pointer to saved context (X86_64UnprivilegedPreemptionContext)
+
         "mov rdi, rsp",
-        // Load kernel stack from KernelGSBase MSR
+
         "mov rcx, 0xC0000102",
         "rdmsr",
         "shl rdx, 32",
         "or rax, rdx",
         "mov rsp, rax",
-        // Pop event pointer into rsi (second arg to restore fn)
+
         "pop rsi",
         "jmp x86_64_unprivileged_preemption_restore",
         "hlt",
@@ -130,20 +121,14 @@ pub unsafe extern "C" fn x86_64_deadline_preemption_entry_point() {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Where the exception entry points below continue when the exception came from the kernel
-/// itself: the handler the IDT had for that vector before they were installed. Indexed by vector.
 pub static X86_64_KERNEL_EXCEPTION_HANDLERS: [AtomicU64; 32] = [const { AtomicU64::new(0) }; 32];
 
-/// Defines an IDT entry point for exception `$vector`. From ring 3 it behaves like the system call
-/// entry point: it switches to the kernel stack saved by the last `execute`/`resume` and returns
-/// into the executor with an `Exception` event, abandoning the faulting code. From ring 0 it hands
-/// over to the previous handler untouched.
 macro_rules! exception_entry_point {
     ($name:ident, $vector:expr, error_code) => {
         #[unsafe(naked)]
         pub unsafe extern "C" fn $name() {
             naked_asm!(
-                // CPU pushed: error code, rip, cs, rflags, rsp, ss (rsp0 stack, as we came from ring 3).
+
                 "test qword ptr [rsp + 16], 3",
                 "jz 2f",
                 "pop r9",
@@ -173,7 +158,7 @@ macro_rules! exception_entry_point {
         #[unsafe(naked)]
         pub unsafe extern "C" fn $name() {
             naked_asm!(
-                // CPU pushed: rip, cs, rflags, rsp, ss.
+
                 "test qword ptr [rsp + 8], 3",
                 "jz 2f",
                 "xor r9d, r9d",
@@ -209,15 +194,6 @@ exception_entry_point!(x86_64_page_fault_entry_point, 14, error_code);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Called (via tail-call jmp) from `x86_64_system_call_entry_point`.
-///
-/// Arguments follow the C ABI after the entry point's register setup:
-/// - rdi = syscall identifier
-/// - rsi = argument0
-/// - rdx = argument1 (message pointer for SendMessageCopy)
-/// - rcx = &mut Option<X86_64UnprivilegedEvent>
-///
-/// r9/r10/r11 still hold user rip/rsp/rflags at the time of the call.
 #[unsafe(no_mangle)]
 pub extern "C" fn x86_64_unprivileged_system_call_restore(
     identifier: usize,
@@ -248,13 +224,6 @@ pub extern "C" fn x86_64_unprivileged_system_call_restore(
     }));
 }
 
-/// Called (via tail-call jmp) from the exception entry points above.
-///
-/// - rdi = vector
-/// - rsi = error code (0 if the vector has none)
-/// - rdx = instruction pointer of the faulting instruction
-/// - rcx = &mut Option<X86_64UnprivilegedEvent>
-/// - r8 = CR2
 #[unsafe(no_mangle)]
 pub extern "C" fn x86_64_unprivileged_exception_restore(
     vector: u64,
@@ -271,10 +240,6 @@ pub extern "C" fn x86_64_unprivileged_exception_restore(
     }));
 }
 
-/// Called (via tail-call jmp) from `x86_64_deadline_preemption_entry_point`.
-///
-/// - rdi = *mut X86_64UnprivilegedPreemptionContext (points into the interrupt stack)
-/// - rsi = &mut Option<X86_64UnprivilegedEvent>
 #[unsafe(no_mangle)]
 pub extern "C" fn x86_64_unprivileged_preemption_restore(
     context: &X86_64UnprivilegedPreemptionContext,
@@ -285,12 +250,6 @@ pub extern "C" fn x86_64_unprivileged_preemption_restore(
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Switches to unprivileged mode (ring 3) and executes `entry(argument, message)`.
-///
-/// The kernel stack context is set up so that when the user code finishes via
-/// `syscall`, execution resumes at label "2:" and this function returns normally.
-///
-/// Must be `#[inline(never)]` — the asm manipulates the raw call stack.
 #[inline(never)]
 pub extern "C" fn x86_64_execute_in_unprivileged(
     argument: *mut (),
@@ -314,8 +273,7 @@ pub extern "C" fn x86_64_execute_in_unprivileged(
             in("rdi") argument,
             in("rsi") message,
             event = in(reg) event,
-            // `entry` is jumped to, not called: start 8 bytes below the (16-byte aligned) top so
-            // it sees the stack alignment the C ABI expects right after a `call`.
+
             stack = in(reg) stack - 8,
             entry = in(reg) entry,
             in("r11") RFlags::FLAGS_IF.bits(),
@@ -327,9 +285,6 @@ pub extern "C" fn x86_64_execute_in_unprivileged(
     }
 }
 
-/// Resumes unprivileged execution after a system call by returning to the saved user context.
-///
-/// Must be `#[inline(never)]` — the asm manipulates the raw call stack.
 #[inline(never)]
 pub extern "C" fn x86_64_resume_after_system_call(
     context: &X86_64UnprivilegedSystemCallContext,
@@ -359,9 +314,6 @@ pub extern "C" fn x86_64_resume_after_system_call(
     }
 }
 
-/// Resumes unprivileged execution after a deadline preemption via `iretq`.
-///
-/// Must be `#[inline(never)]` — the asm manipulates the raw call stack.
 #[inline(never)]
 pub extern "C" fn x86_64_resume_after_preemption(
     context: &X86_64UnprivilegedPreemptionContext,
@@ -373,8 +325,7 @@ pub extern "C" fn x86_64_resume_after_preemption(
             push_inline_return_address!(),
             "push {event}",
             save_kernel_stack!(),
-            // Switch the stack pointer to the saved context (on the interrupt stack).
-            // Popping restores GP registers; iretq restores rip/cs/rflags/rsp/ss.
+
             "mov rsp, {ctx}",
             "pop rax",
             "pop rbx",

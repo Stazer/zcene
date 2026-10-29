@@ -1,45 +1,84 @@
+use crate::actor::root::ActorRootEnvironment;
+use crate::actor::unprivileged::{
+    ActorUnprivilegedKernelPerspective, ActorUnprivilegedPerspective,
+    ActorUnprivilegedUserPerspective,
+};
 use core::arch::asm;
-use core::marker::PhantomData;
-use zcene_core::actor::{ActorFuture, ActorMessage, ActorMessageSender, ActorSendError};
+use zcene_core::actor::{
+    ActorFuture, ActorMessage, ActorMessageSender, ActorRecipient, ActorSendError,
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// A destination for messages of type `M` as seen from an unprivileged actor: the index into the
-/// message handlers it was spawned with. It does not care what kind of actor, or which environment,
-/// is behind that handler, only which message type it accepts. Counterpart of `ActorRecipient` for
-/// root actors; `ActorUnprivilegedAddress::recipient` turns an address into one.
-pub struct ActorUnprivilegedRecipient<M> {
-    index: usize,
-    marker: PhantomData<fn() -> M>,
+pub struct ActorUnprivilegedRecipient<M, P = ActorUnprivilegedUserPerspective>
+where
+    M: ActorMessage,
+    P: ActorUnprivilegedPerspective,
+{
+    handle: P::Handle<M>,
 }
 
-impl<M> ActorUnprivilegedRecipient<M> {
+impl<M, P> ActorUnprivilegedRecipient<M, P>
+where
+    M: ActorMessage,
+    P: ActorUnprivilegedPerspective,
+{
+    pub fn from_handle(handle: P::Handle<M>) -> Self {
+        Self { handle }
+    }
+
+    pub fn handle(&self) -> &P::Handle<M> {
+        &self.handle
+    }
+
+    pub fn into_handle(self) -> P::Handle<M> {
+        self.handle
+    }
+}
+
+impl<M> ActorUnprivilegedRecipient<M, ActorUnprivilegedUserPerspective>
+where
+    M: ActorMessage,
+{
     pub const fn new(index: usize) -> Self {
-        Self {
-            index,
-            marker: PhantomData,
-        }
+        Self { handle: index }
     }
 
     pub const fn index(&self) -> usize {
-        self.index
+        self.handle
     }
 }
 
-impl<M> Clone for ActorUnprivilegedRecipient<M> {
+impl<M> ActorUnprivilegedRecipient<M, ActorUnprivilegedKernelPerspective>
+where
+    M: ActorMessage,
+{
+    pub fn from_recipient(recipient: ActorRecipient<M, ActorRootEnvironment>) -> Self {
+        Self { handle: recipient }
+    }
+}
+
+impl<M, P> Clone for ActorUnprivilegedRecipient<M, P>
+where
+    M: ActorMessage,
+    P: ActorUnprivilegedPerspective,
+{
     fn clone(&self) -> Self {
-        *self
+        Self { handle: self.handle.clone() }
     }
 }
 
-impl<M> Copy for ActorUnprivilegedRecipient<M> {}
+impl<M> Copy for ActorUnprivilegedRecipient<M, ActorUnprivilegedUserPerspective> where
+    M: ActorMessage
+{
+}
 
-impl<M> ActorMessageSender<M> for ActorUnprivilegedRecipient<M>
+impl<M> ActorMessageSender<M> for ActorUnprivilegedRecipient<M, ActorUnprivilegedUserPerspective>
 where
     M: ActorMessage,
 {
     fn send(&self, message: M) -> impl ActorFuture<'_, Result<(), ActorSendError>> {
-        let index = self.index;
+        let index = self.handle;
 
         async move {
             send_message_copy(index, &message);
@@ -49,10 +88,17 @@ where
     }
 }
 
-/// System call 3: the kernel copies the message behind `message` to the handler at `recipient`.
+impl<M> ActorMessageSender<M> for ActorUnprivilegedRecipient<M, ActorUnprivilegedKernelPerspective>
+where
+    M: ActorMessage,
+{
+    fn send(&self, message: M) -> impl ActorFuture<'_, Result<(), ActorSendError>> {
+        async move { self.handle.send(message).await }
+    }
+}
+
 pub(crate) fn send_message_copy<M>(recipient: usize, message: &M) {
-    // SAFETY: `syscall` clobbers rcx and r11 (declared via clobber_abi) and, as the kernel resumes
-    // us via `sysretq`, may not preserve the callee-saved registers, so they are saved by hand.
+
     unsafe {
         asm!(
             "push rbx",

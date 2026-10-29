@@ -1,8 +1,11 @@
 use crate::actor::{
-    ActorEnvironment, ActorEnvironmentAllocator, ActorFuture, ActorRecipientMessageSender,
-    ActorMessage, ActorMessageSender, ActorSendError, ActorWeakRecipient,
+    ActorBoxFuture, ActorEnvironment, ActorEnvironmentAllocator, ActorFuture, ActorMessage,
+    ActorMessageChannelSender, ActorMessageEnvelope, ActorMessageSender,
+    ActorRecipientMessageSender, ActorSendError, ActorWeakRecipient,
 };
+use alloc::boxed::Box;
 use alloc::sync::Arc;
+use core::alloc::AllocError;
 use core::fmt::{self, Debug, Formatter};
 use ztd::Constructor;
 
@@ -56,5 +59,40 @@ where
 {
     pub fn downgrade(&self) -> ActorWeakRecipient<M, E> {
         ActorWeakRecipient::<M, E>::new(Arc::downgrade(&self.caller))
+    }
+
+    /// A recipient that delivers straight into `sender`'s channel, for executors that are not
+    /// driven by an `Actor<E>` implementation of their own (so there is no address to derive it
+    /// from).
+    pub fn from_channel(
+        sender: ActorMessageChannelSender<ActorMessageEnvelope<M, E>, E::Allocator>,
+        allocator: E::Allocator,
+    ) -> Result<Self, AllocError> {
+        Ok(Self::new(Arc::try_new_in(
+            ActorChannelRecipientMessageSender { sender, allocator: allocator.clone() },
+            allocator,
+        )?))
+    }
+}
+
+struct ActorChannelRecipientMessageSender<M, E>
+where
+    M: ActorMessage,
+    E: ActorEnvironment + ActorEnvironmentAllocator,
+{
+    sender: ActorMessageChannelSender<ActorMessageEnvelope<M, E>, E::Allocator>,
+    allocator: E::Allocator,
+}
+
+impl<M, E> ActorRecipientMessageSender<M, E> for ActorChannelRecipientMessageSender<M, E>
+where
+    M: ActorMessage,
+    E: ActorEnvironment + ActorEnvironmentAllocator,
+{
+    fn send(&self, message: M) -> ActorBoxFuture<'_, Result<(), ActorSendError>, E> {
+        Box::pin_in(
+            self.sender.transmit(ActorMessageEnvelope::Message(message)),
+            self.allocator.clone(),
+        )
     }
 }
