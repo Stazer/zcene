@@ -1,7 +1,7 @@
 use crate::actor::root::ActorRootEnvironment;
 use crate::actor::unprivileged::{
-    ActorUnprivilegedKernelPerspective, ActorUnprivilegedPerspective,
-    ActorUnprivilegedUserPerspective,
+    ActorUnprivilegedEnvironmentPrivilegedPerspective, ActorUnprivilegedEnvironmentPerspective,
+    ActorUnprivilegedEnvironmentUnprivilegedPerspective,
 };
 use core::arch::asm;
 use zcene_core::actor::{
@@ -10,10 +10,10 @@ use zcene_core::actor::{
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct ActorUnprivilegedRecipient<M, P = ActorUnprivilegedUserPerspective>
+pub struct ActorUnprivilegedRecipient<M, P = ActorUnprivilegedEnvironmentUnprivilegedPerspective>
 where
     M: ActorMessage,
-    P: ActorUnprivilegedPerspective,
+    P: ActorUnprivilegedEnvironmentPerspective,
 {
     handle: P::Handle<M>,
 }
@@ -21,7 +21,7 @@ where
 impl<M, P> ActorUnprivilegedRecipient<M, P>
 where
     M: ActorMessage,
-    P: ActorUnprivilegedPerspective,
+    P: ActorUnprivilegedEnvironmentPerspective,
 {
     pub fn from_handle(handle: P::Handle<M>) -> Self {
         Self { handle }
@@ -36,7 +36,7 @@ where
     }
 }
 
-impl<M> ActorUnprivilegedRecipient<M, ActorUnprivilegedUserPerspective>
+impl<M> ActorUnprivilegedRecipient<M, ActorUnprivilegedEnvironmentUnprivilegedPerspective>
 where
     M: ActorMessage,
 {
@@ -49,7 +49,7 @@ where
     }
 }
 
-impl<M> ActorUnprivilegedRecipient<M, ActorUnprivilegedKernelPerspective>
+impl<M> ActorUnprivilegedRecipient<M, ActorUnprivilegedEnvironmentPrivilegedPerspective>
 where
     M: ActorMessage,
 {
@@ -61,19 +61,19 @@ where
 impl<M, P> Clone for ActorUnprivilegedRecipient<M, P>
 where
     M: ActorMessage,
-    P: ActorUnprivilegedPerspective,
+    P: ActorUnprivilegedEnvironmentPerspective,
 {
     fn clone(&self) -> Self {
         Self { handle: self.handle.clone() }
     }
 }
 
-impl<M> Copy for ActorUnprivilegedRecipient<M, ActorUnprivilegedUserPerspective> where
+impl<M> Copy for ActorUnprivilegedRecipient<M, ActorUnprivilegedEnvironmentUnprivilegedPerspective> where
     M: ActorMessage
 {
 }
 
-impl<M> ActorMessageSender<M> for ActorUnprivilegedRecipient<M, ActorUnprivilegedUserPerspective>
+impl<M> ActorMessageSender<M> for ActorUnprivilegedRecipient<M, ActorUnprivilegedEnvironmentUnprivilegedPerspective>
 where
     M: ActorMessage,
 {
@@ -88,7 +88,7 @@ where
     }
 }
 
-impl<M> ActorMessageSender<M> for ActorUnprivilegedRecipient<M, ActorUnprivilegedKernelPerspective>
+impl<M> ActorMessageSender<M> for ActorUnprivilegedRecipient<M, ActorUnprivilegedEnvironmentPrivilegedPerspective>
 where
     M: ActorMessage,
 {

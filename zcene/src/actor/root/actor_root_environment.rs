@@ -2,7 +2,7 @@ use crate::actor::{
     ActorRootEnvironmentCreateContext, ActorRootEnvironmentDestroyContext,
     ActorRootEnvironmentExecutor, ActorRootEnvironmentHandleContext,
 };
-use crate::actor::unprivileged::{ActorUnprivilegedEnvironment, ActorUnprivilegedKernelPerspective};
+use crate::actor::unprivileged::{ActorUnprivilegedEnvironment, ActorUnprivilegedEnvironmentPrivilegedPerspective};
 use crate::common::time::Timer;
 use crate::platform::ActivePlatform;
 use crate::platform::Platform;
@@ -30,7 +30,7 @@ where
     platform: P,
     discovery: ActorSpinDiscovery<Self>,
     unprivileged_environment: ActorEnvironmentReference<
-        ActorUnprivilegedEnvironment<ActorUnprivilegedKernelPerspective, <H as FutureRuntimeHandler>::Allocator>,
+        ActorUnprivilegedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, <H as FutureRuntimeHandler>::Allocator>,
     >,
 }
 
@@ -108,7 +108,7 @@ where
     pub fn unprivileged_environment(
         &self,
     ) -> &ActorEnvironmentReference<
-        ActorUnprivilegedEnvironment<ActorUnprivilegedKernelPerspective, <H as FutureRuntimeHandler>::Allocator>,
+        ActorUnprivilegedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, <H as FutureRuntimeHandler>::Allocator>,
     > {
         &self.unprivileged_environment
     }

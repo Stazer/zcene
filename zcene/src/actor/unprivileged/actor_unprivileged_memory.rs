@@ -1,4 +1,5 @@
 use crate::actor::unprivileged::ActorUnprivilegedEnvironment;
+use core::alloc::Layout;
 use core::mem::{align_of, size_of};
 use core::ptr::NonNull;
 use zcene_core::actor::Actor;
@@ -60,6 +61,21 @@ where
 
     pub fn poison(&mut self) {
         self.poisoned = true;
+    }
+
+    pub fn contains(&self, address: usize, layout: Layout) -> bool {
+        if layout.size() == 0 {
+            return true;
+        }
+
+        let start = self.actor.as_ptr() as usize;
+        let end = start + Self::SIZE;
+
+        address % layout.align() == 0
+            && address >= start
+            && address
+                .checked_add(layout.size())
+                .is_some_and(|address_end| address_end <= end)
     }
 
     pub fn actor(&mut self) -> *mut AI {

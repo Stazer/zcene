@@ -1,8 +1,8 @@
 use crate::actor::root::ActorRootEnvironment;
 use crate::actor::unprivileged::{
-    ActorUnprivilegedAddress, ActorUnprivilegedExecutor, ActorUnprivilegedKernelPerspective,
-    ActorUnprivilegedMessageHandlers, ActorUnprivilegedPerspective, ActorUnprivilegedRecipient,
-    ActorUnprivilegedUserPerspective,
+    ActorUnprivilegedAddress, ActorUnprivilegedExecutor, ActorUnprivilegedEnvironmentPrivilegedPerspective,
+    ActorUnprivilegedMessageHandlers, ActorUnprivilegedEnvironmentPerspective, ActorUnprivilegedRecipient,
+    ActorUnprivilegedEnvironmentUnprivilegedPerspective,
 };
 use crate::common::memory::allocator::ErasedAllocator;
 use alloc::sync::Arc;
@@ -17,10 +17,10 @@ use zcene_core::actor::{
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct ActorUnprivilegedEnvironment<
-    P = ActorUnprivilegedUserPerspective,
+    P = ActorUnprivilegedEnvironmentUnprivilegedPerspective,
     A = ErasedAllocator,
 > where
-    P: ActorUnprivilegedPerspective,
+    P: ActorUnprivilegedEnvironmentPerspective,
     A: ActorAllocator,
 {
     allocator: A,
@@ -43,7 +43,7 @@ impl ActorEnvironment for ActorUnprivilegedEnvironment {
     type DestroyContext<'a> = ();
 }
 
-impl<A> ActorEnvironmentAllocator for ActorUnprivilegedEnvironment<ActorUnprivilegedKernelPerspective, A>
+impl<A> ActorEnvironmentAllocator for ActorUnprivilegedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, A>
 where
     A: ActorAllocator,
 {
@@ -54,7 +54,7 @@ where
     }
 }
 
-impl<A> ActorUnprivilegedEnvironment<ActorUnprivilegedKernelPerspective, A>
+impl<A> ActorUnprivilegedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, A>
 where
     A: ActorAllocator,
 {
@@ -69,7 +69,7 @@ where
     }
 }
 
-impl ActorUnprivilegedEnvironment<ActorUnprivilegedKernelPerspective, ErasedAllocator> {
+impl ActorUnprivilegedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, ErasedAllocator> {
 
     pub fn handlers(&self) -> ActorUnprivilegedMessageHandlers {
         ActorUnprivilegedMessageHandlers::new(self.allocator.clone())
@@ -80,7 +80,7 @@ impl ActorUnprivilegedEnvironment<ActorUnprivilegedKernelPerspective, ErasedAllo
         actor: A,
         deadline_in_milliseconds: Option<NonZero<usize>>,
         message_handlers: ActorUnprivilegedMessageHandlers,
-    ) -> Result<ActorUnprivilegedAddress<A, ActorUnprivilegedKernelPerspective>, ActorSpawnError>
+    ) -> Result<ActorUnprivilegedAddress<A, ActorUnprivilegedEnvironmentPrivilegedPerspective>, ActorSpawnError>
     where
         A: Actor<ActorUnprivilegedEnvironment>,
     {

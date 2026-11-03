@@ -1,6 +1,6 @@
 use crate::actor::unprivileged::{
-    ActorUnprivilegedEnvironment, ActorUnprivilegedPerspective, ActorUnprivilegedRecipient,
-    ActorUnprivilegedUserPerspective,
+    ActorUnprivilegedEnvironment, ActorUnprivilegedEnvironmentPerspective, ActorUnprivilegedRecipient,
+    ActorUnprivilegedEnvironmentUnprivilegedPerspective,
 };
 use zcene_core::actor::{
     Actor, ActorAddress, ActorFuture, ActorMessageSender, ActorSendError,
@@ -8,10 +8,10 @@ use zcene_core::actor::{
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct ActorUnprivilegedAddress<A, P = ActorUnprivilegedUserPerspective>
+pub struct ActorUnprivilegedAddress<A, P = ActorUnprivilegedEnvironmentUnprivilegedPerspective>
 where
     A: Actor<ActorUnprivilegedEnvironment>,
-    P: ActorUnprivilegedPerspective,
+    P: ActorUnprivilegedEnvironmentPerspective,
 {
     recipient: ActorUnprivilegedRecipient<A::Message, P>,
 }
@@ -19,7 +19,7 @@ where
 impl<A, P> ActorUnprivilegedAddress<A, P>
 where
     A: Actor<ActorUnprivilegedEnvironment>,
-    P: ActorUnprivilegedPerspective,
+    P: ActorUnprivilegedEnvironmentPerspective,
 {
     pub fn new(recipient: ActorUnprivilegedRecipient<A::Message, P>) -> Self {
         Self { recipient }
@@ -33,7 +33,7 @@ where
 impl<A, P> Clone for ActorUnprivilegedAddress<A, P>
 where
     A: Actor<ActorUnprivilegedEnvironment>,
-    P: ActorUnprivilegedPerspective,
+    P: ActorUnprivilegedEnvironmentPerspective,
 {
     fn clone(&self) -> Self {
         Self::new(self.recipient.clone())
@@ -41,7 +41,7 @@ where
 }
 
 impl<A> ActorAddress<A, ActorUnprivilegedEnvironment>
-    for ActorUnprivilegedAddress<A, ActorUnprivilegedUserPerspective>
+    for ActorUnprivilegedAddress<A, ActorUnprivilegedEnvironmentUnprivilegedPerspective>
 where
     A: Actor<ActorUnprivilegedEnvironment>,
 {
@@ -50,7 +50,7 @@ where
 impl<A, P> ActorMessageSender<A::Message> for ActorUnprivilegedAddress<A, P>
 where
     A: Actor<ActorUnprivilegedEnvironment>,
-    P: ActorUnprivilegedPerspective,
+    P: ActorUnprivilegedEnvironmentPerspective,
     ActorUnprivilegedRecipient<A::Message, P>: ActorMessageSender<A::Message>,
 {
     fn send(&self, message: A::Message) -> impl ActorFuture<'_, Result<(), ActorSendError>> {

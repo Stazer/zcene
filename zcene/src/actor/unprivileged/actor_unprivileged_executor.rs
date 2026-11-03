@@ -157,6 +157,19 @@ where
 
                         ActorUnprivilegedSystemCallKind::SendMessageCopy { recipient, message } => {
                             if let Some(handler) = self.message_handlers.get(recipient) {
+                                if !self
+                                    .memory
+                                    .contains(message as usize, handler.message_layout())
+                                {
+                                    let _ = writeln!(
+                                        self.environment.logger(),
+                                        "unprivileged actor passed an invalid message pointer {:#x}",
+                                        message as usize,
+                                    );
+                                    outcome = PhaseOutcome::Faulted;
+                                    break;
+                                }
+
                                 let allocator = self.environment.allocator().clone();
                                 let _ = handler.send(&allocator, message).await;
                             }

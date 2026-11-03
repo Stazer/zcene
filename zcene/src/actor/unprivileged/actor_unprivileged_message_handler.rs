@@ -1,11 +1,12 @@
 use crate::actor::root::ActorRootEnvironment;
 use crate::actor::unprivileged::ActorUnprivilegedRecipient;
-use crate::actor::unprivileged::ActorUnprivilegedUserPerspective;
+use crate::actor::unprivileged::ActorUnprivilegedEnvironmentUnprivilegedPerspective;
 use crate::common::memory::allocator::ErasedAllocator;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::alloc::AllocError;
+use core::alloc::{AllocError, Layout};
+use core::ptr::NonNull;
 use zcene_core::actor::{
     Actor, ActorAddressExt, ActorBoxFuture, ActorEnvironment, ActorEnvironmentAllocator,
     ActorMessage, ActorMessageChannelAddress, ActorMessageSender, ActorRecipient, ActorSendError,
@@ -22,6 +23,8 @@ where
         allocator: &E::Allocator,
         message: *const (),
     ) -> ActorBoxFuture<'static, Result<(), ActorSendError>, E>;
+
+    fn message_layout(&self) -> Layout;
 }
 
 impl<M, E> ActorUnprivilegedMessageHandler<E> for ActorRecipient<M, E>
@@ -29,6 +32,10 @@ where
     M: ActorMessage,
     E: ActorEnvironment + ActorEnvironmentAllocator,
 {
+    fn message_layout(&self) -> Layout {
+        Layout::new::<M>()
+    }
+
     fn send(
         &self,
         allocator: &E::Allocator,
@@ -36,7 +43,13 @@ where
     ) -> ActorBoxFuture<'static, Result<(), ActorSendError>, E> {
         let recipient = self.clone();
 
-        let message = unsafe { message.cast::<M>().as_ref().unwrap() }.clone();
+        let pointer = if Layout::new::<M>().size() == 0 {
+            NonNull::<M>::dangling().as_ptr().cast_const()
+        } else {
+            message.cast::<M>()
+        };
+
+        let message = unsafe { pointer.as_ref().unwrap() }.clone();
 
         Box::pin_in(
             async move { ActorMessageSender::send(&recipient, message).await },
@@ -66,7 +79,7 @@ impl ActorUnprivilegedMessageHandlers {
     pub fn grant<M>(
         &mut self,
         recipient: ActorRecipient<M, ActorRootEnvironment>,
-    ) -> Result<ActorUnprivilegedRecipient<M, ActorUnprivilegedUserPerspective>, AllocError>
+    ) -> Result<ActorUnprivilegedRecipient<M, ActorUnprivilegedEnvironmentUnprivilegedPerspective>, AllocError>
     where
         M: ActorMessage,
     {
@@ -83,7 +96,7 @@ impl ActorUnprivilegedMessageHandlers {
         &mut self,
         address: &ActorMessageChannelAddress<A, ActorRootEnvironment>,
     ) -> Result<
-        ActorUnprivilegedRecipient<A::Message, ActorUnprivilegedUserPerspective>,
+        ActorUnprivilegedRecipient<A::Message, ActorUnprivilegedEnvironmentUnprivilegedPerspective>,
         AllocError,
     >
     where

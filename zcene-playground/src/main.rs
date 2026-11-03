@@ -187,7 +187,7 @@ mod unprivileged {
     use core::num::NonZero;
     use zcene::actor::{
         ActorRootEnvironment, ActorUnprivilegedAddress, ActorUnprivilegedEnvironment,
-        ActorUnprivilegedKernelPerspective, ActorUnprivilegedRecipient,
+        ActorUnprivilegedEnvironmentPrivilegedPerspective, ActorUnprivilegedRecipient,
     };
     use zcene::core::actor::{
         Actor, ActorCreateError, ActorEnvironment, ActorHandleError, ActorMessageChannelAddress,
@@ -229,7 +229,7 @@ mod unprivileged {
 
     pub fn spawn(
         root: &ActorMessageChannelAddress<RootActor, ActorRootEnvironment>,
-    ) -> ActorUnprivilegedAddress<UnprivilegedActor, ActorUnprivilegedKernelPerspective> {
+    ) -> ActorUnprivilegedAddress<UnprivilegedActor, ActorUnprivilegedEnvironmentPrivilegedPerspective> {
         let environment = ActorRootEnvironment::get().unprivileged_environment();
 
         let mut handlers = environment.handlers();
