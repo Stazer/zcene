@@ -7,13 +7,13 @@
 use core::fmt::Write;
 use core::num::NonZero;
 use zcene::actor::{
-    ActorIsolatedEnvironmentPrivilegedPerspective, ActorIsolatedRecipient, ActorRootEnvironment,
+    ActorUnprivilegedEnvironmentPrivilegedPerspective, ActorUnprivilegedRecipient, ActorRootEnvironment,
 };
 use zcene::core::actor::{
     Actor, ActorCreateError, ActorEnvironment, ActorHandleError, ActorMessageChannelAddress,
     ActorMessageSender,
 };
-use zcene::{define_system, include_actor_isolated_image};
+use zcene::{define_system, include_actor_unprivileged_image};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -39,17 +39,17 @@ impl Actor<ActorRootEnvironment> for RootActor {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-type Program = ActorIsolatedRecipient<u32, ActorIsolatedEnvironmentPrivilegedPerspective>;
+type Program = ActorUnprivilegedRecipient<u32, ActorUnprivilegedEnvironmentPrivilegedPerspective>;
 
 /// Starts `image` in an address space of its own, with `root` as its recipient 0.
 macro_rules! spawn_program {
     ($root:expr, $name:literal) => {{
-        let environment = ActorRootEnvironment::get().isolated_environment();
+        let environment = ActorRootEnvironment::get().unprivileged_environment();
 
         let mut handlers = environment.handlers();
         let _root = handlers.grant_address($root).unwrap();
 
-        let image = include_actor_isolated_image!(concat!(env!("EXAMPLE_IMAGES"), "/", $name))
+        let image = include_actor_unprivileged_image!(concat!(env!("EXAMPLE_IMAGES"), "/", $name))
             .unwrap();
 
         environment.spawn::<u32>(image, NonZero::new(5), handlers).unwrap()

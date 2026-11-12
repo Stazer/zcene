@@ -2,8 +2,8 @@ use zcene_core::actor::ActorMessage;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// A message that may cross the border to an isolated actor and back. The kernel copies its raw
-/// bytes, and the bytes written by an isolated actor are not to be trusted.
+/// A message that may cross the border to an unprivileged actor and back. The kernel copies its raw
+/// bytes, and the bytes written by an unprivileged actor are not to be trusted.
 ///
 /// # Safety
 ///
@@ -11,15 +11,15 @@ use zcene_core::actor::ActorMessage;
 /// contain no pointers or references: those would be meaningless on the other side of the border
 /// (or, worse, point into the wrong address space). Primitive numbers qualify, `bool`, `char`,
 /// enums and anything holding a reference or a `Box` do not.
-pub unsafe trait ActorIsolatedMessage: ActorMessage + Copy {}
+pub unsafe trait ActorUnprivilegedMessage: ActorMessage + Copy {}
 
-macro_rules! implement_actor_isolated_message {
+macro_rules! implement_actor_unprivileged_message {
     ($($type:ty),* $(,)?) => {
-        $(unsafe impl ActorIsolatedMessage for $type {})*
+        $(unsafe impl ActorUnprivilegedMessage for $type {})*
     };
 }
 
-implement_actor_isolated_message!(
+implement_actor_unprivileged_message!(
     (),
     u8,
     u16,
@@ -37,4 +37,4 @@ implement_actor_isolated_message!(
     f64,
 );
 
-unsafe impl<T, const N: usize> ActorIsolatedMessage for [T; N] where T: ActorIsolatedMessage {}
+unsafe impl<T, const N: usize> ActorUnprivilegedMessage for [T; N] where T: ActorUnprivilegedMessage {}

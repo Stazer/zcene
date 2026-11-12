@@ -3,23 +3,23 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use zcene::actor::{ActorIsolatedEnvironment, ActorIsolatedRecipient};
+use zcene::actor::{ActorUnprivilegedEnvironment, ActorUnprivilegedRecipient};
 use zcene::core::actor::{Actor, ActorEnvironment, ActorHandleError, ActorMessageSender};
-use zcene::define_isolated_actor;
+use zcene::define_unprivileged_actor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct CounterActor {
     count: u32,
-    root: ActorIsolatedRecipient<u32>,
+    root: ActorUnprivilegedRecipient<u32>,
 }
 
-impl Actor<ActorIsolatedEnvironment> for CounterActor {
+impl Actor<ActorUnprivilegedEnvironment> for CounterActor {
     type Message = u32;
 
     async fn handle<'a>(
         &'a mut self,
-        _context: <ActorIsolatedEnvironment as ActorEnvironment>::HandleContext<'a, Self::Message>,
+        _context: <ActorUnprivilegedEnvironment as ActorEnvironment>::HandleContext<'a, Self::Message>,
     ) -> Result<(), ActorHandleError> {
         self.count += 1;
 
@@ -31,10 +31,10 @@ impl Actor<ActorIsolatedEnvironment> for CounterActor {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-define_isolated_actor!(
+define_unprivileged_actor!(
     CounterActor,
     CounterActor {
         count: 0,
-        root: ActorIsolatedRecipient::new(0),
+        root: ActorUnprivilegedRecipient::new(0),
     }
 );

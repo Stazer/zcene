@@ -25,7 +25,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rustc-env=EXAMPLE_IMAGES={}", images.display());
 
     let kernel_script = zcene_directory.join("linker.ld");
-    let program_script = zcene_directory.join("isolated.ld");
+    let program_script = zcene_directory.join("unprivileged.ld");
     println!("cargo:rerun-if-changed={}", kernel_script.display());
     println!("cargo:rerun-if-changed={}", program_script.display());
 

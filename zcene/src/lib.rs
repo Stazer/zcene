@@ -62,27 +62,27 @@ macro_rules! define_system {
 }
 
 #[macro_export]
-macro_rules! include_actor_isolated_image {
+macro_rules! include_actor_unprivileged_image {
     ($path:expr) => {{
         #[repr(C, align(16))]
         struct Aligned<T: ?Sized>(T);
 
         static BYTES: &Aligned<[u8]> = &Aligned(*include_bytes!($path));
 
-        $crate::actor::ActorIsolatedImage::from_elf(&BYTES.0)
+        $crate::actor::ActorUnprivilegedImage::from_elf(&BYTES.0)
     }};
 }
 
 #[cfg(feature = "x86_64")]
 #[macro_export]
-macro_rules! define_isolated_actor {
+macro_rules! define_unprivileged_actor {
     ($actor:ty, $constructor:expr) => {
         #[global_allocator]
-        static ALLOCATOR: $crate::actor::ActorIsolatedAllocator =
-            $crate::actor::ActorIsolatedAllocator::new();
+        static ALLOCATOR: $crate::actor::ActorUnprivilegedAllocator =
+            $crate::actor::ActorUnprivilegedAllocator::new();
 
-        static ACTOR: $crate::actor::ActorIsolatedCell<$actor> =
-            $crate::actor::ActorIsolatedCell::new();
+        static ACTOR: $crate::actor::ActorUnprivilegedCell<$actor> =
+            $crate::actor::ActorUnprivilegedCell::new();
 
         #[panic_handler]
         fn panic_handler(_panic_info: &::core::panic::PanicInfo) -> ! {
@@ -93,10 +93,10 @@ macro_rules! define_isolated_actor {
         pub extern "C" fn _start(
             phase: u64,
             message: *const <$actor as $crate::core::actor::Actor<
-                $crate::actor::ActorIsolatedEnvironment,
+                $crate::actor::ActorUnprivilegedEnvironment,
             >>::Message,
         ) -> ! {
-            $crate::actor::ActorIsolatedRuntime::run(&ALLOCATOR, &ACTOR, phase, message, || {
+            $crate::actor::ActorUnprivilegedRuntime::run(&ALLOCATOR, &ACTOR, phase, message, || {
                 $constructor
             })
         }

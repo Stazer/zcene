@@ -1,10 +1,8 @@
 use crate::actor::unprivileged::{
-    ActorUnprivilegedEnvironment, ActorUnprivilegedEnvironmentPerspective, ActorUnprivilegedRecipient,
-    ActorUnprivilegedEnvironmentUnprivilegedPerspective,
+    ActorUnprivilegedEnvironment, ActorUnprivilegedEnvironmentPerspective,
+    ActorUnprivilegedEnvironmentUnprivilegedPerspective, ActorUnprivilegedRecipient,
 };
-use zcene_core::actor::{
-    Actor, ActorAddress, ActorFuture, ActorMessageSender, ActorSendError,
-};
+use zcene_core::actor::{Actor, ActorAddress, ActorFuture, ActorMessageSender, ActorSendError};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

@@ -3,22 +3,22 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use zcene::actor::{ActorIsolatedEnvironment, ActorIsolatedRecipient};
+use zcene::actor::{ActorUnprivilegedEnvironment, ActorUnprivilegedRecipient};
 use zcene::core::actor::{Actor, ActorEnvironment, ActorHandleError, ActorMessageSender};
-use zcene::define_isolated_actor;
+use zcene::define_unprivileged_actor;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct DoublerActor {
-    root: ActorIsolatedRecipient<u32>,
+    root: ActorUnprivilegedRecipient<u32>,
 }
 
-impl Actor<ActorIsolatedEnvironment> for DoublerActor {
+impl Actor<ActorUnprivilegedEnvironment> for DoublerActor {
     type Message = u32;
 
     async fn handle<'a>(
         &'a mut self,
-        context: <ActorIsolatedEnvironment as ActorEnvironment>::HandleContext<'a, Self::Message>,
+        context: <ActorUnprivilegedEnvironment as ActorEnvironment>::HandleContext<'a, Self::Message>,
     ) -> Result<(), ActorHandleError> {
         let _ = self.root.send(2_000_000 + 2 * *context.message()).await;
 
@@ -28,9 +28,9 @@ impl Actor<ActorIsolatedEnvironment> for DoublerActor {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-define_isolated_actor!(
+define_unprivileged_actor!(
     DoublerActor,
     DoublerActor {
-        root: ActorIsolatedRecipient::new(0),
+        root: ActorUnprivilegedRecipient::new(0),
     }
 );

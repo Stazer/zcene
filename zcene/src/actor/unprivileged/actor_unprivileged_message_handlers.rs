@@ -1,6 +1,7 @@
+use crate::actor::unprivileged::{
+    ActorUnprivilegedEnvironmentUnprivilegedPerspective, ActorUnprivilegedMessage, ActorUnprivilegedRecipient,
+};
 use crate::actor::root::ActorRootEnvironment;
-use crate::actor::unprivileged::ActorUnprivilegedRecipient;
-use crate::actor::unprivileged::ActorUnprivilegedEnvironmentUnprivilegedPerspective;
 use crate::common::memory::allocator::ErasedAllocator;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
@@ -14,6 +15,8 @@ use zcene_core::actor::{
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/// What an unprivileged program can reach: a recipient of the kernel that the program sends raw
+/// message bytes to.
 pub trait ActorUnprivilegedMessageHandler<E>: Send + Sync + 'static
 where
     E: ActorEnvironment + ActorEnvironmentAllocator,
@@ -60,6 +63,7 @@ where
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/// The recipients the kernel grants to one program. The program addresses them by index.
 pub struct ActorUnprivilegedMessageHandlers {
     allocator: ErasedAllocator,
     handlers: Vec<
@@ -76,12 +80,19 @@ impl ActorUnprivilegedMessageHandlers {
         }
     }
 
+    pub(crate) fn get(
+        &self,
+        index: usize,
+    ) -> Option<&dyn ActorUnprivilegedMessageHandler<ActorRootEnvironment>> {
+        self.handlers.get(index).map(|handler| &**handler)
+    }
+
     pub fn grant<M>(
         &mut self,
         recipient: ActorRecipient<M, ActorRootEnvironment>,
     ) -> Result<ActorUnprivilegedRecipient<M, ActorUnprivilegedEnvironmentUnprivilegedPerspective>, AllocError>
     where
-        M: ActorMessage,
+        M: ActorUnprivilegedMessage,
     {
         let index = self.handlers.len();
 
@@ -101,16 +112,10 @@ impl ActorUnprivilegedMessageHandlers {
     >
     where
         A: Actor<ActorRootEnvironment>,
+        A::Message: ActorUnprivilegedMessage,
     {
         let address = Arc::try_new_in(address.clone(), self.allocator.clone())?;
 
         self.grant(address.recipient()?)
-    }
-
-    pub(crate) fn get(
-        &self,
-        index: usize,
-    ) -> Option<&dyn ActorUnprivilegedMessageHandler<ActorRootEnvironment>> {
-        self.handlers.get(index).map(|handler| &**handler)
     }
 }

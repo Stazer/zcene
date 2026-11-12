@@ -32,7 +32,7 @@ use core::sync::atomic::Ordering;
 use x86_64::{PhysAddr, VirtAddr};
 use ztd::Method;
 
-pub const ISOLATED_USER_BASE: u64 = 0x0000_0080_0000_0000;
+pub const UNPRIVILEGED_USER_BASE: u64 = 0x0000_0080_0000_0000;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -528,7 +528,7 @@ impl X86_64MemoryManager {
     }
 
     /// Creates an address space whose only accessible memory is `size` bytes at
-    /// `ISOLATED_USER_BASE`: the first `executable_length` bytes readable and executable, the rest
+    /// `UNPRIVILEGED_USER_BASE`: the first `executable_length` bytes readable and executable, the rest
     /// readable and writable. The kernel stays mapped in it, but supervisor-only, because the
     /// system call and interrupt entry points run in it until they switch back.
     pub fn create_address_space(
@@ -537,13 +537,13 @@ impl X86_64MemoryManager {
         executable_length: usize,
         required_base: Option<u64>,
     ) -> Option<X86_64AddressSpace> {
-        if required_base.is_some_and(|base| base != ISOLATED_USER_BASE) {
+        if required_base.is_some_and(|base| base != UNPRIVILEGED_USER_BASE) {
             return None;
         }
 
         let frame_count = size.div_ceil(FRAME_SIZE).max(1);
         let executable_frame_count = executable_length.div_ceil(FRAME_SIZE).min(frame_count);
-        let user_slot = ((ISOLATED_USER_BASE >> 39) & 0x1ff) as usize;
+        let user_slot = ((UNPRIVILEGED_USER_BASE >> 39) & 0x1ff) as usize;
 
         let kernel_table = self.active_page_table();
 
@@ -608,7 +608,7 @@ impl X86_64MemoryManager {
             let offset = (index * FRAME_SIZE) as u64;
 
             let page = Page::<Size4KiB>::from_start_address(VirtAddr::new(
-                ISOLATED_USER_BASE + offset,
+                UNPRIVILEGED_USER_BASE + offset,
             ))
             .ok()?;
             let frame =
@@ -645,7 +645,7 @@ impl X86_64MemoryManager {
 
         Some(X86_64AddressSpace::new(
             page_table_frame.start_address().as_u64(),
-            ISOLATED_USER_BASE,
+            UNPRIVILEGED_USER_BASE,
             kernel_base,
             frame_count * FRAME_SIZE,
         ))

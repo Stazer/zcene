@@ -1,43 +1,43 @@
-use crate::actor::isolated::{ActorIsolatedAllocator, ActorIsolatedCell, ActorIsolatedEnvironment};
 use crate::actor::unprivileged::ActorUnprivilegedSystemCalls;
+use crate::actor::unprivileged::{ActorUnprivilegedAllocator, ActorUnprivilegedCell, ActorUnprivilegedEnvironment};
 use core::future::Future;
 use core::pin::pin;
 use core::task::{Context, Poll, Waker};
-use crate::actor::ActorIsolatedPhase;
+use crate::actor::ActorUnprivilegedPhase;
 use zcene_core::actor::{Actor, ActorCommonHandleContext};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct ActorIsolatedRuntime;
+pub struct ActorUnprivilegedRuntime;
 
-impl ActorIsolatedRuntime {
-    /// Runs one phase of the actor and ends it. This is what the entry point of an isolated
-    /// program calls; see `define_isolated_actor!`.
+impl ActorUnprivilegedRuntime {
+    /// Runs one phase of the actor and ends it. This is what the entry point of an unprivileged
+    /// program calls; see `define_unprivileged_actor!`.
     pub fn run<A, F>(
-        allocator: &ActorIsolatedAllocator,
-        cell: &ActorIsolatedCell<A>,
+        allocator: &ActorUnprivilegedAllocator,
+        cell: &ActorUnprivilegedCell<A>,
         phase: u64,
         message: *const A::Message,
         construct: F,
     ) -> !
     where
-        A: Actor<ActorIsolatedEnvironment>,
+        A: Actor<ActorUnprivilegedEnvironment>,
         F: FnOnce() -> A,
     {
-        if phase == ActorIsolatedPhase::Create as u64 {
+        if phase == ActorUnprivilegedPhase::Create as u64 {
             allocator.initialize();
 
             // SAFETY: the create phase runs exactly once, before anything else.
             let actor = unsafe { cell.store(construct()) };
 
             let _ = Self::block_on(actor.create(()));
-        } else if phase == ActorIsolatedPhase::Handle as u64 {
+        } else if phase == ActorUnprivilegedPhase::Handle as u64 {
             // SAFETY: the kernel hands over a valid message for this phase, and the actor was
             // stored by the create phase.
             let (actor, message) = unsafe { (cell.get(), (*message).clone()) };
 
             let _ = Self::block_on(actor.handle(ActorCommonHandleContext::new(message)));
-        } else if phase == ActorIsolatedPhase::Destroy as u64 {
+        } else if phase == ActorUnprivilegedPhase::Destroy as u64 {
             // SAFETY: the actor was stored by the create phase and is not used afterwards.
             unsafe {
                 let _ = Self::block_on(cell.get().destroy(()));

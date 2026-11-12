@@ -2,7 +2,6 @@ use crate::actor::{
     ActorRootEnvironmentCreateContext, ActorRootEnvironmentDestroyContext,
     ActorRootEnvironmentExecutor, ActorRootEnvironmentHandleContext,
 };
-use crate::actor::isolated::{ActorIsolatedEnvironment, ActorIsolatedEnvironmentPrivilegedPerspective};
 use crate::actor::unprivileged::{ActorUnprivilegedEnvironment, ActorUnprivilegedEnvironmentPrivilegedPerspective};
 use crate::common::time::Timer;
 use crate::platform::ActivePlatform;
@@ -32,9 +31,6 @@ where
     discovery: ActorSpinDiscovery<Self>,
     unprivileged_environment: ActorEnvironmentReference<
         ActorUnprivilegedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, <H as FutureRuntimeHandler>::Allocator>,
-    >,
-    isolated_environment: ActorEnvironmentReference<
-        ActorIsolatedEnvironment<ActorIsolatedEnvironmentPrivilegedPerspective, <H as FutureRuntimeHandler>::Allocator>,
     >,
 }
 
@@ -108,21 +104,12 @@ where
         Ok(address)
     }
 
-    /// The environment for spawning unprivileged actors.
     pub fn unprivileged_environment(
         &self,
     ) -> &ActorEnvironmentReference<
         ActorUnprivilegedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, <H as FutureRuntimeHandler>::Allocator>,
     > {
         &self.unprivileged_environment
-    }
-
-    pub fn isolated_environment(
-        &self,
-    ) -> &ActorEnvironmentReference<
-        ActorIsolatedEnvironment<ActorIsolatedEnvironmentPrivilegedPerspective, <H as FutureRuntimeHandler>::Allocator>,
-    > {
-        &self.isolated_environment
     }
 
     pub fn platform(&self) -> &P {
@@ -158,10 +145,8 @@ where
 
         let unprivileged_environment = ActorUnprivilegedEnvironment::new(allocator.clone());
 
-        let isolated_environment = ActorIsolatedEnvironment::new(allocator.clone());
-
         Arc::new_in(
-            Self::new(runtime, platform, discovery, unprivileged_environment, isolated_environment),
+            Self::new(runtime, platform, discovery, unprivileged_environment),
             allocator,
         )
     }

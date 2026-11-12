@@ -28,7 +28,7 @@ macro_rules! system_call {
     };
 }
 
-/// The system calls an unprivileged or isolated actor can make.
+/// The system calls an unprivileged actor can make.
 pub struct ActorUnprivilegedSystemCalls;
 
 impl ActorUnprivilegedSystemCalls {

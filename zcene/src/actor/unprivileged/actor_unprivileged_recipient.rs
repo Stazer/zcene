@@ -1,15 +1,20 @@
-use crate::actor::root::ActorRootEnvironment;
+use crate::actor::unprivileged::ActorUnprivilegedSystemCalls;
 use crate::actor::unprivileged::{
-    ActorUnprivilegedEnvironmentPrivilegedPerspective, ActorUnprivilegedEnvironmentPerspective,
+    ActorUnprivilegedEnvironmentPerspective, ActorUnprivilegedEnvironmentPrivilegedPerspective,
     ActorUnprivilegedEnvironmentUnprivilegedPerspective,
 };
-use crate::actor::unprivileged::ActorUnprivilegedSystemCalls;
+use crate::actor::root::ActorRootEnvironment;
 use zcene_core::actor::{
     ActorFuture, ActorMessage, ActorMessageSender, ActorRecipient, ActorSendError,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/// A destination for messages of type `M`, from the perspective `P`.
+///
+/// - unprivileged (default): an index into the recipients the kernel granted to the program.
+///   Sending is a system call.
+/// - privileged: an ordinary root `ActorRecipient`.
 pub struct ActorUnprivilegedRecipient<M, P = ActorUnprivilegedEnvironmentUnprivilegedPerspective>
 where
     M: ActorMessage,
@@ -64,7 +69,9 @@ where
     P: ActorUnprivilegedEnvironmentPerspective,
 {
     fn clone(&self) -> Self {
-        Self { handle: self.handle.clone() }
+        Self {
+            handle: self.handle.clone(),
+        }
     }
 }
 
@@ -73,7 +80,8 @@ impl<M> Copy for ActorUnprivilegedRecipient<M, ActorUnprivilegedEnvironmentUnpri
 {
 }
 
-impl<M> ActorMessageSender<M> for ActorUnprivilegedRecipient<M, ActorUnprivilegedEnvironmentUnprivilegedPerspective>
+impl<M> ActorMessageSender<M>
+    for ActorUnprivilegedRecipient<M, ActorUnprivilegedEnvironmentUnprivilegedPerspective>
 where
     M: ActorMessage,
 {
@@ -88,7 +96,8 @@ where
     }
 }
 
-impl<M> ActorMessageSender<M> for ActorUnprivilegedRecipient<M, ActorUnprivilegedEnvironmentPrivilegedPerspective>
+impl<M> ActorMessageSender<M>
+    for ActorUnprivilegedRecipient<M, ActorUnprivilegedEnvironmentPrivilegedPerspective>
 where
     M: ActorMessage,
 {

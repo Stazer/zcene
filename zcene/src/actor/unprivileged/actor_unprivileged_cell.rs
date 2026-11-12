@@ -3,14 +3,14 @@ use core::mem::MaybeUninit;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Where an isolated program keeps its actor between the phases.
-pub struct ActorIsolatedCell<A> {
+/// Where an unprivileged program keeps its actor between the phases.
+pub struct ActorUnprivilegedCell<A> {
     actor: UnsafeCell<MaybeUninit<A>>,
 }
 
-unsafe impl<A> Sync for ActorIsolatedCell<A> {}
+unsafe impl<A> Sync for ActorUnprivilegedCell<A> {}
 
-impl<A> ActorIsolatedCell<A> {
+impl<A> ActorUnprivilegedCell<A> {
     pub const fn new() -> Self {
         Self {
             actor: UnsafeCell::new(MaybeUninit::uninit()),

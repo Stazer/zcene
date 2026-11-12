@@ -1,5 +1,5 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ActorIsolatedImageError {
+pub enum ActorUnprivilegedImageError {
     NotElf,
     Misaligned,
     Unsupported,

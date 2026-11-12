@@ -1,5 +1,5 @@
 #[derive(Clone, Copy, Debug)]
-pub struct ActorIsolatedImageSegment {
+pub struct ActorUnprivilegedImageSegment {
     file_offset: usize,
     file_length: usize,
     memory_offset: usize,
@@ -7,7 +7,7 @@ pub struct ActorIsolatedImageSegment {
     writable: bool,
 }
 
-impl ActorIsolatedImageSegment {
+impl ActorUnprivilegedImageSegment {
     pub const EMPTY: Self = Self {
         file_offset: 0,
         file_length: 0,

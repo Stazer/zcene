@@ -1,109 +1,161 @@
-use crate::actor::unprivileged::ActorUnprivilegedEnvironment;
-use core::alloc::Layout;
+use crate::actor::unprivileged::{ActorUnprivilegedImage, ActorUnprivilegedMessage};
+use crate::platform::{
+    ActivePlatform, Platform, UnprivilegedAddressSpace, UnprivilegedAddressSpaceSpecification,
+};
+use core::alloc::{AllocError, Layout};
+use core::marker::PhantomData;
 use core::mem::{align_of, size_of};
-use core::ptr::NonNull;
-use zcene_core::actor::Actor;
+use zcene_core::actor::ActorSpawnError;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const FRAME_SIZE: usize = 4096;
 
-pub struct ActorUnprivilegedMemory<AI>
+/// The address space of one unprivileged actor and where things are in it:
+///
+/// ```text
+/// user_base                                                         user_base + size
+/// | image (r-x, then rw-) | extra data (rw-) | message slot | (padding) | stack (rw-) ->grows down |
+/// ```
+///
+/// The extra data region starts right after the image, rounded up to whole frames.
+pub struct ActorUnprivilegedMemory<M>
 where
-    AI: Actor<ActorUnprivilegedEnvironment>,
+    M: ActorUnprivilegedMessage,
 {
-    actor: NonNull<AI>,
-    message: NonNull<AI::Message>,
-    stack_top: u64,
-    poisoned: bool,
+    address_space: <ActivePlatform as Platform>::UnprivilegedAddressSpace,
+    entry: u64,
+    message_offset: usize,
+    marker: PhantomData<fn() -> M>,
 }
 
-unsafe impl<AI> Send for ActorUnprivilegedMemory<AI> where AI: Actor<ActorUnprivilegedEnvironment> {}
-unsafe impl<AI> Sync for ActorUnprivilegedMemory<AI> where AI: Actor<ActorUnprivilegedEnvironment> {}
-
-impl<AI> ActorUnprivilegedMemory<AI>
+impl<M> ActorUnprivilegedMemory<M>
 where
-    AI: Actor<ActorUnprivilegedEnvironment>,
+    M: ActorUnprivilegedMessage,
 {
+    pub const DATA_SIZE: usize = 16 * 1024;
     pub const STACK_SIZE: usize = 32 * 1024;
 
-    const MESSAGE_OFFSET: usize = size_of::<AI>().next_multiple_of(align_of::<AI::Message>());
+    pub const MAXIMUM_IMAGE_SIZE: usize = 16 * 1024 * 1024;
 
-    const DATA_SIZE: usize =
-        (Self::MESSAGE_OFFSET + size_of::<AI::Message>()).next_multiple_of(FRAME_SIZE);
+    pub fn new(platform: &ActivePlatform, image: &ActorUnprivilegedImage) -> Result<Self, ActorSpawnError> {
+        let segments = image.segments();
 
-    pub const SIZE: usize = Self::DATA_SIZE + Self::STACK_SIZE;
+        let mut footprint = 0usize;
+        let mut read_only_end = 0usize;
 
-    pub fn new(memory: &'static mut [u8], actor: AI) -> Self {
-        assert!(memory.len() >= Self::SIZE);
-        assert!(memory.as_ptr() as usize % FRAME_SIZE == 0);
-        assert!(align_of::<AI>() <= FRAME_SIZE && align_of::<AI::Message>() <= FRAME_SIZE);
+        for segment in segments {
+            let end = segment
+                .memory_offset()
+                .checked_add(segment.memory_length())
+                .ok_or(ActorSpawnError::Unknown)?;
 
-        let base = memory.as_mut_ptr();
+            footprint = footprint.max(end);
 
-        let (actor_pointer, message_pointer) = unsafe {
-            let actor_pointer = base as *mut AI;
-            actor_pointer.write(actor);
-
-            (
-                NonNull::new_unchecked(actor_pointer),
-                NonNull::new_unchecked(base.add(Self::MESSAGE_OFFSET) as *mut AI::Message),
-            )
-        };
-
-        Self {
-            actor: actor_pointer,
-            message: message_pointer,
-            stack_top: base as u64 + Self::SIZE as u64,
-            poisoned: false,
+            if !segment.writable() {
+                read_only_end = read_only_end.max(end);
+            }
         }
+
+        let executable_length = read_only_end.next_multiple_of(FRAME_SIZE);
+        let footprint = footprint.next_multiple_of(FRAME_SIZE);
+
+        let entry_in_code = segments.iter().any(|segment| {
+            !segment.writable()
+                && image.entry_offset() >= segment.memory_offset()
+                && image.entry_offset() - segment.memory_offset() < segment.memory_length()
+        });
+
+        if segments.is_empty()
+            || !entry_in_code
+            || footprint > Self::MAXIMUM_IMAGE_SIZE
+            || align_of::<M>() > FRAME_SIZE
+            || segments
+                .iter()
+                .any(|segment| segment.writable() && segment.memory_offset() < executable_length)
+        {
+            return Err(ActorSpawnError::Unknown);
+        }
+
+        let message_offset = (footprint + Self::DATA_SIZE).next_multiple_of(align_of::<M>());
+        let stack_offset = (message_offset + size_of::<M>()).next_multiple_of(FRAME_SIZE);
+        let size = stack_offset + Self::STACK_SIZE;
+
+        let address_space = platform
+            .create_unprivileged_address_space(&UnprivilegedAddressSpaceSpecification {
+                size,
+                executable_length,
+                required_base: image.base(),
+            })
+            .filter(|address_space| address_space.size() >= size)
+            .ok_or(AllocError)?;
+
+        for segment in segments {
+            // SAFETY: the segment lies within the image (checked when it was created) and the
+            // address space is at least `size` bytes, which is more than the footprint.
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    image.bytes().as_ptr().add(segment.file_offset()),
+                    address_space.kernel_base().add(segment.memory_offset()),
+                    segment.file_length(),
+                );
+            }
+        }
+
+        Ok(Self {
+            entry: address_space.user_base() + image.entry_offset() as u64,
+            address_space,
+            message_offset,
+            marker: PhantomData,
+        })
     }
 
-    pub fn poison(&mut self) {
-        self.poisoned = true;
+    pub fn address_space(&self) -> &<ActivePlatform as Platform>::UnprivilegedAddressSpace {
+        &self.address_space
     }
 
-    pub fn contains(&self, address: usize, layout: Layout) -> bool {
+    pub fn entry(&self) -> u64 {
+        self.entry
+    }
+
+    pub fn stack_top(&self) -> u64 {
+        self.address_space.user_base() + self.address_space.size() as u64
+    }
+
+    /// Moves `message` into the message slot and returns its address in the address space.
+    pub fn store_message(&mut self, message: M) -> u64 {
+        // SAFETY: the slot is inside the address space and aligned, see `new`.
+        unsafe {
+            self.address_space
+                .kernel_base()
+                .add(self.message_offset)
+                .cast::<M>()
+                .write(message);
+        }
+
+        self.address_space.user_base() + self.message_offset as u64
+    }
+
+    pub fn contains(&self, user_address: u64, layout: Layout) -> bool {
         if layout.size() == 0 {
             return true;
         }
 
-        let start = self.actor.as_ptr() as usize;
-        let end = start + Self::SIZE;
+        let Some(offset) = user_address.checked_sub(self.address_space.user_base()) else {
+            return false;
+        };
 
-        address % layout.align() == 0
-            && address >= start
-            && address
+        let offset = offset as usize;
+
+        offset % layout.align() == 0
+            && offset
                 .checked_add(layout.size())
-                .is_some_and(|address_end| address_end <= end)
+                .is_some_and(|end| end <= self.address_space.size())
     }
 
-    pub fn actor(&mut self) -> *mut AI {
-        self.actor.as_ptr()
-    }
-
-    pub fn stack_top(&self) -> u64 {
-        self.stack_top
-    }
-
-    pub fn store_message(&mut self, message: AI::Message) -> *const AI::Message {
-        unsafe { self.message.as_ptr().write(message) };
-        self.message.as_ptr()
-    }
-
-    pub unsafe fn drop_message(&mut self) {
-        unsafe { self.message.as_ptr().drop_in_place() };
-    }
-}
-
-impl<AI> Drop for ActorUnprivilegedMemory<AI>
-where
-    AI: Actor<ActorUnprivilegedEnvironment>,
-{
-    fn drop(&mut self) {
-
-        if !self.poisoned {
-            unsafe { self.actor.as_ptr().drop_in_place() };
-        }
+    /// The kernel's own pointer to the memory behind `user_address`. Only valid after `contains`.
+    pub fn kernel_address(&self, user_address: u64) -> usize {
+        self.address_space.kernel_base() as usize
+            + (user_address - self.address_space.user_base()) as usize
     }
 }

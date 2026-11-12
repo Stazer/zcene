@@ -1,9 +1,10 @@
-use crate::actor::root::ActorRootEnvironment;
 use crate::actor::unprivileged::{
-    ActorUnprivilegedActorProgram, ActorUnprivilegedAddress, ActorUnprivilegedExecutor, ActorUnprivilegedEnvironmentPrivilegedPerspective,
-    ActorUnprivilegedMessageHandlers, ActorUnprivilegedEnvironmentPerspective, ActorUnprivilegedRecipient,
-    ActorUnprivilegedEnvironmentUnprivilegedPerspective,
+    ActorUnprivilegedEnvironmentPerspective, ActorUnprivilegedEnvironmentPrivilegedPerspective,
+    ActorUnprivilegedEnvironmentUnprivilegedPerspective, ActorUnprivilegedRecipient,
+    ActorUnprivilegedAddress, ActorUnprivilegedExecutor, ActorUnprivilegedImage, ActorUnprivilegedMessage,
+    ActorUnprivilegedMessageHandlers,
 };
+use crate::actor::root::ActorRootEnvironment;
 use crate::common::memory::allocator::ErasedAllocator;
 use alloc::sync::Arc;
 use core::marker::PhantomData;
@@ -43,7 +44,8 @@ impl ActorEnvironment for ActorUnprivilegedEnvironment {
     type DestroyContext<'a> = ();
 }
 
-impl<A> ActorEnvironmentAllocator for ActorUnprivilegedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, A>
+impl<A> ActorEnvironmentAllocator
+    for ActorUnprivilegedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, A>
 where
     A: ActorAllocator,
 {
@@ -70,44 +72,50 @@ where
 }
 
 impl ActorUnprivilegedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, ErasedAllocator> {
-
     pub fn handlers(&self) -> ActorUnprivilegedMessageHandlers {
         ActorUnprivilegedMessageHandlers::new(self.allocator.clone())
     }
 
-    pub fn spawn<A>(
+    /// The kernel only knows an image, not the actor type inside it, so the caller names the
+    /// message type `M` the image accepts and gets a recipient for it. Whether `M` really is what
+    /// the image expects is not checked.
+    ///
+    /// The image is a flat binary that is copied to the start of a fresh address space and entered
+    /// at `entry_offset` for every `ActorUnprivilegedPhase`.
+    pub fn spawn<M>(
         self: &ActorEnvironmentReference<Self>,
-        actor: A,
+        image: ActorUnprivilegedImage,
         deadline_in_milliseconds: Option<NonZero<usize>>,
         message_handlers: ActorUnprivilegedMessageHandlers,
-    ) -> Result<ActorUnprivilegedAddress<A, ActorUnprivilegedEnvironmentPrivilegedPerspective>, ActorSpawnError>
+    ) -> Result<
+        ActorUnprivilegedRecipient<M, ActorUnprivilegedEnvironmentPrivilegedPerspective>,
+        ActorSpawnError,
+    >
     where
-        A: Actor<ActorUnprivilegedEnvironment>,
+        M: ActorUnprivilegedMessage,
     {
         let root = ActorRootEnvironment::get();
         let allocator = self.allocator.clone();
 
         let (sender, receiver) =
-            ActorMessageChannel::<ActorMessageEnvelope<A::Message, ActorRootEnvironment>>::new_unbounded_in(
+            ActorMessageChannel::<ActorMessageEnvelope<M, ActorRootEnvironment>>::new_unbounded_in(
                 allocator.clone(),
             );
 
-        let recipient: ActorRecipient<A::Message, ActorRootEnvironment> =
+        let recipient: ActorRecipient<M, ActorRootEnvironment> =
             ActorRecipient::from_channel(sender, allocator)?;
 
         root.discovery().register(recipient.clone());
 
-        root.future_runtime().spawn(ActorUnprivilegedExecutor::new(
+        root.future_runtime().spawn(ActorUnprivilegedExecutor::<M>::new(
             root.clone(),
-            ActorUnprivilegedActorProgram::new(root.platform(), actor)?,
+            image,
             receiver,
             recipient.clone(),
             deadline_in_milliseconds,
             message_handlers,
-        ))?;
+        )?)?;
 
-        Ok(ActorUnprivilegedAddress::new(
-            ActorUnprivilegedRecipient::from_recipient(recipient),
-        ))
+        Ok(ActorUnprivilegedRecipient::from_recipient(recipient))
     }
 }
