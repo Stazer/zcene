@@ -128,6 +128,7 @@ where
                     extern "C" fn(*mut (), *const ()) -> !,
                 >(entry)
             },
+            None,
         );
 
         loop {
@@ -143,14 +144,14 @@ where
 
                     match kind {
                         ActorUnprivilegedSystemCallKind::Continue => {
-                            P::resume_after_system_call(&syscall.context, &mut event);
+                            P::resume_after_system_call(&syscall.context, &mut event, None);
                         }
 
                         ActorUnprivilegedSystemCallKind::Preempt => {
                             self.disable_deadline();
                             r#yield().await;
                             self.enable_deadline();
-                            P::resume_after_system_call(&syscall.context, &mut event);
+                            P::resume_after_system_call(&syscall.context, &mut event, None);
                         }
 
                         ActorUnprivilegedSystemCallKind::Complete => break,
@@ -173,7 +174,7 @@ where
                                 let allocator = self.environment.allocator().clone();
                                 let _ = handler.send(&allocator, message).await;
                             }
-                            P::resume_after_system_call(&syscall.context, &mut event);
+                            P::resume_after_system_call(&syscall.context, &mut event, None);
                         }
 
                         ActorUnprivilegedSystemCallKind::Unknown(identifier) => {
@@ -193,7 +194,7 @@ where
                     self.disable_deadline();
                     r#yield().await;
                     self.enable_deadline();
-                    P::resume_after_preemption(&context, &mut event);
+                    P::resume_after_preemption(&context, &mut event, None);
                 }
 
                 Some(UnprivilegedEvent::Exception(exception)) => {

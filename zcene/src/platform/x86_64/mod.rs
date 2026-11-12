@@ -17,6 +17,9 @@ pub use x86_64_unprivileged::{
 mod x86_64_memory_manager;
 pub use x86_64_memory_manager::*;
 
+mod x86_64_address_space;
+pub use x86_64_address_space::*;
+
 mod x86_64_execution_unit;
 pub use x86_64_execution_unit::*;
 

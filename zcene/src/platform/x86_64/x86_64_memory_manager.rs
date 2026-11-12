@@ -26,8 +26,13 @@ use x86_64::structures::paging::Size4KiB;
 use x86_64::structures::paging::mapper::TranslateResult;
 use x86_64::structures::paging::{Mapper, PhysFrame, Translate};
 use crate::common::linker_value;
+use crate::platform::x86_64::X86_64AddressSpace;
+use crate::platform::x86_64::x86_64_unprivileged::X86_64_KERNEL_ADDRESS_SPACE;
+use core::sync::atomic::Ordering;
 use x86_64::{PhysAddr, VirtAddr};
 use ztd::Method;
+
+pub const ISOLATED_USER_BASE: u64 = 0x0000_0080_0000_0000;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -227,6 +232,12 @@ impl X86_64MemoryManager {
                 VirtAddr::new(physical_memory_offset.as_usize().r#as()),
             )
         };
+
+        {
+            let (frame, flags) = Cr3::read_raw();
+            X86_64_KERNEL_ADDRESS_SPACE
+                .store(frame.start_address().as_u64() | u64::from(flags), Ordering::Release);
+        }
 
         let mut this = Self {
             physical_memory_offset,
@@ -512,6 +523,130 @@ impl X86_64MemoryManager {
 
         Some(VirtualMemoryRegion::new(
             VirtualMemoryAddress::from(base),
+            frame_count * FRAME_SIZE,
+        ))
+    }
+
+    /// Creates an address space whose only accessible memory is `size` bytes at
+    /// `ISOLATED_USER_BASE`: the first `executable_length` bytes readable and executable, the rest
+    /// readable and writable. The kernel stays mapped in it, but supervisor-only, because the
+    /// system call and interrupt entry points run in it until they switch back.
+    pub fn create_address_space(
+        &self,
+        size: usize,
+        executable_length: usize,
+        required_base: Option<u64>,
+    ) -> Option<X86_64AddressSpace> {
+        if required_base.is_some_and(|base| base != ISOLATED_USER_BASE) {
+            return None;
+        }
+
+        let frame_count = size.div_ceil(FRAME_SIZE).max(1);
+        let executable_frame_count = executable_length.div_ceil(FRAME_SIZE).min(frame_count);
+        let user_slot = ((ISOLATED_USER_BASE >> 39) & 0x1ff) as usize;
+
+        let kernel_table = self.active_page_table();
+
+        if kernel_table[user_slot].flags().contains(PageTableFlags::PRESENT) {
+            return None;
+        }
+
+        let mut base_physical = None;
+        let mut expected_physical = 0;
+
+        for frame_identifier in self.frame_allocator().allocate_window(frame_count).ok()? {
+            let address = self
+                .frame_allocator()
+                .translate_frame_identifier(frame_identifier)
+                .as_u64();
+
+            if base_physical.is_none() {
+                base_physical = Some(address);
+            } else if address != expected_physical {
+                return None;
+            }
+
+            expected_physical = address + FRAME_SIZE as u64;
+        }
+
+        let base_physical = base_physical?;
+
+        let page_table_frame = KernelMemoryManagerFrameAllocator::new(self).allocate_frame()?;
+
+        let page_table = unsafe {
+            self.translate_physical_memory_address(PhysicalMemoryAddress::from(
+                page_table_frame.start_address().as_u64(),
+            ))
+            .cast_mut::<PageTable>()
+            .as_mut()
+            .unwrap()
+        };
+
+        page_table.zero();
+
+        for (index, entry) in kernel_table.iter().enumerate() {
+            if entry.flags().contains(PageTableFlags::PRESENT) {
+                page_table[index].set_addr(
+                    entry.addr(),
+                    entry.flags() & !PageTableFlags::USER_ACCESSIBLE,
+                );
+            }
+        }
+
+        let mut mapper = unsafe {
+            OffsetPageTable::new(
+                page_table,
+                VirtAddr::new(self.physical_memory_offset.as_usize().r#as()),
+            )
+        };
+
+        let table_flags = PageTableFlags::PRESENT
+            | PageTableFlags::WRITABLE
+            | PageTableFlags::USER_ACCESSIBLE;
+
+        for index in 0..frame_count {
+            let offset = (index * FRAME_SIZE) as u64;
+
+            let page = Page::<Size4KiB>::from_start_address(VirtAddr::new(
+                ISOLATED_USER_BASE + offset,
+            ))
+            .ok()?;
+            let frame =
+                PhysFrame::from_start_address(PhysAddr::new(base_physical + offset)).ok()?;
+
+            let flags = if index < executable_frame_count {
+                PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE
+            } else {
+                PageTableFlags::PRESENT
+                    | PageTableFlags::WRITABLE
+                    | PageTableFlags::USER_ACCESSIBLE
+                    | PageTableFlags::NO_EXECUTE
+            };
+
+            unsafe {
+                mapper
+                    .map_to_with_table_flags(
+                        page,
+                        frame,
+                        flags,
+                        table_flags,
+                        &mut KernelMemoryManagerFrameAllocator::new(self),
+                    )
+                    .ok()?
+                    .ignore();
+            }
+        }
+
+        let kernel_base = self
+            .translate_physical_memory_address(PhysicalMemoryAddress::from(base_physical))
+            .as_u64() as *mut u8;
+
+        unsafe { core::ptr::write_bytes(kernel_base, 0, frame_count * FRAME_SIZE) };
+
+        Some(X86_64AddressSpace::new(
+            page_table_frame.start_address().as_u64(),
+            ISOLATED_USER_BASE,
+            kernel_base,
             frame_count * FRAME_SIZE,
         ))
     }

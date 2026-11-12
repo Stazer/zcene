@@ -31,4 +31,5 @@ x86 = { version = "*", optional = true }
 x86_64 = { version = "0.15", features = ["abi_x86_interrupt", "instructions"], optional = true }
 zcene-core = { path = "../zcene-core" }
 spin = "*"
+xmas-elf = "0.8"
 ztd = { git = "https://github.com/Stazer/ztd.git" }

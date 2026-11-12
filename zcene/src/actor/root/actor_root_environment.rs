@@ -2,6 +2,7 @@ use crate::actor::{
     ActorRootEnvironmentCreateContext, ActorRootEnvironmentDestroyContext,
     ActorRootEnvironmentExecutor, ActorRootEnvironmentHandleContext,
 };
+use crate::actor::isolated::ActorIsolatedEnvironment;
 use crate::actor::unprivileged::{ActorUnprivilegedEnvironment, ActorUnprivilegedEnvironmentPrivilegedPerspective};
 use crate::common::time::Timer;
 use crate::platform::ActivePlatform;
@@ -31,6 +32,9 @@ where
     discovery: ActorSpinDiscovery<Self>,
     unprivileged_environment: ActorEnvironmentReference<
         ActorUnprivilegedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, <H as FutureRuntimeHandler>::Allocator>,
+    >,
+    isolated_environment: ActorEnvironmentReference<
+        ActorIsolatedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, <H as FutureRuntimeHandler>::Allocator>,
     >,
 }
 
@@ -113,6 +117,14 @@ where
         &self.unprivileged_environment
     }
 
+    pub fn isolated_environment(
+        &self,
+    ) -> &ActorEnvironmentReference<
+        ActorIsolatedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, <H as FutureRuntimeHandler>::Allocator>,
+    > {
+        &self.isolated_environment
+    }
+
     pub fn platform(&self) -> &P {
         &self.platform
     }
@@ -146,8 +158,10 @@ where
 
         let unprivileged_environment = ActorUnprivilegedEnvironment::new(allocator.clone());
 
+        let isolated_environment = ActorIsolatedEnvironment::new(allocator.clone());
+
         Arc::new_in(
-            Self::new(runtime, platform, discovery, unprivileged_environment),
+            Self::new(runtime, platform, discovery, unprivileged_environment, isolated_environment),
             allocator,
         )
     }

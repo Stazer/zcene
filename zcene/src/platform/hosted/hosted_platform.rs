@@ -1,6 +1,9 @@
 use crate::common::memory::allocator::{ErasedAllocator, SelfContainedHeapAllocator};
 use crate::common::time::AtomicTimer;
 use crate::platform::hosted::HostedLoggerService;
+use crate::platform::unprivileged_address_space::{
+    UnprivilegedAddressSpace, UnprivilegedAddressSpaceSpecification,
+};
 use crate::platform::unprivileged_event::UnprivilegedEvent;
 use crate::platform::Platform;
 use alloc::alloc::Global;
@@ -24,11 +27,28 @@ impl HostedPlatform {
     }
 }
 
+pub struct HostedUnprivilegedAddressSpace;
+
+impl UnprivilegedAddressSpace for HostedUnprivilegedAddressSpace {
+    fn user_base(&self) -> u64 {
+        unreachable!("hosted platform does not support unprivileged execution")
+    }
+
+    fn kernel_base(&self) -> *mut u8 {
+        unreachable!("hosted platform does not support unprivileged execution")
+    }
+
+    fn size(&self) -> usize {
+        unreachable!("hosted platform does not support unprivileged execution")
+    }
+}
+
 impl Platform for HostedPlatform {
     type BootInfo = ();
     type Allocator = ErasedAllocator;
     type UnprivilegedSystemCallContext = ();
     type UnprivilegedPreemptionContext = ();
+    type UnprivilegedAddressSpace = HostedUnprivilegedAddressSpace;
 
     fn allocator(&self) -> Self::Allocator {
         self.allocator.clone()
@@ -46,6 +66,13 @@ impl Platform for HostedPlatform {
     }
 
     fn allocate_unprivileged_memory(&self, _size: usize) -> Option<&'static mut [u8]> {
+        todo!("hosted platform does not support unprivileged execution")
+    }
+
+    fn create_unprivileged_address_space(
+        &self,
+        _specification: &UnprivilegedAddressSpaceSpecification,
+    ) -> Option<Self::UnprivilegedAddressSpace> {
         todo!("hosted platform does not support unprivileged execution")
     }
 
@@ -69,6 +96,7 @@ impl Platform for HostedPlatform {
         >,
         _stack: u64,
         _entry: extern "C" fn(*mut (), *const ()) -> !,
+        _address_space: Option<&Self::UnprivilegedAddressSpace>,
     ) {
         todo!("hosted platform does not support unprivileged execution")
     }
@@ -78,6 +106,7 @@ impl Platform for HostedPlatform {
         _event: &mut Option<
             UnprivilegedEvent<Self::UnprivilegedSystemCallContext, Self::UnprivilegedPreemptionContext>,
         >,
+        _address_space: Option<&Self::UnprivilegedAddressSpace>,
     ) {
         todo!("hosted platform does not support unprivileged execution")
     }
@@ -87,6 +116,7 @@ impl Platform for HostedPlatform {
         _event: &mut Option<
             UnprivilegedEvent<Self::UnprivilegedSystemCallContext, Self::UnprivilegedPreemptionContext>,
         >,
+        _address_space: Option<&Self::UnprivilegedAddressSpace>,
     ) {
         todo!("hosted platform does not support unprivileged execution")
     }

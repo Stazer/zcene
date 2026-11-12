@@ -8,6 +8,8 @@ use crate::platform::x86_64::{
     InterruptEntryPoint, X86_64InterruptManager, X86_64LocalInterruptManager, X86_64MemoryManager,
     X86_64UnprivilegedPreemptionContext, X86_64UnprivilegedSystemCallContext, TimerService,
 };
+use crate::platform::unprivileged_address_space::UnprivilegedAddressSpaceSpecification;
+use crate::platform::x86_64::X86_64AddressSpace;
 use crate::platform::Platform;
 use core::fmt::Write;
 use crate::common::memory::allocator::ErasedAllocator;
@@ -90,6 +92,7 @@ impl Platform for X86_64Platform {
     type Allocator = ErasedAllocator;
     type UnprivilegedSystemCallContext = X86_64UnprivilegedSystemCallContext;
     type UnprivilegedPreemptionContext = X86_64UnprivilegedPreemptionContext;
+    type UnprivilegedAddressSpace = X86_64AddressSpace;
 
     fn allocator(&self) -> Self::Allocator {
         self.memory.heap_allocator()
@@ -164,6 +167,17 @@ impl Platform for X86_64Platform {
         Some(unsafe { core::slice::from_raw_parts_mut(region.start().as_u64() as *mut u8, region.size()) })
     }
 
+    fn create_unprivileged_address_space(
+        &self,
+        specification: &UnprivilegedAddressSpaceSpecification,
+    ) -> Option<Self::UnprivilegedAddressSpace> {
+        self.memory.create_address_space(
+            specification.size,
+            specification.executable_length,
+            specification.required_base,
+        )
+    }
+
     fn set_preemption_deadline(&self, duration: Duration) {
         self.interrupt_manager.reset_oneshot(duration);
     }
@@ -183,22 +197,40 @@ impl Platform for X86_64Platform {
         event: &mut Option<UnprivilegedEvent<Self::UnprivilegedSystemCallContext, Self::UnprivilegedPreemptionContext>>,
         stack: u64,
         entry: extern "C" fn(*mut (), *const ()) -> !,
+        address_space: Option<&Self::UnprivilegedAddressSpace>,
     ) {
-        x86_64_execute_in_unprivileged(argument, message, event, stack, entry);
+        x86_64_execute_in_unprivileged(
+            argument,
+            message,
+            event,
+            stack,
+            entry,
+            address_space.map_or(0, X86_64AddressSpace::page_table),
+        );
     }
 
     fn resume_after_system_call(
         context: &Self::UnprivilegedSystemCallContext,
         event: &mut Option<UnprivilegedEvent<Self::UnprivilegedSystemCallContext, Self::UnprivilegedPreemptionContext>>,
+        address_space: Option<&Self::UnprivilegedAddressSpace>,
     ) {
-        x86_64_resume_after_system_call(context, event);
+        x86_64_resume_after_system_call(
+            context,
+            event,
+            address_space.map_or(0, X86_64AddressSpace::page_table),
+        );
     }
 
     fn resume_after_preemption(
         context: &Self::UnprivilegedPreemptionContext,
         event: &mut Option<UnprivilegedEvent<Self::UnprivilegedSystemCallContext, Self::UnprivilegedPreemptionContext>>,
+        address_space: Option<&Self::UnprivilegedAddressSpace>,
     ) {
-        x86_64_resume_after_preemption(context, event);
+        x86_64_resume_after_preemption(
+            context,
+            event,
+            address_space.map_or(0, X86_64AddressSpace::page_table),
+        );
     }
 
     fn complete_unprivileged_execution() -> ! {

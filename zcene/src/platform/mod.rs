@@ -1,6 +1,11 @@
 mod platform;
 pub use platform::*;
 
+pub mod unprivileged_address_space;
+pub use unprivileged_address_space::{
+    UnprivilegedAddressSpace, UnprivilegedAddressSpaceSpecification,
+};
+
 pub mod unprivileged_event;
 pub use unprivileged_event::{
     UnprivilegedEvent, UnprivilegedExceptionEvent, UnprivilegedSystemCallEvent,

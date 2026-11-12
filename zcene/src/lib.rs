@@ -65,3 +65,15 @@ macro_rules! define_system {
         $crate::platform::platform_entry_point!($root_actor);
     };
 }
+
+#[macro_export]
+macro_rules! include_actor_isolated_image {
+    ($path:expr) => {{
+        #[repr(C, align(16))]
+        struct Aligned<T: ?Sized>(T);
+
+        static BYTES: &Aligned<[u8]> = &Aligned(*include_bytes!($path));
+
+        $crate::actor::ActorIsolatedImage::from_elf(&BYTES.0)
+    }};
+}

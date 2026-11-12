@@ -3,7 +3,7 @@ use crate::platform::unprivileged_event::{
 };
 use core::sync::atomic::AtomicU64;
 use crate::platform::x86_64::{
-    X86_64UnprivilegedPreemptionContext, X86_64UnprivilegedSystemCallContext,
+    X86_64FpuState, X86_64UnprivilegedPreemptionContext, X86_64UnprivilegedSystemCallContext,
 };
 use core::arch::{asm, naked_asm};
 use x86::current::rflags::RFlags;
@@ -49,6 +49,64 @@ macro_rules! push_inline_return_address {
     };
 }
 
+macro_rules! restore_kernel_address_space {
+    () => {
+        r#"
+            mov rax, [rip + {kernel_address_space}];
+            mov rdx, cr3;
+            cmp rax, rdx;
+            je 4f;
+            mov cr3, rax;
+            4:
+        "#
+    };
+}
+
+macro_rules! reset_floating_point_state {
+    () => {
+        r#"
+            fninit;
+            push 0x1f80;
+            ldmxcsr [rsp];
+            add rsp, 8;
+        "#
+    };
+}
+
+macro_rules! clear_registers_for_user {
+    () => {
+        r#"
+            xor eax, eax;
+            xor ebx, ebx;
+            xor edx, edx;
+            xor ebp, ebp;
+            xor r8d, r8d;
+            xor r9d, r9d;
+            xor r10d, r10d;
+            xor r12d, r12d;
+            xor r13d, r13d;
+            xor r14d, r14d;
+            xor r15d, r15d;
+            pxor xmm0, xmm0;
+            pxor xmm1, xmm1;
+            pxor xmm2, xmm2;
+            pxor xmm3, xmm3;
+            pxor xmm4, xmm4;
+            pxor xmm5, xmm5;
+            pxor xmm6, xmm6;
+            pxor xmm7, xmm7;
+            pxor xmm8, xmm8;
+            pxor xmm9, xmm9;
+            pxor xmm10, xmm10;
+            pxor xmm11, xmm11;
+            pxor xmm12, xmm12;
+            pxor xmm13, xmm13;
+            pxor xmm14, xmm14;
+            pxor xmm15, xmm15;
+        "#
+    };
+}
+
 macro_rules! save_kernel_stack {
     () => {
         r#"
@@ -75,13 +133,14 @@ pub unsafe extern "C" fn x86_64_system_call_entry_point() -> ! {
         "shl rdx, 32",
         "or rax, rdx",
         "mov rsp, rax",
-
+        restore_kernel_address_space!(),
         "mov rdx, r8",
 
         "pop rcx",
 
         "jmp x86_64_unprivileged_system_call_restore",
         "hlt",
+        kernel_address_space = sym X86_64_KERNEL_ADDRESS_SPACE,
     )
 }
 
@@ -105,6 +164,8 @@ pub unsafe extern "C" fn x86_64_deadline_preemption_entry_point() {
         "push rbx",
         "push rax",
 
+        "sub rsp, {fpu_size}",
+        "fxsave64 [rsp]",
         "mov rdi, rsp",
 
         "mov rcx, 0xC0000102",
@@ -112,14 +173,18 @@ pub unsafe extern "C" fn x86_64_deadline_preemption_entry_point() {
         "shl rdx, 32",
         "or rax, rdx",
         "mov rsp, rax",
-
+        restore_kernel_address_space!(),
         "pop rsi",
         "jmp x86_64_unprivileged_preemption_restore",
         "hlt",
+        kernel_address_space = sym X86_64_KERNEL_ADDRESS_SPACE,
+        fpu_size = const X86_64FpuState::SIZE,
     )
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub static X86_64_KERNEL_ADDRESS_SPACE: AtomicU64 = AtomicU64::new(0);
 
 pub static X86_64_KERNEL_EXCEPTION_HANDLERS: [AtomicU64; 32] = [const { AtomicU64::new(0) }; 32];
 
@@ -140,6 +205,7 @@ macro_rules! exception_entry_point {
                 "shl rdx, 32",
                 "or rax, rdx",
                 "mov rsp, rax",
+                restore_kernel_address_space!(),
                 "pop rcx",
                 "mov rdi, r11",
                 "mov rsi, r9",
@@ -149,6 +215,7 @@ macro_rules! exception_entry_point {
                 "2:",
                 "jmp qword ptr [rip + {table} + {offset}]",
                 vector = const $vector,
+                kernel_address_space = sym X86_64_KERNEL_ADDRESS_SPACE,
                 table = sym X86_64_KERNEL_EXCEPTION_HANDLERS,
                 offset = const ($vector * 8),
             )
@@ -170,6 +237,7 @@ macro_rules! exception_entry_point {
                 "shl rdx, 32",
                 "or rax, rdx",
                 "mov rsp, rax",
+                restore_kernel_address_space!(),
                 "pop rcx",
                 "mov rdi, r11",
                 "mov rsi, r9",
@@ -179,6 +247,7 @@ macro_rules! exception_entry_point {
                 "2:",
                 "jmp qword ptr [rip + {table} + {offset}]",
                 vector = const $vector,
+                kernel_address_space = sym X86_64_KERNEL_ADDRESS_SPACE,
                 table = sym X86_64_KERNEL_EXCEPTION_HANDLERS,
                 offset = const ($vector * 8),
             )
@@ -257,6 +326,7 @@ pub extern "C" fn x86_64_execute_in_unprivileged(
     event: &mut Option<X86_64UnprivilegedEvent>,
     stack: u64,
     entry: extern "C" fn(*mut (), *const ()) -> !,
+    address_space: u64,
 ) {
     unsafe {
         asm!(
@@ -264,8 +334,14 @@ pub extern "C" fn x86_64_execute_in_unprivileged(
             push_inline_return_address!(),
             "push {event}",
             save_kernel_stack!(),
+            "test {address_space}, {address_space}",
+            "jz 3f",
+            "mov cr3, {address_space}",
+            "3:",
+            reset_floating_point_state!(),
             "mov rsp, {stack}",
             "mov rcx, {entry}",
+            clear_registers_for_user!(),
             "sysretq",
             "hlt",
             "2:",
@@ -276,6 +352,7 @@ pub extern "C" fn x86_64_execute_in_unprivileged(
 
             stack = in(reg) stack - 8,
             entry = in(reg) entry,
+            address_space = in(reg) address_space,
             in("r11") RFlags::FLAGS_IF.bits(),
             out("rax") _,
             out("rdx") _,
@@ -289,6 +366,7 @@ pub extern "C" fn x86_64_execute_in_unprivileged(
 pub extern "C" fn x86_64_resume_after_system_call(
     context: &X86_64UnprivilegedSystemCallContext,
     event: &mut Option<X86_64UnprivilegedEvent>,
+    address_space: u64,
 ) {
     unsafe {
         asm!(
@@ -296,8 +374,16 @@ pub extern "C" fn x86_64_resume_after_system_call(
             push_inline_return_address!(),
             "push {event}",
             save_kernel_stack!(),
+            "test {address_space}, {address_space}",
+            "jz 3f",
+            "mov cr3, {address_space}",
+            "3:",
+            reset_floating_point_state!(),
             "mov rsp, {stack}",
             "mov rcx, {rip}",
+            clear_registers_for_user!(),
+            "xor edi, edi",
+            "xor esi, esi",
             "sysretq",
             "hlt",
             "2:",
@@ -305,6 +391,7 @@ pub extern "C" fn x86_64_resume_after_system_call(
             event = in(reg) event,
             stack = in(reg) context.rsp(),
             rip = in(reg) context.rip(),
+            address_space = in(reg) address_space,
             in("r11") context.rflags(),
             out("rax") _,
             out("rdx") _,
@@ -318,6 +405,7 @@ pub extern "C" fn x86_64_resume_after_system_call(
 pub extern "C" fn x86_64_resume_after_preemption(
     context: &X86_64UnprivilegedPreemptionContext,
     event: &mut Option<X86_64UnprivilegedEvent>,
+    address_space: u64,
 ) {
     unsafe {
         asm!(
@@ -325,8 +413,13 @@ pub extern "C" fn x86_64_resume_after_preemption(
             push_inline_return_address!(),
             "push {event}",
             save_kernel_stack!(),
+            "test {address_space}, {address_space}",
+            "jz 3f",
+            "mov cr3, {address_space}",
+            "3:",
 
-            "mov rsp, {ctx}",
+            "fxrstor64 [{ctx}]",
+            "lea rsp, [{ctx} + {fpu_size}]",
             "pop rax",
             "pop rbx",
             "pop rcx",
@@ -348,6 +441,11 @@ pub extern "C" fn x86_64_resume_after_preemption(
             pop_callee_saved_registers!(),
             event = in(reg) event,
             ctx = in(reg) context as *const _,
+            fpu_size = const X86_64FpuState::SIZE,
+            address_space = in(reg) address_space,
+            out("rax") _,
+            out("rdx") _,
+            out("rcx") _,
             clobber_abi("C"),
         )
     }
