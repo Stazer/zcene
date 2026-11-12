@@ -1,12 +1,10 @@
 use crate::actor::isolated::{
+    ActorIsolatedEnvironmentPerspective, ActorIsolatedEnvironmentPrivilegedPerspective,
+    ActorIsolatedEnvironmentUnprivilegedPerspective, ActorIsolatedRecipient,
     ActorIsolatedAddress, ActorIsolatedExecutor, ActorIsolatedImage, ActorIsolatedMessage,
     ActorIsolatedMessageHandlers,
 };
 use crate::actor::root::ActorRootEnvironment;
-use crate::actor::unprivileged::{
-    ActorUnprivilegedEnvironmentPerspective, ActorUnprivilegedEnvironmentPrivilegedPerspective,
-    ActorUnprivilegedEnvironmentUnprivilegedPerspective, ActorUnprivilegedRecipient,
-};
 use crate::common::memory::allocator::ErasedAllocator;
 use alloc::sync::Arc;
 use core::marker::PhantomData;
@@ -20,10 +18,10 @@ use zcene_core::actor::{
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct ActorIsolatedEnvironment<
-    P = ActorUnprivilegedEnvironmentUnprivilegedPerspective,
+    P = ActorIsolatedEnvironmentUnprivilegedPerspective,
     A = ErasedAllocator,
 > where
-    P: ActorUnprivilegedEnvironmentPerspective,
+    P: ActorIsolatedEnvironmentPerspective,
     A: ActorAllocator,
 {
     allocator: A,
@@ -47,7 +45,7 @@ impl ActorEnvironment for ActorIsolatedEnvironment {
 }
 
 impl<A> ActorEnvironmentAllocator
-    for ActorIsolatedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, A>
+    for ActorIsolatedEnvironment<ActorIsolatedEnvironmentPrivilegedPerspective, A>
 where
     A: ActorAllocator,
 {
@@ -58,7 +56,7 @@ where
     }
 }
 
-impl<A> ActorIsolatedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, A>
+impl<A> ActorIsolatedEnvironment<ActorIsolatedEnvironmentPrivilegedPerspective, A>
 where
     A: ActorAllocator,
 {
@@ -73,7 +71,7 @@ where
     }
 }
 
-impl ActorIsolatedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, ErasedAllocator> {
+impl ActorIsolatedEnvironment<ActorIsolatedEnvironmentPrivilegedPerspective, ErasedAllocator> {
     pub fn handlers(&self) -> ActorIsolatedMessageHandlers {
         ActorIsolatedMessageHandlers::new(self.allocator.clone())
     }
@@ -90,7 +88,7 @@ impl ActorIsolatedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective,
         deadline_in_milliseconds: Option<NonZero<usize>>,
         message_handlers: ActorIsolatedMessageHandlers,
     ) -> Result<
-        ActorUnprivilegedRecipient<M, ActorUnprivilegedEnvironmentPrivilegedPerspective>,
+        ActorIsolatedRecipient<M, ActorIsolatedEnvironmentPrivilegedPerspective>,
         ActorSpawnError,
     >
     where
@@ -118,6 +116,6 @@ impl ActorIsolatedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective,
             message_handlers,
         )?)?;
 
-        Ok(ActorUnprivilegedRecipient::from_recipient(recipient))
+        Ok(ActorIsolatedRecipient::from_recipient(recipient))
     }
 }

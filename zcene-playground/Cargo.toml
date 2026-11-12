@@ -2,6 +2,19 @@
 name = "zcene-playground"
 version = "0.0.0"
 edition = "2024"
+default-run = "zcene-playground"
+
+[features]
+isolated-program = []
+
+[[bin]]
+name = "zcene-playground"
+path = "src/main.rs"
+
+[[bin]]
+name = "zcene-playground-isolated"
+path = "src/main.rs"
+required-features = ["isolated-program"]
 
 [target.'cfg(target_os = "none")'.dependencies]
 zcene = { path = "../zcene", default-features = false, features = ["x86_64"] }

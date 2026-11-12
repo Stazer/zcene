@@ -1,30 +1,29 @@
-use crate::actor::isolated::ActorIsolatedEnvironment;
-use crate::actor::unprivileged::{
-    ActorUnprivilegedEnvironmentPerspective, ActorUnprivilegedEnvironmentUnprivilegedPerspective,
-    ActorUnprivilegedRecipient,
+use crate::actor::isolated::{
+    ActorIsolatedEnvironment, ActorIsolatedEnvironmentPerspective,
+    ActorIsolatedEnvironmentUnprivilegedPerspective, ActorIsolatedRecipient,
 };
 use zcene_core::actor::{Actor, ActorAddress, ActorFuture, ActorMessageSender, ActorSendError};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct ActorIsolatedAddress<A, P = ActorUnprivilegedEnvironmentUnprivilegedPerspective>
+pub struct ActorIsolatedAddress<A, P = ActorIsolatedEnvironmentUnprivilegedPerspective>
 where
     A: Actor<ActorIsolatedEnvironment>,
-    P: ActorUnprivilegedEnvironmentPerspective,
+    P: ActorIsolatedEnvironmentPerspective,
 {
-    recipient: ActorUnprivilegedRecipient<A::Message, P>,
+    recipient: ActorIsolatedRecipient<A::Message, P>,
 }
 
 impl<A, P> ActorIsolatedAddress<A, P>
 where
     A: Actor<ActorIsolatedEnvironment>,
-    P: ActorUnprivilegedEnvironmentPerspective,
+    P: ActorIsolatedEnvironmentPerspective,
 {
-    pub fn new(recipient: ActorUnprivilegedRecipient<A::Message, P>) -> Self {
+    pub fn new(recipient: ActorIsolatedRecipient<A::Message, P>) -> Self {
         Self { recipient }
     }
 
-    pub fn recipient(&self) -> ActorUnprivilegedRecipient<A::Message, P> {
+    pub fn recipient(&self) -> ActorIsolatedRecipient<A::Message, P> {
         self.recipient.clone()
     }
 }
@@ -32,7 +31,7 @@ where
 impl<A, P> Clone for ActorIsolatedAddress<A, P>
 where
     A: Actor<ActorIsolatedEnvironment>,
-    P: ActorUnprivilegedEnvironmentPerspective,
+    P: ActorIsolatedEnvironmentPerspective,
 {
     fn clone(&self) -> Self {
         Self::new(self.recipient.clone())
@@ -40,7 +39,7 @@ where
 }
 
 impl<A> ActorAddress<A, ActorIsolatedEnvironment>
-    for ActorIsolatedAddress<A, ActorUnprivilegedEnvironmentUnprivilegedPerspective>
+    for ActorIsolatedAddress<A, ActorIsolatedEnvironmentUnprivilegedPerspective>
 where
     A: Actor<ActorIsolatedEnvironment>,
 {
@@ -49,8 +48,8 @@ where
 impl<A, P> ActorMessageSender<A::Message> for ActorIsolatedAddress<A, P>
 where
     A: Actor<ActorIsolatedEnvironment>,
-    P: ActorUnprivilegedEnvironmentPerspective,
-    ActorUnprivilegedRecipient<A::Message, P>: ActorMessageSender<A::Message>,
+    P: ActorIsolatedEnvironmentPerspective,
+    ActorIsolatedRecipient<A::Message, P>: ActorMessageSender<A::Message>,
 {
     fn send(&self, message: A::Message) -> impl ActorFuture<'_, Result<(), ActorSendError>> {
         async move { self.recipient.send(message).await }

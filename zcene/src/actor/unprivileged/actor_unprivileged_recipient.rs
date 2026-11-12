@@ -3,7 +3,7 @@ use crate::actor::unprivileged::{
     ActorUnprivilegedEnvironmentPrivilegedPerspective, ActorUnprivilegedEnvironmentPerspective,
     ActorUnprivilegedEnvironmentUnprivilegedPerspective,
 };
-use core::arch::asm;
+use crate::actor::unprivileged::ActorUnprivilegedSystemCalls;
 use zcene_core::actor::{
     ActorFuture, ActorMessage, ActorMessageSender, ActorRecipient, ActorSendError,
 };
@@ -81,7 +81,7 @@ where
         let index = self.handle;
 
         async move {
-            send_message_copy(index, &message);
+            ActorUnprivilegedSystemCalls::send_message_copy(index, &message);
 
             Ok(())
         }
@@ -94,30 +94,5 @@ where
 {
     fn send(&self, message: M) -> impl ActorFuture<'_, Result<(), ActorSendError>> {
         async move { self.handle.send(message).await }
-    }
-}
-
-pub(crate) fn send_message_copy<M>(recipient: usize, message: &M) {
-
-    unsafe {
-        asm!(
-            "push rbx",
-            "push rbp",
-            "push r12",
-            "push r13",
-            "push r14",
-            "push r15",
-            "syscall",
-            "pop r15",
-            "pop r14",
-            "pop r13",
-            "pop r12",
-            "pop rbp",
-            "pop rbx",
-            in("rdi") 3usize,
-            in("rsi") recipient,
-            in("r8") message as *const M as *const (),
-            clobber_abi("C"),
-        );
     }
 }

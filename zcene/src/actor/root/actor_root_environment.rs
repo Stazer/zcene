@@ -2,7 +2,7 @@ use crate::actor::{
     ActorRootEnvironmentCreateContext, ActorRootEnvironmentDestroyContext,
     ActorRootEnvironmentExecutor, ActorRootEnvironmentHandleContext,
 };
-use crate::actor::isolated::ActorIsolatedEnvironment;
+use crate::actor::isolated::{ActorIsolatedEnvironment, ActorIsolatedEnvironmentPrivilegedPerspective};
 use crate::actor::unprivileged::{ActorUnprivilegedEnvironment, ActorUnprivilegedEnvironmentPrivilegedPerspective};
 use crate::common::time::Timer;
 use crate::platform::ActivePlatform;
@@ -34,7 +34,7 @@ where
         ActorUnprivilegedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, <H as FutureRuntimeHandler>::Allocator>,
     >,
     isolated_environment: ActorEnvironmentReference<
-        ActorIsolatedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, <H as FutureRuntimeHandler>::Allocator>,
+        ActorIsolatedEnvironment<ActorIsolatedEnvironmentPrivilegedPerspective, <H as FutureRuntimeHandler>::Allocator>,
     >,
 }
 
@@ -120,7 +120,7 @@ where
     pub fn isolated_environment(
         &self,
     ) -> &ActorEnvironmentReference<
-        ActorIsolatedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspective, <H as FutureRuntimeHandler>::Allocator>,
+        ActorIsolatedEnvironment<ActorIsolatedEnvironmentPrivilegedPerspective, <H as FutureRuntimeHandler>::Allocator>,
     > {
         &self.isolated_environment
     }

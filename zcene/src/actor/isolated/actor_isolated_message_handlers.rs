@@ -1,9 +1,9 @@
 use crate::actor::root::ActorRootEnvironment;
 use crate::actor::isolated::ActorIsolatedMessage;
-use crate::actor::unprivileged::{
-    ActorUnprivilegedEnvironmentUnprivilegedPerspective, ActorUnprivilegedMessageHandler,
-    ActorUnprivilegedMessageHandlers, ActorUnprivilegedRecipient,
+use crate::actor::isolated::{
+    ActorIsolatedEnvironmentUnprivilegedPerspective, ActorIsolatedRecipient,
 };
+use crate::actor::unprivileged::{ActorUnprivilegedMessageHandler, ActorUnprivilegedMessageHandlers};
 use crate::common::memory::allocator::ErasedAllocator;
 use core::alloc::AllocError;
 use zcene_core::actor::{Actor, ActorMessageChannelAddress, ActorRecipient};
@@ -31,24 +31,26 @@ impl ActorIsolatedMessageHandlers {
     pub fn grant<M>(
         &mut self,
         recipient: ActorRecipient<M, ActorRootEnvironment>,
-    ) -> Result<ActorUnprivilegedRecipient<M, ActorUnprivilegedEnvironmentUnprivilegedPerspective>, AllocError>
+    ) -> Result<ActorIsolatedRecipient<M, ActorIsolatedEnvironmentUnprivilegedPerspective>, AllocError>
     where
         M: ActorIsolatedMessage,
     {
-        self.handlers.grant(recipient)
+        Ok(ActorIsolatedRecipient::new(self.handlers.grant(recipient)?.index()))
     }
 
     pub fn grant_address<A>(
         &mut self,
         address: &ActorMessageChannelAddress<A, ActorRootEnvironment>,
     ) -> Result<
-        ActorUnprivilegedRecipient<A::Message, ActorUnprivilegedEnvironmentUnprivilegedPerspective>,
+        ActorIsolatedRecipient<A::Message, ActorIsolatedEnvironmentUnprivilegedPerspective>,
         AllocError,
     >
     where
         A: Actor<ActorRootEnvironment>,
         A::Message: ActorIsolatedMessage,
     {
-        self.handlers.grant_address(address)
+        Ok(ActorIsolatedRecipient::new(
+            self.handlers.grant_address(address)?.index(),
+        ))
     }
 }

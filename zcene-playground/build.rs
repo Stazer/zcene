@@ -15,10 +15,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     let manifest_dir = PathBuf::from(var("CARGO_MANIFEST_DIR")?);
 
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=../zcene/isolated.ld");
 
     if var("CARGO_CFG_TARGET_OS").as_deref() == Ok("none") {
         println!(
-            "cargo:rustc-link-arg-bins=--script={}/../zcene/linker.ld",
+            "cargo:rustc-link-arg-bin=zcene-playground=--script={}/../zcene/linker.ld",
+            manifest_dir.display(),
+        );
+
+        println!(
+            "cargo:rustc-link-arg-bin=zcene-playground-isolated=--script={}/../zcene/isolated.ld",
             manifest_dir.display(),
         );
 
@@ -52,7 +58,7 @@ fn assemble_sources(out_dir: &str, source_dir: &PathBuf) -> Result<(), Box<dyn E
             .exit_ok()?;
 
         println!("cargo:rerun-if-changed={}", path.display());
-        println!("cargo:rustc-link-arg-bins={}/{}", out_dir, object_name);
+        println!("cargo:rustc-link-arg-bin=zcene-playground={}/{}", out_dir, object_name);
     }
 
     Ok(())

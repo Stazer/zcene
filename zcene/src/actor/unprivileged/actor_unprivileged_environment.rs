@@ -1,6 +1,6 @@
 use crate::actor::root::ActorRootEnvironment;
 use crate::actor::unprivileged::{
-    ActorUnprivilegedAddress, ActorUnprivilegedExecutor, ActorUnprivilegedEnvironmentPrivilegedPerspective,
+    ActorUnprivilegedActorProgram, ActorUnprivilegedAddress, ActorUnprivilegedExecutor, ActorUnprivilegedEnvironmentPrivilegedPerspective,
     ActorUnprivilegedMessageHandlers, ActorUnprivilegedEnvironmentPerspective, ActorUnprivilegedRecipient,
     ActorUnprivilegedEnvironmentUnprivilegedPerspective,
 };
@@ -97,14 +97,14 @@ impl ActorUnprivilegedEnvironment<ActorUnprivilegedEnvironmentPrivilegedPerspect
 
         root.discovery().register(recipient.clone());
 
-        root.future_runtime().spawn(ActorUnprivilegedExecutor::<A>::new(
+        root.future_runtime().spawn(ActorUnprivilegedExecutor::new(
             root.clone(),
-            actor,
+            ActorUnprivilegedActorProgram::new(root.platform(), actor)?,
             receiver,
             recipient.clone(),
             deadline_in_milliseconds,
             message_handlers,
-        )?)?;
+        ))?;
 
         Ok(ActorUnprivilegedAddress::new(
             ActorUnprivilegedRecipient::from_recipient(recipient),

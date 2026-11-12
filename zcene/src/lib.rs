@@ -1,6 +1,6 @@
+#![feature(allocator_ext)]
 #![feature(abi_x86_interrupt)]
 #![feature(adt_const_params)]
-#![feature(allocator_ext)]
 #![feature(arbitrary_self_types)]
 #![feature(btreemap_alloc)]
 #![feature(step_trait)]
@@ -29,11 +29,6 @@ pub mod future;
 pub mod utility;
 
 pub use zcene_core as core;
-
-#[cfg(not(any(feature = "hosted", test)))]
-#[global_allocator]
-static GLOBAL_ALLOCATOR: common::memory::allocator::PanicHeapAllocator =
-    common::memory::allocator::PanicHeapAllocator;
 
 #[cfg(feature = "x86_64")]
 pub mod r#extern {
@@ -76,4 +71,34 @@ macro_rules! include_actor_isolated_image {
 
         $crate::actor::ActorIsolatedImage::from_elf(&BYTES.0)
     }};
+}
+
+#[cfg(feature = "x86_64")]
+#[macro_export]
+macro_rules! define_isolated_actor {
+    ($actor:ty, $constructor:expr) => {
+        #[global_allocator]
+        static ALLOCATOR: $crate::actor::ActorIsolatedAllocator =
+            $crate::actor::ActorIsolatedAllocator::new();
+
+        static ACTOR: $crate::actor::ActorIsolatedCell<$actor> =
+            $crate::actor::ActorIsolatedCell::new();
+
+        #[panic_handler]
+        fn panic_handler(_panic_info: &::core::panic::PanicInfo) -> ! {
+            $crate::actor::ActorUnprivilegedSystemCalls::fault()
+        }
+
+        #[unsafe(no_mangle)]
+        pub extern "C" fn _start(
+            phase: u64,
+            message: *const <$actor as $crate::core::actor::Actor<
+                $crate::actor::ActorIsolatedEnvironment,
+            >>::Message,
+        ) -> ! {
+            $crate::actor::ActorIsolatedRuntime::run(&ALLOCATOR, &ACTOR, phase, message, || {
+                $constructor
+            })
+        }
+    };
 }

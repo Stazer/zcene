@@ -1,22 +1,21 @@
 use crate::actor::root::ActorRootEnvironment;
 use crate::actor::unprivileged::{
-    ActorUnprivilegedEnvironment, ActorUnprivilegedMemory, ActorUnprivilegedMessageHandlers,
-    ActorUnprivilegedSystemCallKind,
+    ActorUnprivilegedMessageHandlers, ActorUnprivilegedProgram, ActorUnprivilegedSystemCallKind,
 };
 use crate::common::memory::allocator::ErasedAllocator;
 use crate::platform::{ActivePlatform, Platform, UnprivilegedEvent};
 use alloc::boxed::Box;
-use core::alloc::AllocError;
 use core::fmt::Write;
 use core::future::Future;
 use core::marker::PhantomData;
 use core::num::NonZero;
-use core::pin::{pin, Pin};
-use core::task::{Context, Poll, Waker};
+use core::pin::Pin;
+use core::task::{Context, Poll};
 use core::time::Duration;
+use crate::actor::ActorIsolatedPhase;
 use zcene_core::actor::{
-    Actor, ActorCommonHandleContext, ActorEnvironmentAllocator, ActorEnvironmentReference,
-    ActorRecipient, ActorMessageChannelReceiver, ActorMessageEnvelope,
+    ActorEnvironmentAllocator, ActorEnvironmentReference,
+    ActorMessageChannelReceiver, ActorMessageEnvelope, ActorRecipient,
 };
 use zcene_core::future::r#yield;
 
@@ -31,64 +30,56 @@ type PlatformEvent = UnprivilegedEvent<
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PhaseOutcome {
-
     Completed,
-
     Faulted,
 }
 
-type ActorUnprivilegedReceiver<AI> = ActorMessageChannelReceiver<
-    ActorMessageEnvelope<<AI as Actor<ActorUnprivilegedEnvironment>>::Message, ActorRootEnvironment>,
-    ErasedAllocator,
->;
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct ActorUnprivilegedExecutorInner<AI>
+pub struct ActorUnprivilegedExecutorInner<Pr>
 where
-    AI: Actor<ActorUnprivilegedEnvironment>,
+    Pr: ActorUnprivilegedProgram,
 {
     environment: ActorEnvironmentReference<ActorRootEnvironment>,
-    memory: ActorUnprivilegedMemory<AI>,
-    receiver: ActorUnprivilegedReceiver<AI>,
-
-    _recipient: ActorRecipient<AI::Message, ActorRootEnvironment>,
+    program: Pr,
+    receiver: ActorMessageChannelReceiver<
+        ActorMessageEnvelope<Pr::Message, ActorRootEnvironment>,
+        ErasedAllocator,
+    >,
+    _recipient: ActorRecipient<Pr::Message, ActorRootEnvironment>,
     deadline_in_milliseconds: Option<NonZero<usize>>,
     message_handlers: ActorUnprivilegedMessageHandlers,
 }
 
-impl<AI> ActorUnprivilegedExecutorInner<AI>
+impl<Pr> ActorUnprivilegedExecutorInner<Pr>
 where
-    AI: Actor<ActorUnprivilegedEnvironment>,
+    Pr: ActorUnprivilegedProgram,
 {
     async fn run(mut self) {
-        if self.run_phase(None, Self::create_entry).await == PhaseOutcome::Faulted {
-            return self.memory.poison();
+        if self.run_phase(ActorIsolatedPhase::Create, None).await == PhaseOutcome::Faulted {
+            return self.program.poison();
         }
 
         while let Some(envelope) = self.receiver.receive().await {
             match envelope {
                 ActorMessageEnvelope::Message(message) => {
+                    let address = self.program.store_message(message);
 
-                    let message = self.memory.store_message(message);
-
-                    let outcome = self
-                        .run_phase(Some(unsafe { &*message }), Self::handle_entry)
-                        .await;
+                    let outcome = self.run_phase(ActorIsolatedPhase::Handle, Some(address)).await;
 
                     if outcome == PhaseOutcome::Faulted {
-                        return self.memory.poison();
+                        return self.program.poison();
                     }
 
-                    unsafe { self.memory.drop_message() };
+                    self.program.drop_message();
                 }
 
                 ActorMessageEnvelope::Migrate(_) => {}
             }
         }
 
-        if self.run_phase(None, Self::destroy_entry).await == PhaseOutcome::Faulted {
-            self.memory.poison();
+        if self.run_phase(ActorIsolatedPhase::Destroy, None).await == PhaseOutcome::Faulted {
+            self.program.poison();
         }
     }
 
@@ -107,29 +98,24 @@ where
     }
 
     #[inline(never)]
-    async fn run_phase(
-        &mut self,
-        message: Option<&AI::Message>,
-        entry: extern "C" fn(*mut AI, *const ()) -> !,
-    ) -> PhaseOutcome {
+    async fn run_phase(&mut self, phase: ActorIsolatedPhase, message: Option<u64>) -> PhaseOutcome {
         let mut outcome = PhaseOutcome::Completed;
         let mut event: Option<PlatformEvent> = None;
 
         self.enable_deadline();
 
-        P::execute_in_unprivileged(
-            self.memory.actor() as *mut (),
-            message.map_or(core::ptr::null(), |message| message as *const AI::Message as *const ()),
-            &mut event,
-            self.memory.stack_top(),
-            unsafe {
-                core::mem::transmute::<
-                    extern "C" fn(*mut AI, *const ()) -> !,
-                    extern "C" fn(*mut (), *const ()) -> !,
-                >(entry)
-            },
-            None,
-        );
+        {
+            let entry = self.program.entry(phase);
+
+            P::execute_in_unprivileged(
+                entry.argument,
+                message.map_or(core::ptr::null(), |address| address as *const ()),
+                &mut event,
+                self.program.stack_top(),
+                entry.entry,
+                self.program.address_space(),
+            );
+        }
 
         loop {
             match event.take() {
@@ -144,37 +130,50 @@ where
 
                     match kind {
                         ActorUnprivilegedSystemCallKind::Continue => {
-                            P::resume_after_system_call(&syscall.context, &mut event, None);
+                            P::resume_after_system_call(
+                                &syscall.context,
+                                &mut event,
+                                self.program.address_space(),
+                            );
                         }
 
                         ActorUnprivilegedSystemCallKind::Preempt => {
                             self.disable_deadline();
                             r#yield().await;
                             self.enable_deadline();
-                            P::resume_after_system_call(&syscall.context, &mut event, None);
+                            P::resume_after_system_call(
+                                &syscall.context,
+                                &mut event,
+                                self.program.address_space(),
+                            );
                         }
 
                         ActorUnprivilegedSystemCallKind::Complete => break,
 
                         ActorUnprivilegedSystemCallKind::SendMessageCopy { recipient, message } => {
+                            let user_address = message as usize as u64;
+
                             if let Some(handler) = self.message_handlers.get(recipient) {
-                                if !self
-                                    .memory
-                                    .contains(message as usize, handler.message_layout())
-                                {
+                                if !self.program.contains(user_address, handler.message_layout()) {
                                     let _ = writeln!(
                                         self.environment.logger(),
                                         "unprivileged actor passed an invalid message pointer {:#x}",
-                                        message as usize,
+                                        user_address,
                                     );
                                     outcome = PhaseOutcome::Faulted;
                                     break;
                                 }
 
+                                let source = self.program.kernel_address(user_address);
                                 let allocator = self.environment.allocator().clone();
-                                let _ = handler.send(&allocator, message).await;
+                                let _ = handler.send(&allocator, source as *const ()).await;
                             }
-                            P::resume_after_system_call(&syscall.context, &mut event, None);
+
+                            P::resume_after_system_call(
+                                &syscall.context,
+                                &mut event,
+                                self.program.address_space(),
+                            );
                         }
 
                         ActorUnprivilegedSystemCallKind::Unknown(identifier) => {
@@ -194,7 +193,7 @@ where
                     self.disable_deadline();
                     r#yield().await;
                     self.enable_deadline();
-                    P::resume_after_preemption(&context, &mut event, None);
+                    P::resume_after_preemption(&context, &mut event, self.program.address_space());
                 }
 
                 Some(UnprivilegedEvent::Exception(exception)) => {
@@ -213,84 +212,55 @@ where
 
         outcome
     }
-
-    extern "C" fn create_entry(actor: *mut AI, _message: *const ()) -> ! {
-        let actor = unsafe { &mut *actor };
-        let _ = Self::poll_to_completion(actor.create(()));
-        P::complete_unprivileged_execution()
-    }
-
-    extern "C" fn handle_entry(actor: *mut AI, message: *const ()) -> ! {
-        let actor = unsafe { &mut *actor };
-        let message = unsafe { &*(message as *const AI::Message) };
-        let _ = Self::poll_to_completion(actor.handle(ActorCommonHandleContext::new(message.clone())));
-        P::complete_unprivileged_execution()
-    }
-
-    extern "C" fn destroy_entry(actor: *mut AI, _message: *const ()) -> ! {
-        let actor = unsafe { &mut *actor };
-        let _ = Self::poll_to_completion(actor.destroy(()));
-        P::complete_unprivileged_execution()
-    }
-
-    fn poll_to_completion<F: Future>(future: F) -> F::Output {
-        let mut context = Context::from_waker(Waker::noop());
-        match pin!(future).poll(&mut context) {
-            Poll::Ready(result) => result,
-            Poll::Pending => todo!("unprivileged actor futures must not return Pending"),
-        }
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct ActorUnprivilegedExecutor<AI>
+pub struct ActorUnprivilegedExecutor<Pr>
 where
-    AI: Actor<ActorUnprivilegedEnvironment>,
+    Pr: ActorUnprivilegedProgram,
 {
     future: Pin<Box<dyn Future<Output = ()> + Send + 'static, ErasedAllocator>>,
-    _marker: PhantomData<fn() -> AI>,
+    _marker: PhantomData<fn() -> Pr>,
 }
 
-impl<AI> ActorUnprivilegedExecutor<AI>
+impl<Pr> ActorUnprivilegedExecutor<Pr>
 where
-    AI: Actor<ActorUnprivilegedEnvironment>,
-    ActorUnprivilegedExecutorInner<AI>: Send + 'static,
+    Pr: ActorUnprivilegedProgram,
+    ActorUnprivilegedExecutorInner<Pr>: Send + 'static,
 {
     pub fn new(
         environment: ActorEnvironmentReference<ActorRootEnvironment>,
-        actor: AI,
-        receiver: ActorUnprivilegedReceiver<AI>,
-        recipient: ActorRecipient<AI::Message, ActorRootEnvironment>,
+        program: Pr,
+        receiver: ActorMessageChannelReceiver<
+            ActorMessageEnvelope<Pr::Message, ActorRootEnvironment>,
+            ErasedAllocator,
+        >,
+        recipient: ActorRecipient<Pr::Message, ActorRootEnvironment>,
         deadline_in_milliseconds: Option<NonZero<usize>>,
         message_handlers: ActorUnprivilegedMessageHandlers,
-    ) -> Result<Self, AllocError> {
+    ) -> Self {
         let allocator = environment.allocator().clone();
 
-        let memory = environment
-            .platform()
-            .allocate_unprivileged_memory(ActorUnprivilegedMemory::<AI>::SIZE)
-            .ok_or(AllocError)?;
-
-        let inner = ActorUnprivilegedExecutorInner::<AI> {
-            memory: ActorUnprivilegedMemory::new(memory, actor),
+        let inner = ActorUnprivilegedExecutorInner::<Pr> {
             environment,
+            program,
             receiver,
             _recipient: recipient,
             deadline_in_milliseconds,
             message_handlers,
         };
 
-        Ok(Self {
+        Self {
             future: Box::pin_in(inner.run(), allocator),
             _marker: PhantomData,
-        })
+        }
     }
 }
 
-impl<AI> Future for ActorUnprivilegedExecutor<AI>
+impl<Pr> Future for ActorUnprivilegedExecutor<Pr>
 where
-    AI: Actor<ActorUnprivilegedEnvironment>,
+    Pr: ActorUnprivilegedProgram,
 {
     type Output = ();
 

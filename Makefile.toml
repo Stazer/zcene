@@ -11,10 +11,12 @@ args = [
 ]
 command = "cargo"
 
-[tasks.build-playground]
+[tasks.build-playground-isolated]
 args = [
     "build",
     "--package", "zcene-playground",
+    "--bin", "zcene-playground-isolated",
+    "--features", "isolated-program",
     "--release",
     "--target", "zcene/x86_64.json",
     "-Z", "build-std=core,alloc,compiler_builtins",
@@ -22,6 +24,22 @@ args = [
     "-Z", "json-target-spec",
 ]
 command = "cargo"
+
+[tasks.build-playground]
+args = [
+    "build",
+    "--package", "zcene-playground",
+    "--bin", "zcene-playground",
+    "--release",
+    "--target", "zcene/x86_64.json",
+    "-Z", "build-std=core,alloc,compiler_builtins",
+    "-Z", "build-std-features=compiler-builtins-mem",
+    "-Z", "json-target-spec",
+]
+command = "cargo"
+dependencies = [
+    "build-playground-isolated",
+]
 
 [tasks.build-playground-x86_64]
 args = [
@@ -42,6 +60,7 @@ dependencies = [
 args = [
     "build",
     "--package", "zcene-playground",
+    "--bin", "zcene-playground",
     "--release",
 ]
 command = "cargo"
@@ -50,6 +69,7 @@ command = "cargo"
 args = [
     "run",
     "--package", "zcene-playground",
+    "--bin", "zcene-playground",
     "--release",
 ]
 command = "cargo"
