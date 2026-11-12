@@ -1,0 +1,10 @@
+[package]
+name = "example-ping"
+version = "0.0.0"
+edition = "2024"
+
+[target.'cfg(target_os = "none")'.dependencies]
+zcene = { path = "../../zcene", default-features = false, features = ["x86_64"] }
+
+[build-dependencies]
+examples-build = { path = "../../examples-build" }

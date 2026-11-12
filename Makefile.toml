@@ -11,83 +11,43 @@ args = [
 ]
 command = "cargo"
 
-[tasks.build-playground-isolated]
-args = [
-    "build",
-    "--package", "zcene-playground",
-    "--bin", "zcene-playground-isolated",
-    "--features", "isolated-program",
-    "--release",
-    "--target", "zcene/x86_64.json",
-    "-Z", "build-std=core,compiler_builtins",
-    "-Z", "build-std-features=compiler-builtins-mem",
-    "-Z", "json-target-spec",
-]
-command = "cargo"
-
-[tasks.build-playground]
-args = [
-    "build",
-    "--package", "zcene-playground",
-    "--bin", "zcene-playground",
-    "--release",
-    "--target", "zcene/x86_64.json",
-    "-Z", "build-std=core,compiler_builtins",
-    "-Z", "build-std-features=compiler-builtins-mem",
-    "-Z", "json-target-spec",
-]
-command = "cargo"
-dependencies = [
-    "build-playground-isolated",
-]
-
-[tasks.build-playground-x86_64]
-args = [
-    "build",
-    "--package", "zcene-playground-x86_64",
-    "--release",
-    "--target", "zcene/x86_64.json",
-    "-Z", "build-std=core,compiler_builtins",
-    "-Z", "build-std-features=compiler-builtins-mem",
-    "-Z", "json-target-spec",
-]
-command = "cargo"
-dependencies = [
-    "build-playground",
-]
-
-[tasks.build-playground-hosted]
-args = [
-    "build",
-    "--package", "zcene-playground",
-    "--bin", "zcene-playground",
-    "--release",
-]
-command = "cargo"
-
-[tasks.run-playground-hosted]
-args = [
-    "run",
-    "--package", "zcene-playground",
-    "--bin", "zcene-playground",
-    "--release",
-]
-command = "cargo"
-
 [tasks.run-example]
 args = [
     "run",
-    "--package", "examples",
-    "--example", "${EXAMPLE}",
+    "--package", "example-${EXAMPLE}",
+    "--release",
 ]
 command = "cargo"
 
-[tasks.run-playground-x86_64-uefi.env]
+[tasks.build-example-x86_64]
+script_runner = "@shell"
+script = '''
+set -e
+
+ARGS="--release --target zcene/x86_64.json -Z build-std=core,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec"
+
+# The programs in `src/bin` come first: the kernel includes their images.
+IMAGES="target/x86_64/images/example-${EXAMPLE}"
+
+for file in examples/${EXAMPLE}/src/bin/*.rs; do
+    [ -e "${file}" ] || continue
+
+    cargo build --package "example-${EXAMPLE}" --bin "$(basename "${file}" .rs)" ${ARGS} \
+        -Z unstable-options --artifact-dir "${IMAGES}"
+done
+
+cargo build --package "example-${EXAMPLE}" --bin "example-${EXAMPLE}" ${ARGS}
+ZCENE_IMAGE_BINARY="example-${EXAMPLE}" cargo build --package examples-image ${ARGS}
+'''
+
+[tasks.run-example-x86_64-uefi]
+env = { IMAGE_BINARY = "example-${EXAMPLE}" }
+run_task = [{ name = ["build-example-x86_64", "qemu-x86_64-uefi"] }]
+
+[tasks.qemu-x86_64-uefi.env]
 KVM = { value = "false", condition = { env_not_set = ["KVM"] } }
 
-# Runs under plain TCG software emulation by default. Pass `--env KVM=true` to accelerate
-# with KVM and `-cpu host` instead.
-[tasks.run-playground-x86_64-uefi]
+[tasks.qemu-x86_64-uefi]
 script_runner = "@shell"
 script = '''
 if [ "${KVM}" = "true" ]; then
@@ -100,17 +60,14 @@ qemu-system-x86_64 \
     -no-reboot \
     -nographic \
     ${ACCEL_ARGS} \
-    -drive format=raw,unit=1,file=target/x86_64/release/zcene-playground-x86_64-uefi.img \
+    -drive format=raw,unit=1,file=target/x86_64/release/${IMAGE_BINARY}-x86_64-uefi.img \
     -drive if=pflash,format=raw,unit=0,file=QEMU_UEFI_CODE-x86_64.fd \
     -nic none \
     -m 1024 \
     -smp 2
 '''
-dependencies = [
-    "build-playground-x86_64",
-]
 
-[tasks.prepare-playground-x86_64-uefi]
+[tasks.prepare-x86_64-uefi]
 args = [
      "-o",
      "QEMU_UEFI_CODE-x86_64.fd",

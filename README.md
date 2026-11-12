@@ -59,8 +59,6 @@ cargo install cargo-binutils cargo-make
 # zcene
 Includes zcene-core as the `zcene::core` module.
 
-# zcene-playground
-# zcene-playground-x86_64
+# examples-image
 
 # zcene-hosted
-# zcene-hosted-playground

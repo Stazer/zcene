@@ -1,0 +1,13 @@
+[package]
+name = "example-migration"
+version = "0.0.0"
+edition = "2024"
+
+[target.'cfg(target_os = "none")'.dependencies]
+zcene = { path = "../../zcene", default-features = false, features = ["x86_64"] }
+
+[target.'cfg(not(target_os = "none"))'.dependencies]
+zcene = { path = "../../zcene", default-features = false, features = ["hosted"] }
+
+[build-dependencies]
+examples-build = { path = "../../examples-build" }
