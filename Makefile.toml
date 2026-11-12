@@ -19,7 +19,7 @@ args = [
     "--features", "isolated-program",
     "--release",
     "--target", "zcene/x86_64.json",
-    "-Z", "build-std=core,alloc,compiler_builtins",
+    "-Z", "build-std=core,compiler_builtins",
     "-Z", "build-std-features=compiler-builtins-mem",
     "-Z", "json-target-spec",
 ]
@@ -32,7 +32,7 @@ args = [
     "--bin", "zcene-playground",
     "--release",
     "--target", "zcene/x86_64.json",
-    "-Z", "build-std=core,alloc,compiler_builtins",
+    "-Z", "build-std=core,compiler_builtins",
     "-Z", "build-std-features=compiler-builtins-mem",
     "-Z", "json-target-spec",
 ]
@@ -47,7 +47,7 @@ args = [
     "--package", "zcene-playground-x86_64",
     "--release",
     "--target", "zcene/x86_64.json",
-    "-Z", "build-std=core,alloc,compiler_builtins",
+    "-Z", "build-std=core,compiler_builtins",
     "-Z", "build-std-features=compiler-builtins-mem",
     "-Z", "json-target-spec",
 ]

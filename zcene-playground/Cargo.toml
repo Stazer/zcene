@@ -17,6 +17,7 @@ path = "src/main.rs"
 required-features = ["isolated-program"]
 
 [target.'cfg(target_os = "none")'.dependencies]
+alloc = { package = "zcene-alloc", path = "../vendor/alloc" }
 zcene = { path = "../zcene", default-features = false, features = ["x86_64"] }
 
 [target.'cfg(not(target_os = "none"))'.dependencies]

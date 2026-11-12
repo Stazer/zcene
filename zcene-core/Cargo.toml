@@ -8,3 +8,6 @@ crossbeam-utils = { version = "0.8", default-features = false }
 futures-core = { version = "0.3", default-features = false }
 spin = "*"
 ztd = { git = "https://github.com/Stazer/ztd.git" }
+
+[target.'cfg(target_os = "none")'.dependencies]
+alloc = { package = "zcene-alloc", path = "../vendor/alloc" }

@@ -1,0 +1,12 @@
+[package]
+name = "zcene-alloc"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+name = "alloc"
+test = false
+bench = false
+
+[lints.rust]
+unexpected_cfgs = "allow"

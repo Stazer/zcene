@@ -59,10 +59,6 @@ pub use x86_64_panic_handler;
 #[macro_export]
 macro_rules! x86_64_entry_point {
     ($root_actor:expr) => {
-        #[global_allocator]
-        static GLOBAL_ALLOCATOR: $crate::common::memory::allocator::PanicHeapAllocator =
-            $crate::common::memory::allocator::PanicHeapAllocator;
-
         static BOOTLOADER_CONFIG: $crate::r#extern::bootloader_api::BootloaderConfig = {
             let mut config = $crate::r#extern::bootloader_api::BootloaderConfig::new_default();
             config.kernel_stack_size = 4 * 4096;

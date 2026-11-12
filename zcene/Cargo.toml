@@ -33,3 +33,6 @@ zcene-core = { path = "../zcene-core" }
 spin = "*"
 xmas-elf = "0.8"
 ztd = { git = "https://github.com/Stazer/ztd.git" }
+
+[target.'cfg(target_os = "none")'.dependencies]
+alloc = { package = "zcene-alloc", path = "../vendor/alloc" }
